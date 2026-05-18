@@ -4,7 +4,7 @@ use crate::{
         Action, CHECKS_BAR, DIFF_HINT_TEXT, FRONTPAGE_BAR, ISSUES_BAR, PRS_BAR, REPOS_BAR,
         SOURCES_BAR, find_binding,
     },
-    types::{Column, DetailSection, RepoView},
+    types::{Column, DetailSection, LoadingKind, RepoView},
 };
 use ratatui::{
     Frame,
@@ -13,6 +13,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::Paragraph,
 };
+use rattles::presets::prelude as presets;
 use std::borrow::Cow;
 
 pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout::Rect) {
@@ -36,6 +37,19 @@ pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout
                     app.active_filter()
                 )),
                 Color::DarkGray,
+                Alignment::Left,
+            )
+        } else if let Some(kind) = &app.loading {
+            let label = match kind {
+                LoadingKind::Sources => "loading sources",
+                LoadingKind::Repos => "loading repos",
+                LoadingKind::Prs => "loading PRs",
+                LoadingKind::Issues => "loading issues",
+                LoadingKind::Action(name) => name.as_str(),
+            };
+            (
+                Cow::Owned(format!("{}  {}…", presets::dots().current_frame(), label)),
+                Color::Yellow,
                 Alignment::Left,
             )
         } else if let Some((msg, is_err)) = &app.status_msg {

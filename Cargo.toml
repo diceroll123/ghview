@@ -24,6 +24,7 @@ simplelog = "0.12"
 unicode-width = "0.2"
 shellexpand = "3"
 pulldown-cmark = { version = "0.13.3", default-features = false }
+rattles = "0.3.1"
 
 [profile.release]
 opt-level = 3
