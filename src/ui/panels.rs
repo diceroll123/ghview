@@ -1,6 +1,7 @@
 use super::{
-    ICON_ORG, ICON_USER, active_style, filter_title, inactive_style, item_style, lang_icon,
-    panel_focus, pr_state_icon, relative_time, render_list_scrollbar, review_icon, truncate,
+    ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_ORG, ICON_USER, active_style, filter_title,
+    inactive_style, item_style, lang_icon, panel_focus, pr_state_icon, relative_time,
+    render_list_scrollbar, review_icon, truncate,
 };
 use crate::{
     app::App,
@@ -338,10 +339,18 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
         .clamp(6, 24);
     let status_col = 1 + 2; // rv + 2sp
     let show_diff = app.config.ui.pr_columns.contains(&PrColumn::DiffStats);
+    let show_age = app.config.ui.pr_columns.contains(&PrColumn::Age);
+    let show_updated = app.config.ui.pr_columns.contains(&PrColumn::UpdatedAt);
     // "+9.9k -9.9k" = 11 chars max + 1 trailing space separator = 12; +1 leading pad = 13
     let diff_col: usize = 13;
-    let right_col_width =
-        status_col + 1 + author_col + 2 + age_col + if show_diff { diff_col } else { 0 };
+    // each time col: 2 sep + 1 icon + 1 space + age_col value = 2+1+1+age_col
+    let time_col_w = 2 + 1 + 1 + age_col;
+    let right_col_width = status_col
+        + 1
+        + author_col
+        + if show_age { time_col_w } else { 0 }
+        + if show_updated { time_col_w } else { 0 }
+        + if show_diff { diff_col } else { 0 };
 
     let items: Vec<ListItem> = app
         .prs
@@ -358,9 +367,19 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
             let (rv_sym, rv_col) = review_icon(app.review_statuses.get(&pr.number));
 
             let number_str = format!("#{} ", pr.number);
-            let age = relative_time(&pr.created_at);
             let author_str = format!("@{:<acol$}", pr.author, acol = author_col);
-            let age_str = format!("  {:>agecol$}", age, agecol = age_col);
+            let age_str = if show_age {
+                let age = relative_time(&pr.created_at);
+                format!("  {ICON_CLOCK} {:>agecol$}", age, agecol = age_col)
+            } else {
+                String::new()
+            };
+            let updated_str = if show_updated {
+                let upd = relative_time(&pr.updated_at);
+                format!("  {ICON_CLOCK_UPDATED} {:>agecol$}", upd, agecol = age_col)
+            } else {
+                String::new()
+            };
             let num_w = number_str.width();
             let title_budget = inner_width.saturating_sub(num_w + right_col_width + 1);
             let title_text = truncate(&pr.title, title_budget);
@@ -392,6 +411,7 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
                 Span::styled(rv_sym, Style::new().fg(rv_col)),
                 Span::raw("  "),
                 Span::styled(author_str, meta_style.add_modifier(Modifier::BOLD)),
+                Span::styled(updated_str, meta_style),
                 Span::styled(age_str, meta_style),
             ]);
             let line1 = Line::from(line1_spans);
@@ -461,12 +481,24 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
     } else {
         String::new()
     };
+    let age_header = if show_age {
+        format!("  {ICON_CLOCK} {:>agecol$}", "Crd", agecol = age_col)
+    } else {
+        String::new()
+    };
+    let updated_header = if show_updated {
+        format!(
+            "  {ICON_CLOCK_UPDATED} {:>agecol$}",
+            "Upd",
+            agecol = age_col
+        )
+    } else {
+        String::new()
+    };
     let right_header = format!(
-        "{diff_header}{status_header}@{:<acol$}  {:>agecol$}",
+        "{diff_header}{status_header}@{:<acol$}{updated_header}{age_header}",
         "Author",
-        "Age",
         acol = author_col,
-        agecol = age_col
     );
     let left_header = "#    Title";
     let gap = inner_width.saturating_sub(left_header.width() + right_header.width());
@@ -907,8 +939,9 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
             let num_w = number_str.len();
             let age = relative_time(&issue.created_at);
             let author_str = format!("@{:<acol$}", issue.author, acol = author_col);
-            let age_str = format!("  {:>agecol$}", age, agecol = age_col);
-            let author_age_w = author_str.len() + age_str.len();
+            let age_str = format!("  {ICON_CLOCK} {:>agecol$}", age, agecol = age_col);
+            // 2 sep + 1 icon (display) + 1 space + age_col
+            let author_age_w = author_str.width() + 2 + 1 + 1 + age_col;
             let title_budget = inner_width.saturating_sub(num_w + author_age_w + 1);
             let title_text = truncate(&issue.title, title_budget);
             let title_w = title_text.len();

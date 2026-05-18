@@ -20,6 +20,8 @@ use unicode_width::UnicodeWidthStr;
 pub(super) const ICON_USER: &str = "\u{f007} ";
 pub(super) const ICON_ORG: &str = "\u{f0af} ";
 pub(super) const ICON_REPO: &str = "\u{e702} ";
+pub(super) const ICON_CLOCK: &str = "\u{f017}";
+pub(super) const ICON_CLOCK_UPDATED: &str = "\u{f520}";
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();

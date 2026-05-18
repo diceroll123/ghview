@@ -243,6 +243,8 @@ pub enum RepoColumn {
 #[serde(rename_all = "snake_case")]
 pub enum PrColumn {
     DiffStats,
+    Age,
+    UpdatedAt,
 }
 
 #[derive(Debug, Clone, Copy)]
