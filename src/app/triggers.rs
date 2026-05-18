@@ -166,6 +166,7 @@ impl App {
         let owner = source.owner().to_string();
         let current_user = self.current_user.clone().unwrap_or_default();
         let per_page = self.per_page();
+        self.loading = Some(LoadingKind::Repos);
         let page = self.repos_page + 1;
         self.repos_page = page;
         self.repos_fetching_more = true;
@@ -264,6 +265,7 @@ impl App {
         let per_page = self.per_page();
         let page = self.prs_page + 1;
         self.prs_page = page;
+        self.loading = Some(LoadingKind::Prs);
         self.prs_fetching_more = true;
         let tx = self.tx.clone();
         tokio::spawn(async move {
@@ -379,6 +381,7 @@ impl App {
         let per_page = self.per_page();
         let page = self.issues_page + 1;
         self.issues_page = page;
+        self.loading = Some(LoadingKind::Issues);
         self.issues_fetching_more = true;
         let tx = self.tx.clone();
         tokio::spawn(async move {

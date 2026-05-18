@@ -310,6 +310,7 @@ impl App {
                 self.repos_fetching_more = false;
                 self.repos.extend(repos);
                 self.sort_repos_in_place();
+                self.loading = None;
             }
             DataMsg::Prs {
                 owner,
@@ -346,6 +347,7 @@ impl App {
                 self.prs_fetching_more = false;
                 self.prs_raw.extend(prs);
                 self.rebuild_prs();
+                self.loading = None;
             }
             DataMsg::ReviewStatus {
                 owner,
@@ -451,6 +453,7 @@ impl App {
                 self.issues_has_more = has_more;
                 self.issues_fetching_more = false;
                 self.issues.extend(issues);
+                self.loading = None;
             }
             DataMsg::IssueBody { number, body } => {
                 if self.selected_issue().is_some_and(|i| i.number == number) {
