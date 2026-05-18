@@ -5,8 +5,8 @@ use super::{
 use crate::{
     app::App,
     types::{
-        CheckStatus, Column, DetailSection, LoadingKind, PrState, RepoColumn, RepoView, Source,
-        Visibility,
+        CheckStatus, Column, DetailSection, LoadingKind, PrColumn, PrState, RepoColumn, RepoView,
+        Source, Visibility,
     },
 };
 use unicode_width::UnicodeWidthStr;
@@ -336,7 +336,11 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
         .unwrap_or(6)
         .clamp(6, 24);
     let status_col = 1 + 2; // rv + 2sp
-    let right_col_width = status_col + 1 + author_col + 2 + age_col;
+    let show_diff = app.config.ui.pr_columns.contains(&PrColumn::DiffStats);
+    // "+9.9k -9.9k" = 11 chars max + 1 trailing space separator = 12; +1 leading pad = 13
+    let diff_col: usize = 13;
+    let right_col_width =
+        status_col + 1 + author_col + 2 + age_col + if show_diff { diff_col } else { 0 };
 
     let items: Vec<ListItem> = app
         .prs
@@ -367,14 +371,33 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
             let title_w = title_text.width();
             let gap = inner_width.saturating_sub(num_w + title_w + right_col_width);
 
-            let line1 = Line::from(vec![
+            let mut line1_spans = vec![
                 Span::styled(number_str, Style::new().add_modifier(Modifier::BOLD)),
                 Span::styled(title_text, base_style),
                 gap_span(gap),
+            ];
+            if show_diff {
+                if pr.additions == 0 && pr.deletions == 0 {
+                    line1_spans.push(Span::raw(format!("{:width$}", "", width = diff_col)));
+                } else {
+                    let add_str = format!("+{}", fmt_stat(pr.additions));
+                    let del_str = format!("-{}", fmt_stat(pr.deletions));
+                    // content_w includes the trailing space separator before rv_sym
+                    let content_w = add_str.len() + 1 + del_str.len() + 1;
+                    let pad = diff_col.saturating_sub(content_w);
+                    line1_spans.push(Span::raw(" ".repeat(pad)));
+                    line1_spans.push(Span::styled(add_str, Style::new().fg(Color::Green)));
+                    line1_spans.push(Span::raw(" "));
+                    line1_spans.push(Span::styled(del_str, Style::new().fg(Color::Red)));
+                    line1_spans.push(Span::raw(" "));
+                }
+            }
+            line1_spans.extend([
                 Span::styled(rv_sym, Style::new().fg(rv_col)),
                 Span::raw("  "),
                 Span::styled(author_age, meta_style),
             ]);
+            let line1 = Line::from(line1_spans);
 
             let state_icon = pr_state_icon(pr.draft, pr.state);
             let state_col = if pr.draft {
@@ -436,8 +459,13 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
         .fg(Color::DarkGray)
         .add_modifier(Modifier::BOLD);
     let status_header = "RV  ";
+    let diff_header = if show_diff {
+        format!("{:>width$} ", "±", width = diff_col - 1)
+    } else {
+        String::new()
+    };
     let right_header = format!(
-        "{status_header}@{:<acol$}  {:>agecol$}",
+        "{diff_header}{status_header}@{:<acol$}  {:>agecol$}",
         "Author",
         "Age",
         acol = author_col,

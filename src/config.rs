@@ -60,6 +60,8 @@ pub struct UiConfig {
     pub checkout_dir: Option<String>,
     /// Extra columns shown in the repos list. Supported: "stars", "forks", "issues", "visibility", "last_push".
     pub repo_columns: Vec<crate::types::RepoColumn>,
+    /// Extra columns shown in the PR list. Supported: "diff_stats".
+    pub pr_columns: Vec<crate::types::PrColumn>,
     /// Default view when entering a repo: "frontpage" (default), "prs", or "issues".
     pub default_repo_view: crate::types::RepoView,
     /// Items per page when fetching lists. 0 = dynamic (terminal_height × 1.5). Max 100.
@@ -211,6 +213,7 @@ impl Default for UiConfig {
             prs_limit: DEFAULT_PRS_LIMIT,
             checkout_dir: None,
             repo_columns: vec![crate::types::RepoColumn::Stars],
+            pr_columns: vec![crate::types::PrColumn::DiffStats],
             default_repo_view: crate::types::RepoView::default(),
             per_page: 0,
             merge_method: MergeMethod::default(),

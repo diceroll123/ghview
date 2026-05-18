@@ -20,6 +20,9 @@ prs_limit = 50
 # Extra columns in the repos list. Default: ["stars"].
 # Supported: "stars", "forks", "issues", "visibility", "last_push"
 # repo_columns = ["stars"]
+# Extra columns in the PR list. Default: ["diff_stats"].
+# Supported: "diff_stats"
+# pr_columns = ["diff_stats"]
 # Default view when entering a repo: "prs", "frontpage" (README + stats), or "issues".
 # default_repo_view = "prs"
 
