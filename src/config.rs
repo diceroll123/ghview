@@ -1,0 +1,380 @@
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use serde::Deserialize;
+use std::path::PathBuf;
+use std::time::Duration;
+
+pub const DEFAULT_TICK_MS: u64 = 100;
+pub const DEFAULT_CACHE_SECS: u64 = 600;
+pub const DEFAULT_REPOS_LIMIT: u32 = 50;
+pub const DEFAULT_PRS_LIMIT: u32 = 50;
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct Config {
+    pub cache: CacheConfig,
+    pub ui: UiConfig,
+    #[serde(default)]
+    pub keybindings: KeybindingsConfig,
+    #[serde(default)]
+    pub sources: SourcesConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct CacheConfig {
+    /// Seconds before a cached PR list is considered stale. Set to 0 to disable.
+    pub duration_secs: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct UiConfig {
+    /// Milliseconds between UI ticks.
+    pub tick_ms: u64,
+    /// Default sort for the repos column: "`recently_updated`" (default) or "alphabetical".
+    pub repo_sort: crate::types::RepoSortKey,
+    /// Max repos to fetch per source (1–100).
+    pub repos_limit: u32,
+    /// Max open PRs to fetch per repo (1–100).
+    pub prs_limit: u32,
+    /// Directory to cd into before running `gh pr checkout`. Supports ~.
+    pub checkout_dir: Option<String>,
+    /// Extra columns shown in the repos list. Supported: "stars", "forks", "issues", "visibility", "last_push".
+    pub repo_columns: Vec<crate::types::RepoColumn>,
+    /// Default view when entering a repo: "frontpage" (default), "prs", or "issues".
+    pub default_repo_view: crate::types::RepoView,
+    /// Items per page when fetching lists. 0 = dynamic (terminal_height × 1.5). Max 100.
+    pub per_page: u32,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct KeybindingsConfig {
+    /// Keybindings active in every column. Can override defaults.
+    pub universal: Vec<Keybinding>,
+    /// Keybindings active when the Repos column is focused.
+    pub repos: Vec<Keybinding>,
+    /// Keybindings active when the PRs column is focused.
+    pub prs: Vec<Keybinding>,
+    /// Keybindings active when the Checks section of the detail panel is focused.
+    pub checks: Vec<Keybinding>,
+}
+
+/// A single keybinding entry.
+///
+/// Exactly one of `builtin` or `command` should be set.
+/// - `builtin`: name of a built-in action (see README for list)
+/// - `command`: shell command to run; supports variable substitution
+#[derive(Debug, Clone, Deserialize)]
+pub struct Keybinding {
+    /// Key string: single char ("s"), uppercase ("S"), "ctrl+x", or "alt+x".
+    pub key: String,
+    /// Display name shown in the help popup.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Built-in action name to invoke.
+    #[serde(default)]
+    pub builtin: Option<String>,
+    /// Shell command to run. Supports variable substitution.
+    #[serde(default)]
+    pub command: Option<String>,
+    /// Suspend the TUI and run the command interactively (for editors, pagers, etc.).
+    #[serde(default)]
+    pub interactive: bool,
+}
+
+impl Keybinding {
+    pub fn matches(&self, key: KeyEvent) -> bool {
+        parse_key(&self.key)
+            .is_some_and(|(code, mods)| key.code == code && key.modifiers.contains(mods))
+    }
+
+    pub fn expand_command_pr(
+        &self,
+        pr: &crate::types::PR,
+        owner: &str,
+        repo: &str,
+    ) -> Option<String> {
+        let cmd = self.command.as_ref()?;
+        Some(
+            cmd.replace("{pr_number}", &pr.number.to_string())
+                .replace("{owner}", owner)
+                .replace("{org}", owner)
+                .replace("{repo}", repo)
+                .replace("{author}", &pr.author)
+                .replace("{head_ref}", &pr.head_ref)
+                .replace("{base_ref}", &pr.base_ref)
+                .replace("{url}", &pr.url)
+                .replace("{title}", &pr.title),
+        )
+    }
+
+    pub fn expand_command_check(
+        &self,
+        run: &crate::types::CheckRun,
+        pr_number: u64,
+        owner: &str,
+        repo: &str,
+    ) -> Option<String> {
+        let cmd = self.command.as_deref()?;
+        Some(
+            cmd.replace("{check_id}", &run.id.to_string())
+                .replace("{check_name}", &run.name)
+                .replace("{check_url}", &run.url)
+                .replace("{pr_number}", &pr_number.to_string())
+                .replace("{owner}", owner)
+                .replace("{org}", owner)
+                .replace("{repo}", repo),
+        )
+    }
+
+    pub fn expand_command_repo(
+        &self,
+        owner: &str,
+        repo: &str,
+        language: Option<&str>,
+    ) -> Option<String> {
+        let cmd = self.command.as_ref()?;
+        let url = format!("https://github.com/{owner}/{repo}");
+        Some(
+            cmd.replace("{owner}", owner)
+                .replace("{org}", owner)
+                .replace("{repo}", repo)
+                .replace("{name}", repo)
+                .replace("{language}", language.unwrap_or(""))
+                .replace("{url}", &url),
+        )
+    }
+}
+
+/// Parse a key string like "s", "S", "ctrl+s", "alt+x" into a (`KeyCode`, `KeyModifiers`) pair.
+pub fn parse_key(s: &str) -> Option<(KeyCode, KeyModifiers)> {
+    let s = s.trim();
+    if let Some(rest) = s.strip_prefix("ctrl+") {
+        let ch = rest.chars().next()?;
+        return Some((
+            KeyCode::Char(ch.to_ascii_lowercase()),
+            KeyModifiers::CONTROL,
+        ));
+    }
+    if let Some(rest) = s.strip_prefix("alt+") {
+        let ch = rest.chars().next()?;
+        return Some((KeyCode::Char(ch), KeyModifiers::ALT));
+    }
+    if s.len() == 1 {
+        let ch = s.chars().next()?;
+        let mods = if ch.is_uppercase() {
+            KeyModifiers::SHIFT
+        } else {
+            KeyModifiers::empty()
+        };
+        return Some((KeyCode::Char(ch), mods));
+    }
+    None
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            duration_secs: DEFAULT_CACHE_SECS,
+        }
+    }
+}
+
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self {
+            tick_ms: DEFAULT_TICK_MS,
+            repo_sort: crate::types::RepoSortKey::default(),
+            repos_limit: DEFAULT_REPOS_LIMIT,
+            prs_limit: DEFAULT_PRS_LIMIT,
+            checkout_dir: None,
+            repo_columns: vec![crate::types::RepoColumn::Stars],
+            default_repo_view: crate::types::RepoView::default(),
+            per_page: 0,
+        }
+    }
+}
+
+impl Default for SourcesConfig {
+    fn default() -> Self {
+        Self {
+            auto_fetch_orgs: true,
+            include_self: true,
+            orgs: vec![],
+            users: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct SourcesConfig {
+    pub auto_fetch_orgs: bool,
+    pub include_self: bool,
+    pub orgs: Vec<String>,
+    pub users: Vec<String>,
+}
+
+impl Config {
+    pub const fn cache_ttl(&self) -> Duration {
+        Duration::from_secs(self.cache.duration_secs)
+    }
+
+    pub const fn tick_interval(&self) -> Duration {
+        Duration::from_millis(self.ui.tick_ms)
+    }
+}
+
+pub fn load() -> Config {
+    let path = config_path();
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Config::default();
+    };
+    match toml::from_str::<Config>(&text) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("ghview: config parse error in {}: {e}", path.display());
+            Config::default()
+        }
+    }
+}
+
+pub fn config_path() -> PathBuf {
+    let base = std::env::var("XDG_CONFIG_HOME").map_or_else(
+        |_| {
+            let home = std::env::var("HOME").unwrap_or_default();
+            PathBuf::from(home).join(".config")
+        },
+        PathBuf::from,
+    );
+    base.join("ghview").join("config.toml")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::KeyModifiers;
+
+    #[test]
+    fn parse_key_lowercase_no_modifiers() {
+        let (code, mods) = parse_key("s").unwrap();
+        assert_eq!(code, KeyCode::Char('s'));
+        assert_eq!(mods, KeyModifiers::empty());
+    }
+
+    #[test]
+    fn parse_key_uppercase_shift_modifier() {
+        let (code, mods) = parse_key("S").unwrap();
+        assert_eq!(code, KeyCode::Char('S'));
+        assert_eq!(mods, KeyModifiers::SHIFT);
+    }
+
+    #[test]
+    fn parse_key_ctrl_prefix() {
+        let (code, mods) = parse_key("ctrl+s").unwrap();
+        assert_eq!(code, KeyCode::Char('s'));
+        assert_eq!(mods, KeyModifiers::CONTROL);
+    }
+
+    #[test]
+    fn parse_key_alt_prefix() {
+        let (code, mods) = parse_key("alt+x").unwrap();
+        assert_eq!(code, KeyCode::Char('x'));
+        assert_eq!(mods, KeyModifiers::ALT);
+    }
+
+    #[test]
+    fn parse_key_trims_surrounding_whitespace() {
+        assert!(parse_key("  s  ").is_some());
+    }
+
+    #[test]
+    fn parse_key_invalid_returns_none() {
+        assert!(parse_key("").is_none());
+        assert!(parse_key("foo").is_none());
+        assert!(parse_key("ctrl+").is_none());
+    }
+
+    fn pr_fixture() -> crate::types::PR {
+        crate::types::PR {
+            number: 42,
+            title: "Fix bug".into(),
+            author: "alice".into(),
+            draft: false,
+            state: crate::types::PrState::Open,
+            created_at: "2024-01-01T00:00:00Z".into(),
+            updated_at: "2024-01-01T00:00:00Z".into(),
+            url: "https://github.com/myorg/myrepo/pull/42".into(),
+            requested_reviewers: vec![],
+            labels: vec![],
+            head_ref: "fix/bug".into(),
+            base_ref: "main".into(),
+            head_sha: "abc123".into(),
+            additions: 0,
+            deletions: 0,
+        }
+    }
+
+    fn kb(cmd: &str) -> Keybinding {
+        Keybinding {
+            key: "o".into(),
+            name: None,
+            builtin: None,
+            command: Some(cmd.into()),
+            interactive: false,
+        }
+    }
+
+    #[test]
+    fn expand_command_pr_substitutes_all_placeholders() {
+        let expanded = kb("gh pr checkout {pr_number} --repo {owner}/{repo}")
+            .expand_command_pr(&pr_fixture(), "myorg", "myrepo")
+            .unwrap();
+        assert_eq!(expanded, "gh pr checkout 42 --repo myorg/myrepo");
+    }
+
+    #[test]
+    fn expand_command_pr_org_alias_for_owner() {
+        let expanded = kb("echo {org}")
+            .expand_command_pr(&pr_fixture(), "myorg", "myrepo")
+            .unwrap();
+        assert_eq!(expanded, "echo myorg");
+    }
+
+    #[test]
+    fn expand_command_repo_builds_url() {
+        let expanded = kb("open {url}")
+            .expand_command_repo("myorg", "myrepo", Some("Rust"))
+            .unwrap();
+        assert_eq!(expanded, "open https://github.com/myorg/myrepo");
+    }
+
+    #[test]
+    fn expand_command_repo_language_placeholder() {
+        let expanded = kb("echo {language}")
+            .expand_command_repo("o", "r", Some("Go"))
+            .unwrap();
+        assert_eq!(expanded, "echo Go");
+    }
+
+    #[test]
+    fn expand_command_repo_missing_language_empty_string() {
+        let expanded = kb("echo {language}")
+            .expand_command_repo("o", "r", None)
+            .unwrap();
+        assert_eq!(expanded, "echo ");
+    }
+
+    #[test]
+    fn expand_command_none_when_no_command_set() {
+        let no_cmd = Keybinding {
+            key: "o".into(),
+            name: None,
+            builtin: Some("checkout".into()),
+            command: None,
+            interactive: false,
+        };
+        assert!(no_cmd.expand_command_repo("o", "r", None).is_none());
+    }
+}
