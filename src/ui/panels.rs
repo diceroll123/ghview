@@ -344,27 +344,18 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
     let inner_width = area.width.saturating_sub(4) as usize;
 
     let age_col = 3usize;
-    let author_col = app
-        .prs
-        .iter()
-        .map(|pr| pr.author.width())
-        .max()
-        .unwrap_or(6)
-        .clamp(6, 24);
     let status_col = 1 + 2; // rv + 2sp
     let show_diff = app.config.ui.pr_columns.contains(&PrColumn::DiffStats);
     let show_age = app.config.ui.pr_columns.contains(&PrColumn::Age);
     let show_updated = app.config.ui.pr_columns.contains(&PrColumn::UpdatedAt);
     // "+9.9k -9.9k" = 11 chars max + 1 trailing space separator = 12; +1 leading pad = 13
     let diff_col: usize = 13;
-    // each time col: 2 sep + 1 icon + 1 space + age_col value = 2+1+1+age_col
+    // each time col: 2 sep + 1 icon + 1 space + age_col value
     let time_col_w = 2 + 1 + 1 + age_col;
-    let right_col_width = status_col
-        + 1
-        + author_col
-        + if show_age { time_col_w } else { 0 }
+    let right_col_width = if show_diff { diff_col } else { 0 }
+        + status_col
         + if show_updated { time_col_w } else { 0 }
-        + if show_diff { diff_col } else { 0 };
+        + if show_age { time_col_w } else { 0 };
 
     let items: Vec<ListItem> = app
         .prs
@@ -381,7 +372,6 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
             let (rv_sym, rv_col) = review_icon(app.review_statuses.get(&pr.number));
 
             let number_str = format!("#{} ", pr.number);
-            let author_str = format!("@{:<acol$}", pr.author, acol = author_col);
             let age_str = if show_age {
                 let age = relative_time(&pr.created_at);
                 format!("  {ICON_CLOCK} {:>agecol$}", age, agecol = age_col)
@@ -395,14 +385,18 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
                 String::new()
             };
             let num_w = number_str.width();
-            let title_budget = inner_width.saturating_sub(num_w + right_col_width + 1);
-            let title_text = truncate(&pr.title, title_budget);
-            let title_w = title_text.width();
-            let gap = inner_width.saturating_sub(num_w + title_w + right_col_width);
+            // line1 left: "#N by @author"
+            let by_str = format!("by @{}", pr.author);
+            let left_w = num_w + by_str.width();
+            let gap = inner_width.saturating_sub(left_w + right_col_width);
 
             let mut line1_spans = vec![
                 Span::styled(number_str, Style::new().add_modifier(Modifier::BOLD)),
-                Span::styled(title_text, base_style),
+                Span::styled("by ", meta_style),
+                Span::styled(
+                    format!("@{}", pr.author),
+                    meta_style.add_modifier(Modifier::BOLD),
+                ),
                 gap_span(gap),
             ];
             if show_diff {
@@ -411,7 +405,6 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
                 } else {
                     let add_str = format!("+{}", fmt_stat(pr.additions));
                     let del_str = format!("-{}", fmt_stat(pr.deletions));
-                    // content_w includes the trailing space separator before rv_sym
                     let content_w = add_str.len() + 1 + del_str.len() + 1;
                     let pad = diff_col.saturating_sub(content_w);
                     line1_spans.push(Span::raw(" ".repeat(pad)));
@@ -424,12 +417,12 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
             line1_spans.extend([
                 Span::styled(rv_sym, Style::new().fg(rv_col)),
                 Span::raw("  "),
-                Span::styled(author_str, meta_style.add_modifier(Modifier::BOLD)),
                 Span::styled(updated_str, meta_style),
                 Span::styled(age_str, meta_style),
             ]);
             let line1 = Line::from(line1_spans);
 
+            // line2: "  [state] [merge_warn] [title] [labels]"
             let state_icon = pr_state_icon(pr.draft, pr.state);
             let state_col = if pr.draft {
                 Color::DarkGray
@@ -438,11 +431,26 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
             } else {
                 Color::Green
             };
+            let merge_state_w: usize = match app.mergeable_states.get(&pr.number) {
+                Some(crate::types::MergeableState::Behind) => "⟳ rebase  ".width(),
+                Some(crate::types::MergeableState::Dirty) => "✖ conflicts  ".width(),
+                _ => 0,
+            };
+            let label_section_w: usize = if pr.labels.is_empty() {
+                0
+            } else {
+                2 + pr.labels.iter().map(|l| l.len() + 2).sum::<usize>()
+                    + pr.labels.len().saturating_sub(1)
+            };
+            // prefix: "  "(2) + state_icon(2) + " "(1) = 5
+            let title2_budget = inner_width.saturating_sub(5 + merge_state_w + label_section_w);
+            let title2_text = truncate(&pr.title, title2_budget);
+
             let mut meta_spans: Vec<Span> = vec![
                 Span::raw("  "),
                 Span::styled(state_icon, Style::new().fg(state_col)),
+                Span::raw(" "),
             ];
-
             match app.mergeable_states.get(&pr.number) {
                 Some(crate::types::MergeableState::Behind) => {
                     meta_spans.push(Span::styled("⟳ rebase  ", Style::new().fg(Color::Yellow)))
@@ -452,29 +460,19 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
                 }
                 _ => {}
             }
-
-            if !pr.head_ref.is_empty() {
-                meta_spans.push(Span::styled(
-                    format!("{} → {}  ", pr.head_ref, pr.base_ref),
-                    Style::new().fg(Color::DarkGray),
-                ));
+            meta_spans.push(Span::styled(title2_text, base_style));
+            if !pr.labels.is_empty() {
+                meta_spans.push(Span::raw("  "));
+                for (i, label) in pr.labels.iter().enumerate() {
+                    if i > 0 {
+                        meta_spans.push(Span::raw(" "));
+                    }
+                    meta_spans.push(Span::styled(
+                        format!("[{label}]"),
+                        Style::new().fg(Color::Green),
+                    ));
+                }
             }
-
-            if !pr.requested_reviewers.is_empty() {
-                meta_spans.push(Span::styled(
-                    format!("👁 {}  ", pr.requested_reviewers.join(", ")),
-                    Style::new().fg(Color::Magenta),
-                ));
-            }
-
-            for label in &pr.labels {
-                meta_spans.push(Span::styled(
-                    format!("[{label}]"),
-                    Style::new().fg(Color::Green),
-                ));
-                meta_spans.push(Span::raw(" "));
-            }
-
             let line2 = Line::from(meta_spans);
             ListItem::new(Text::from(vec![line1, line2]))
         })
@@ -509,12 +507,8 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
     } else {
         String::new()
     };
-    let right_header = format!(
-        "{diff_header}{status_header}@{:<acol$}{updated_header}{age_header}",
-        "Author",
-        acol = author_col,
-    );
-    let left_header = "#    Title";
+    let right_header = format!("{diff_header}{status_header}{updated_header}{age_header}");
+    let left_header = "#  by @Author    Title";
     let gap = inner_width.saturating_sub(left_header.width() + right_header.width());
     let header_line = Line::from(vec![
         Span::raw("  "),
@@ -632,6 +626,8 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
     let has_meta = pr.additions > 0
         || pr.deletions > 0
         || !pr.labels.is_empty()
+        || !pr.head_ref.is_empty()
+        || !pr.requested_reviewers.is_empty()
         || matches!(
             app.mergeable_states.get(&pr.number),
             Some(crate::types::MergeableState::Behind | crate::types::MergeableState::Dirty)
@@ -704,8 +700,28 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
         }
         _ => {}
     }
+    if !pr.head_ref.is_empty() {
+        if !meta_line_spans.is_empty() {
+            meta_line_spans.push(Span::raw("  "));
+        }
+        meta_line_spans.push(Span::styled(
+            format!("{} → {}", pr.head_ref, pr.base_ref),
+            Style::new().fg(Color::DarkGray),
+        ));
+    }
+    if !pr.requested_reviewers.is_empty() {
+        if !meta_line_spans.is_empty() {
+            meta_line_spans.push(Span::raw("  "));
+        }
+        meta_line_spans.push(Span::styled(
+            format!("👁 {}", pr.requested_reviewers.join(", ")),
+            Style::new().fg(Color::Magenta),
+        ));
+    }
     for (i, lbl) in pr.labels.iter().enumerate() {
-        if i > 0 {
+        if i == 0 && !meta_line_spans.is_empty() {
+            meta_line_spans.push(Span::raw("  "));
+        } else if i > 0 {
             meta_line_spans.push(Span::raw(" "));
         }
         meta_line_spans.push(Span::styled(
