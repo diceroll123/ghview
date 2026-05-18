@@ -271,18 +271,32 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
                 }
             }
 
-            let name_budget = inner_width
-                .saturating_sub(icon.width() + if col_width > 0 { col_width + 1 } else { 0 });
+            let archive_badge_w = if repo.archived { 2 } else { 0 }; // " "
+            let name_budget = inner_width.saturating_sub(
+                icon.width() + archive_badge_w + if col_width > 0 { col_width + 1 } else { 0 },
+            );
             let name_text = truncate(&repo.name, name_budget);
             let gap = inner_width.saturating_sub(
-                icon.width() + name_text.width() + col_width + usize::from(col_width > 0),
+                icon.width()
+                    + name_text.width()
+                    + archive_badge_w
+                    + col_width
+                    + usize::from(col_width > 0),
             );
 
+            let name_style = if repo.archived {
+                Style::new().fg(Color::DarkGray)
+            } else {
+                style
+            };
             let mut spans = vec![
                 Span::styled(icon, icon_style),
-                Span::styled(name_text, style),
-                gap_span(gap),
+                Span::styled(name_text, name_style),
             ];
+            if repo.archived {
+                spans.push(Span::styled(" \u{f187}", Style::new().fg(Color::DarkGray)));
+            }
+            spans.push(gap_span(gap));
             spans.extend(right_spans);
             ListItem::new(Line::from(spans))
         })
