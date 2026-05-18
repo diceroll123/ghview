@@ -3,6 +3,25 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use std::time::Duration;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MergeMethod {
+    #[default]
+    Squash,
+    Merge,
+    Rebase,
+}
+
+impl MergeMethod {
+    pub const fn flag(self) -> &'static str {
+        match self {
+            Self::Squash => "--squash",
+            Self::Merge => "--merge",
+            Self::Rebase => "--rebase",
+        }
+    }
+}
+
 pub const DEFAULT_TICK_MS: u64 = 100;
 pub const DEFAULT_CACHE_SECS: u64 = 600;
 pub const DEFAULT_REPOS_LIMIT: u32 = 50;
@@ -45,6 +64,8 @@ pub struct UiConfig {
     pub default_repo_view: crate::types::RepoView,
     /// Items per page when fetching lists. 0 = dynamic (terminal_height × 1.5). Max 100.
     pub per_page: u32,
+    /// Merge method used by the `m` keybinding: "squash", "merge", or "rebase".
+    pub merge_method: MergeMethod,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -192,6 +213,7 @@ impl Default for UiConfig {
             repo_columns: vec![crate::types::RepoColumn::Stars],
             default_repo_view: crate::types::RepoView::default(),
             per_page: 0,
+            merge_method: MergeMethod::default(),
         }
     }
 }

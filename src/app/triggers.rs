@@ -490,10 +490,11 @@ impl App {
         let tx = self.tx.clone();
         self.loading = Some(LoadingKind::Action(action.label().into()));
 
+        let merge_method = self.config.ui.merge_method;
         tokio::spawn(async move {
             let result = match action {
                 PrAction::Approve => actions::approve(&owner, &repo, pr.number).await,
-                PrAction::Merge => actions::merge(&owner, &repo, pr.number).await,
+                PrAction::Merge => actions::merge(&owner, &repo, pr.number, merge_method).await,
                 PrAction::Close => actions::close_pr(&owner, &repo, pr.number).await,
                 PrAction::Reopen => actions::reopen_pr(&owner, &repo, pr.number).await,
                 PrAction::MarkReady => actions::mark_ready(&owner, &repo, pr.number).await,

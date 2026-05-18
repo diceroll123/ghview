@@ -14,7 +14,12 @@ pub async fn approve(org: &str, repo: &str, pr: u64) -> Result<()> {
     .await
 }
 
-pub async fn merge(org: &str, repo: &str, pr: u64) -> Result<()> {
+pub async fn merge(
+    org: &str,
+    repo: &str,
+    pr: u64,
+    method: crate::config::MergeMethod,
+) -> Result<()> {
     run_silent(&[
         "pr",
         "merge",
@@ -22,6 +27,7 @@ pub async fn merge(org: &str, repo: &str, pr: u64) -> Result<()> {
         "-R",
         &format!("{org}/{repo}"),
         "--auto",
+        method.flag(),
     ])
     .await
 }

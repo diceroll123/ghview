@@ -71,7 +71,7 @@ Available when focused on the PRs column:
 | Key | Action |
 |-----|--------|
 | `v` | Approve |
-| `m` | Merge (enables auto-merge via `gh pr merge --auto`) |
+| `m` | Merge (enables auto-merge; method set by `merge_method` config) |
 | `C` | Checkout (interactive) |
 | `c` | Comment (interactive) |
 | `d` | View diff inline |
@@ -115,6 +115,8 @@ repos_limit = 50
 prs_limit = 50
 # Items per page when fetching lists. 0 = dynamic (~1.5× terminal height, clamped 10–50). Max 100.
 # per_page = 0
+# Merge method used by the m keybinding: "squash" (default), "merge", or "rebase".
+# merge_method = "squash"
 # Directory to cd into before running `gh pr checkout`. Supports ~.
 # checkout_dir = "~/code"
 # Extra columns in the repos list. Default: ["stars"].
