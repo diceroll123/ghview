@@ -365,8 +365,12 @@ impl App {
                     self.review_statuses.insert(pr_number, status);
                 }
             }
-            DataMsg::CheckRuns { pr_number, runs } => {
+            DataMsg::CheckRuns {
+                pr_number,
+                mut runs,
+            } => {
                 if self.selected_pr().is_some_and(|pr| pr.number == pr_number) {
+                    runs.sort_by_key(|r| r.status != crate::types::CheckStatus::Failing);
                     self.check_runs = Some(runs);
                     if !self.checks_focusable()
                         && self.focus == Column::Detail
