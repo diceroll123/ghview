@@ -24,6 +24,12 @@ pub struct Repo {
     pub issues: u32,
     #[serde(default)]
     pub visibility: Visibility,
+    #[serde(default = "bool_true")]
+    pub has_issues: bool,
+}
+
+fn bool_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]

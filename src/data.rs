@@ -19,6 +19,12 @@ struct RepoRaw {
     open_issues_count: u32,
     #[serde(default)]
     visibility: Visibility,
+    #[serde(default = "bool_true")]
+    has_issues: bool,
+}
+
+fn bool_true() -> bool {
+    true
 }
 
 /// Run a `gh` command, return stdout as String, bail on non-zero exit.
@@ -132,7 +138,7 @@ pub async fn fetch_repos(
     };
     let per_page = per_page.clamp(1, 100);
     let endpoint = format!("{base}?per_page={per_page}&page={page}");
-    let jq = ".[] | {name, language, pushed_at, owner_login: .owner.login, stargazers_count, forks_count, open_issues_count, visibility}";
+    let jq = ".[] | {name, language, pushed_at, owner_login: .owner.login, stargazers_count, forks_count, open_issues_count, visibility, has_issues}";
     let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
     let repos: Vec<Repo> = raw
         .lines()
@@ -147,6 +153,7 @@ pub async fn fetch_repos(
             forks: r.forks_count,
             issues: r.open_issues_count,
             visibility: r.visibility,
+            has_issues: r.has_issues,
         })
         .collect();
     debug!("fetch_repos: {} -> {} repos", source.owner(), repos.len());

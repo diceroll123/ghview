@@ -78,7 +78,7 @@ pub async fn run_event_loop(
                     match key.code {
                         KeyCode::Char('f') => { app.switch_repo_view(RepoView::Frontpage); continue; }
                         KeyCode::Char('p') => { app.switch_repo_view(RepoView::Prs); continue; }
-                        KeyCode::Char('i') => { app.switch_repo_view(RepoView::Issues); continue; }
+                        KeyCode::Char('i') if app.selected_repo_has_issues() => { app.switch_repo_view(RepoView::Issues); continue; }
                         _ => {}
                     }
                 }

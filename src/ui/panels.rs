@@ -322,7 +322,8 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
     };
     let title = filter_title(&base, &app.pr_filter, app.filter_active, focused);
 
-    let block = panel_block(title, border_style).title_bottom(view_tab_line(RepoView::Prs));
+    let block = panel_block(title, border_style)
+        .title_bottom(view_tab_line(RepoView::Prs, app.selected_repo_has_issues()));
 
     // 4 = 2 borders + 2 highlight-symbol ("▶ ")
     let inner_width = area.width.saturating_sub(4) as usize;
@@ -762,7 +763,7 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
     }
 }
 
-fn view_tab_line(current: RepoView) -> Line<'static> {
+fn view_tab_line(current: RepoView, show_issues: bool) -> Line<'static> {
     let sep = Span::raw("  ");
     let key_active = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
     let key_dim = Style::new().fg(Color::DarkGray);
@@ -784,8 +785,10 @@ fn view_tab_line(current: RepoView) -> Line<'static> {
     spans.extend(tab("f·", "page", RepoView::Frontpage));
     spans.push(sep.clone());
     spans.extend(tab("p·", "prs", RepoView::Prs));
-    spans.push(sep.clone());
-    spans.extend(tab("i·", "issues", RepoView::Issues));
+    if show_issues {
+        spans.push(sep.clone());
+        spans.extend(tab("i·", "issues", RepoView::Issues));
+    }
     spans.push(Span::raw(" "));
     Line::from(spans)
 }
@@ -795,8 +798,10 @@ pub(super) fn draw_repo_frontpage(f: &mut Frame, app: &mut App, area: ratatui::l
     let scroll = app.repo_frontpage_scroll;
     let border_style = active_style();
 
-    let block = panel_block(format!(" {repo_name} "), border_style)
-        .title_bottom(view_tab_line(RepoView::Frontpage));
+    let block = panel_block(format!(" {repo_name} "), border_style).title_bottom(view_tab_line(
+        RepoView::Frontpage,
+        app.selected_repo_has_issues(),
+    ));
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -866,7 +871,7 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
         format!(" Issues{loading_suffix} ")
     };
 
-    let block = panel_block(base, border_style).title_bottom(view_tab_line(RepoView::Issues));
+    let block = panel_block(base, border_style).title_bottom(view_tab_line(RepoView::Issues, true));
 
     let inner = block.inner(area);
     f.render_widget(block, area);

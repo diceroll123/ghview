@@ -215,6 +215,14 @@ impl App {
             .and_then(|i| vr.get(i).map(|r| r.name.as_str()))
     }
 
+    pub fn selected_repo_has_issues(&self) -> bool {
+        let vr = self.visible_repos();
+        self.repo_state
+            .selected()
+            .and_then(|i| vr.get(i))
+            .is_none_or(|r| r.has_issues)
+    }
+
     pub fn selected_pr(&self) -> Option<&PR> {
         self.pr_state.selected().and_then(|i| self.prs.get(i))
     }
