@@ -59,6 +59,47 @@ fn gap_span(n: usize) -> Span<'static> {
     Span::raw(&SPACES[..n.min(SPACES.len())])
 }
 
+/// Proportional bar spans filling `width` columns, colored by check status counts.
+fn checks_bar_spans(runs: &[crate::types::CheckRun], width: usize) -> Vec<Span<'static>> {
+    if runs.is_empty() || width == 0 {
+        return vec![];
+    }
+    let mut counts = [0usize; 4]; // [failing, pending, unknown, passing]
+    for r in runs {
+        match r.status {
+            CheckStatus::Failing => counts[0] += 1,
+            CheckStatus::Pending => counts[1] += 1,
+            CheckStatus::Unknown => counts[2] += 1,
+            CheckStatus::Passing => counts[3] += 1,
+        }
+    }
+    let total = runs.len();
+    let colors = [Color::Red, Color::Yellow, Color::DarkGray, Color::Green];
+    let mut spans = Vec::new();
+    let mut used = 0usize;
+    for (i, (&count, &color)) in counts.iter().zip(colors.iter()).enumerate() {
+        if count == 0 {
+            continue;
+        }
+        let cols = if i == 3 {
+            // last bucket: fill remainder to avoid rounding gaps
+            width.saturating_sub(used)
+        } else {
+            (count * width / total).max(1)
+        };
+        let cols = cols.min(width.saturating_sub(used));
+        if cols == 0 {
+            continue;
+        }
+        spans.push(Span::styled("█".repeat(cols), Style::new().fg(color)));
+        used += cols;
+        if used >= width {
+            break;
+        }
+    }
+    spans
+}
+
 fn draw_scrollable_body(
     f: &mut Frame,
     body: Option<&String>,
@@ -690,6 +731,9 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
         Constraint::Length(3)
     };
 
+    let bar_runs = app.check_runs.as_deref().unwrap_or(&[]);
+    let has_bar = !bar_runs.is_empty();
+
     let [header_area, body_area, checks_area] = Layout::vertical([
         Constraint::Length(header_height),
         body_constraint,
@@ -811,12 +855,20 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
     let checks_inner = checks_block.inner(checks_area);
     f.render_widget(checks_block, checks_area);
 
+    let [bar_area, list_area] =
+        Layout::vertical([Constraint::Length(u16::from(has_bar)), Constraint::Min(0)])
+            .areas(checks_inner);
+    if has_bar {
+        let spans = checks_bar_spans(bar_runs, bar_area.width as usize);
+        f.render_widget(Paragraph::new(Line::from(spans)), bar_area);
+    }
+
     match &app.check_runs {
         None => {
-            f.render_widget(loading_placeholder(), checks_inner);
+            f.render_widget(loading_placeholder(), list_area);
         }
         Some(runs) if runs.is_empty() => {
-            f.render_widget(dim_italic("(no checks)"), checks_inner);
+            f.render_widget(dim_italic("(no checks)"), list_area);
         }
         Some(runs) => {
             let items: Vec<ListItem> = runs
@@ -838,8 +890,8 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
             let list = List::new(items)
                 .highlight_style(list_highlight_style())
                 .highlight_symbol("▶ ");
-            f.render_stateful_widget(list, checks_inner, &mut app.check_runs_state);
-            if runs.len() > checks_inner.height as usize {
+            f.render_stateful_widget(list, list_area, &mut app.check_runs_state);
+            if runs.len() > list_area.height as usize {
                 let mut sb =
                     ScrollbarState::new(runs.len()).position(app.check_runs_state.offset());
                 f.render_stateful_widget(

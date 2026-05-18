@@ -232,36 +232,76 @@ pub async fn fetch_check_runs(owner: &str, repo: &str, sha: &str) -> Vec<CheckRu
     if sha.is_empty() {
         return Vec::new();
     }
-    let endpoint = format!("repos/{owner}/{repo}/commits/{sha}/check-runs");
-    let jq = r#"[.check_runs[] | {id: .id, name: .name, url: .html_url, s: (if .conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required" then "failing" elif .status == "in_progress" or .status == "queued" then "pending" elif .conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped" then "passing" else "unknown" end)}]"#;
-    let Ok(out) = Command::new("gh")
-        .args(["api", &endpoint, "--jq", jq])
-        .output()
-        .await
-    else {
+    let runs_endpoint = format!("repos/{owner}/{repo}/commits/{sha}/check-runs");
+    let runs_jq = r#"[.check_runs[] | {id: .id, name: .name, url: .html_url, suite_id: .check_suite.id, s: (if .conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required" then "failing" elif .status == "in_progress" or .status == "queued" then "pending" elif .conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped" then "passing" else "unknown" end)}]"#;
+    let workflows_endpoint = format!("repos/{owner}/{repo}/actions/runs?head_sha={sha}");
+    let workflows_jq = r#"[.workflow_runs[] | {name, event, suite_id: .check_suite_id}]"#;
+
+    let (runs_out, wf_out) = tokio::join!(
+        Command::new("gh")
+            .args(["api", &runs_endpoint, "--jq", runs_jq])
+            .output(),
+        Command::new("gh")
+            .args(["api", &workflows_endpoint, "--jq", workflows_jq])
+            .output(),
+    );
+
+    // Build suite_id → (workflow_name, event) map from workflow runs.
+    let mut suite_map: std::collections::HashMap<u64, (String, String)> =
+        std::collections::HashMap::new();
+    if let Ok(out) = wf_out
+        && out.status.success()
+    {
+        let text = String::from_utf8_lossy(&out.stdout);
+        if let Ok(serde_json::Value::Array(arr)) =
+            serde_json::from_str::<serde_json::Value>(text.trim())
+        {
+            for item in &arr {
+                if let (Some(suite_id), Some(wf_name), Some(event)) = (
+                    item["suite_id"].as_u64(),
+                    item["name"].as_str(),
+                    item["event"].as_str(),
+                ) {
+                    suite_map
+                        .entry(suite_id)
+                        .or_insert_with(|| (wf_name.to_string(), event.to_string()));
+                }
+            }
+        }
+    }
+
+    let Ok(out) = runs_out else {
         return Vec::new();
     };
     if !out.status.success() {
         return Vec::new();
     }
     let text = String::from_utf8_lossy(&out.stdout);
-    let Ok(arr) = serde_json::from_str::<serde_json::Value>(text.trim()) else {
-        return Vec::new();
-    };
-    let Some(items) = arr.as_array() else {
+    let Ok(serde_json::Value::Array(items)) =
+        serde_json::from_str::<serde_json::Value>(text.trim())
+    else {
         return Vec::new();
     };
     items
         .iter()
         .filter_map(|item| {
             let id = item["id"].as_u64().unwrap_or(0);
-            let name = item["name"].as_str()?.to_string();
+            let raw_name = item["name"].as_str()?.to_string();
             let url = item["url"].as_str().unwrap_or("").to_string();
             let status = match item["s"].as_str()? {
                 "passing" => CheckStatus::Passing,
                 "failing" => CheckStatus::Failing,
                 "pending" => CheckStatus::Pending,
                 _ => CheckStatus::Unknown,
+            };
+            let name = if let Some(suite_id) = item["suite_id"].as_u64() {
+                if let Some((wf_name, event)) = suite_map.get(&suite_id) {
+                    format!("{wf_name} / {raw_name} ({event})")
+                } else {
+                    raw_name
+                }
+            } else {
+                raw_name
             };
             Some(CheckRun {
                 id,
