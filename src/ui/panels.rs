@@ -358,13 +358,8 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
 
             let number_str = format!("#{} ", pr.number);
             let age = relative_time(&pr.created_at);
-            let author_age = format!(
-                "@{:<acol$}  {:>agecol$}",
-                pr.author,
-                age,
-                acol = author_col,
-                agecol = age_col
-            );
+            let author_str = format!("@{:<acol$}", pr.author, acol = author_col);
+            let age_str = format!("  {:>agecol$}", age, agecol = age_col);
             let num_w = number_str.width();
             let title_budget = inner_width.saturating_sub(num_w + right_col_width + 1);
             let title_text = truncate(&pr.title, title_budget);
@@ -395,7 +390,8 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
             line1_spans.extend([
                 Span::styled(rv_sym, Style::new().fg(rv_col)),
                 Span::raw("  "),
-                Span::styled(author_age, meta_style),
+                Span::styled(author_str, meta_style.add_modifier(Modifier::BOLD)),
+                Span::styled(age_str, meta_style),
             ]);
             let line1 = Line::from(line1_spans);
 
@@ -905,23 +901,25 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
             let number_str = format!("#{} ", issue.number);
             let num_w = number_str.len();
             let age = relative_time(&issue.created_at);
-            let author_age = format!(
-                "@{:<acol$}  {:>agecol$}",
-                issue.author,
-                age,
-                acol = author_col,
-                agecol = age_col
-            );
-            let title_budget = inner_width.saturating_sub(num_w + author_age.len() + 1);
+            let author_str = format!("@{:<acol$}", issue.author, acol = author_col);
+            let age_str = format!("  {:>agecol$}", age, agecol = age_col);
+            let author_age_w = author_str.len() + age_str.len();
+            let title_budget = inner_width.saturating_sub(num_w + author_age_w + 1);
             let title_text = truncate(&issue.title, title_budget);
             let title_w = title_text.len();
-            let gap = inner_width.saturating_sub(num_w + title_w + author_age.len());
+            let gap = inner_width.saturating_sub(num_w + title_w + author_age_w);
 
             let line1 = Line::from(vec![
                 Span::styled(number_str, Style::new().add_modifier(Modifier::BOLD)),
                 Span::styled(title_text, item_style(focused)),
                 gap_span(gap),
-                Span::styled(author_age, Style::new().fg(Color::DarkGray)),
+                Span::styled(
+                    author_str,
+                    Style::new()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(age_str, Style::new().fg(Color::DarkGray)),
             ]);
 
             let (state_icon, state_color) = if issue.state == "closed" {
