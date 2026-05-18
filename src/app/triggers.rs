@@ -229,7 +229,27 @@ impl App {
                 self.apply_prs(cached);
                 return;
             }
+            // Stale cache: show existing data, refresh silently in background.
             self.apply_prs(cached);
+            let per_page = self.per_page();
+            let tx = self.tx.clone();
+            tokio::spawn(async move {
+                match fetch_prs(&owner, &repo, per_page, 1).await {
+                    Ok(prs) => {
+                        let has_more = prs.len() == per_page as usize;
+                        let _ = tx.send(DataMsg::Prs {
+                            owner,
+                            repo,
+                            prs,
+                            has_more,
+                        });
+                    }
+                    Err(e) => {
+                        let _ = tx.send(DataMsg::Error(e.to_string()));
+                    }
+                }
+            });
+            return;
         }
 
         self.loading = Some(LoadingKind::Prs);

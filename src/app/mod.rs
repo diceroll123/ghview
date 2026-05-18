@@ -284,8 +284,9 @@ impl App {
                 }
                 if self.source_state.selected().is_some() {
                     self.trigger_load_repos();
+                } else {
+                    self.loading = None;
                 }
-                self.loading = None;
             }
             DataMsg::Repos {
                 owner,
@@ -303,8 +304,9 @@ impl App {
                 self.apply_repos(repos);
                 if self.repo_state.selected().is_some() {
                     self.trigger_load_prs();
+                } else {
+                    self.loading = None;
                 }
-                self.loading = None;
             }
             DataMsg::MoreRepos {
                 owner,
@@ -334,10 +336,10 @@ impl App {
                     self.prs_fetching_more = false;
                     self.pr_cache.insert(key, (Instant::now(), prs.clone()));
                     self.apply_prs(prs);
+                    self.loading = None;
                 } else {
                     self.pr_cache.insert(key, (Instant::now(), prs));
                 }
-                self.loading = None;
             }
             DataMsg::MorePrs {
                 owner,
