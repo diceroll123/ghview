@@ -238,6 +238,7 @@ pub(super) fn relative_time(iso: &str) -> String {
         60..=3_599 => format!("{}m", secs / 60),
         3_600..=86_399 => format!("{}h", secs / 3_600),
         86_400..=604_799 => format!("{}d", secs / 86_400),
-        _ => format!("{}w", secs / 604_800),
+        604_800..=31_449_599 => format!("{}w", secs / 604_800),
+        _ => format!("{}y", secs / 31_536_000),
     }
 }
