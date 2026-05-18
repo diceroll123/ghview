@@ -215,14 +215,7 @@ pub fn find_binding(action: Action) -> Option<&'static DefaultBinding> {
 }
 
 /// Which actions to show in the status-bar hint for each column.
-pub const SOURCES_BAR: &[Action] = &[
-    Action::OpenBrowser,
-    Action::CopyUrl,
-    Action::FilterStart,
-    Action::Refresh,
-    Action::Help,
-    Action::Quit,
-];
+pub const SOURCES_BAR: &[Action] = &[Action::OpenBrowser, Action::CopyUrl, Action::FilterStart];
 
 pub const REPOS_BAR: &[Action] = &[
     Action::OpenBrowser,
@@ -230,8 +223,6 @@ pub const REPOS_BAR: &[Action] = &[
     Action::CopyUrl,
     Action::FilterStart,
     Action::SortCycle,
-    Action::Refresh,
-    Action::Help,
 ];
 
 pub const PRS_BAR: &[Action] = &[
@@ -244,8 +235,6 @@ pub const PRS_BAR: &[Action] = &[
     Action::CopyUrl,
     Action::FilterStart,
     Action::SortCycle,
-    Action::Refresh,
-    Action::Help,
 ];
 
 pub const ISSUES_BAR: &[Action] = &[
@@ -253,16 +242,9 @@ pub const ISSUES_BAR: &[Action] = &[
     Action::CopyUrl,
     Action::FilterStart,
     Action::SortCycle,
-    Action::Refresh,
-    Action::Help,
 ];
 
-pub const FRONTPAGE_BAR: &[Action] = &[
-    Action::OpenBrowser,
-    Action::CopyUrl,
-    Action::Refresh,
-    Action::Help,
-];
+pub const FRONTPAGE_BAR: &[Action] = &[Action::OpenBrowser, Action::CopyUrl];
 
 /// Navigation actions shown in the help popup navigation section.
 pub const NAV_ACTIONS: &[Action] = &[
@@ -272,6 +254,9 @@ pub const NAV_ACTIONS: &[Action] = &[
     Action::Right,
     Action::Top,
     Action::Bottom,
+    Action::Refresh,
+    Action::Help,
+    Action::Quit,
 ];
 
 /// Diff-view status-bar hint.
