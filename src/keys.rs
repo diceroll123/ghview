@@ -17,7 +17,6 @@ pub enum Action {
     OpenBrowser,
     OpenIssues,
     CopyUrl,
-    CopyNumber,
     // PR-only actions
     Approve,
     Merge,
@@ -119,16 +118,10 @@ pub static UNIVERSAL_BINDINGS: &[DefaultBinding] = &[
         label: "issues",
     },
     DefaultBinding {
-        keys: &[KeyCode::Char('Y')],
-        display: "Y",
-        action: Action::CopyUrl,
-        label: "copy URL",
-    },
-    DefaultBinding {
         keys: &[KeyCode::Char('y')],
         display: "y",
-        action: Action::CopyNumber,
-        label: "copy",
+        action: Action::CopyUrl,
+        label: "copy URL",
     },
 ];
 
@@ -235,7 +228,6 @@ pub const REPOS_BAR: &[Action] = &[
     Action::OpenBrowser,
     Action::OpenIssues,
     Action::CopyUrl,
-    Action::CopyNumber,
     Action::FilterStart,
     Action::SortCycle,
     Action::Refresh,
@@ -250,7 +242,6 @@ pub const PRS_BAR: &[Action] = &[
     Action::Diff,
     Action::OpenBrowser,
     Action::CopyUrl,
-    Action::CopyNumber,
     Action::FilterStart,
     Action::SortCycle,
     Action::Refresh,
@@ -260,7 +251,6 @@ pub const PRS_BAR: &[Action] = &[
 pub const ISSUES_BAR: &[Action] = &[
     Action::OpenBrowser,
     Action::CopyUrl,
-    Action::CopyNumber,
     Action::FilterStart,
     Action::SortCycle,
     Action::Refresh,
@@ -303,7 +293,6 @@ pub fn builtin_to_action(name: &str) -> Option<Action> {
         "openBrowser" | "openGithub" => Some(Action::OpenBrowser),
         "openIssues" => Some(Action::OpenIssues),
         "copyUrl" => Some(Action::CopyUrl),
-        "copyNumber" => Some(Action::CopyNumber),
         "approve" => Some(Action::Approve),
         "merge" => Some(Action::Merge),
         "checkout" => Some(Action::Checkout),

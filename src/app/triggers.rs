@@ -602,23 +602,6 @@ impl App {
         }
     }
 
-    pub(crate) fn context_copy_number(&mut self) {
-        match self.focus {
-            Column::Repos => {
-                let Some(repo) = self.selected_repo().map(std::string::ToString::to_string) else {
-                    return;
-                };
-                self.copy_and_notify(repo);
-            }
-            Column::Repo | Column::Detail => {
-                let Some(pr) = self.selected_pr() else { return };
-                let num = pr.number.to_string();
-                self.copy_and_notify(format!("#{num}"));
-            }
-            Column::Sources => {}
-        }
-    }
-
     fn copy_and_notify(&mut self, text: String) {
         self.set_status(format!("Copied: {text}"));
         copy_to_clipboard(&text);

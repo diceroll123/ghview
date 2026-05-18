@@ -45,8 +45,7 @@ The status bar shows GitHub API rate limit (⚡remaining/limit), color-coded gre
 | `r` | Refresh current column |
 | `i` | Open repo's issues page in browser (Repos column) |
 | `o` | Open in browser |
-| `Y` | Copy URL |
-| `y` | Copy PR number / repo name |
+| `y` | Copy URL |
 | `?` | Show help |
 | `q` | Quit |
 

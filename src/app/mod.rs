@@ -677,7 +677,6 @@ impl App {
             Action::OpenBrowser => self.context_open_browser(),
             Action::OpenIssues => self.context_open_issues(),
             Action::CopyUrl => self.context_copy_url(),
-            Action::CopyNumber => self.context_copy_number(),
 
             Action::Approve => self.do_pr_action(PrAction::Approve),
             Action::Merge => self.do_pr_action(PrAction::Merge),
