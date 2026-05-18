@@ -191,9 +191,21 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
     };
 
     let sort_label = app.repo_sort_key.label();
+    let repo_count_suffix = if app.filter_active || !app.repo_filter.is_empty() {
+        let visible = app.visible_repos().len();
+        let total = app.repos.len();
+        format!("  {visible}/{total}")
+    } else {
+        String::new()
+    };
     let base = app.selected_source().map_or_else(
-        || format!("Repo List  {sort_label}{loading_suffix}"),
-        |s| format!("Repo List  {}  {sort_label}{loading_suffix}", s.display()),
+        || format!("Repo List  {sort_label}{loading_suffix}{repo_count_suffix}"),
+        |s| {
+            format!(
+                "Repo List  {}  {sort_label}{loading_suffix}{repo_count_suffix}",
+                s.display()
+            )
+        },
     );
     let title = filter_title(&base, &app.repo_filter, app.filter_active, focused);
 
@@ -303,6 +315,16 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
         .collect();
 
     let total = items.len();
+    if total == 0 && !app.repo_filter.is_empty() && app.loading.is_none() {
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        f.render_widget(
+            Paragraph::new(format!("no results for \"{}\"", app.repo_filter))
+                .style(Style::new().fg(Color::DarkGray)),
+            inner,
+        );
+        return;
+    }
     let list = List::new(items)
         .block(block)
         .highlight_style(list_highlight_style())
@@ -330,10 +352,15 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
 
     let sort_label = app.sort_key.label();
     let owner_repo = app.selected_owner_repo();
-    let base = if let Some((ref owner, ref repo)) = owner_repo {
-        format!("{owner}/{repo}  {sort_label}{loading_suffix}")
+    let pr_count_suffix = if app.filter_active || !app.pr_filter.is_empty() {
+        format!("  {}/{}", app.prs.len(), app.prs_raw.len())
     } else {
-        format!("Pull Requests  {sort_label}{loading_suffix}")
+        String::new()
+    };
+    let base = if let Some((ref owner, ref repo)) = owner_repo {
+        format!("{owner}/{repo}  {sort_label}{loading_suffix}{pr_count_suffix}")
+    } else {
+        format!("Pull Requests  {sort_label}{loading_suffix}{pr_count_suffix}")
     };
     let title = filter_title(&base, &app.pr_filter, app.filter_active, focused);
 
@@ -520,11 +547,11 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
 
     if items.is_empty() && app.loading.is_none() {
         let msg = if !app.pr_filter.is_empty() {
-            "No matching pull requests"
+            format!("no results for \"{}\"", app.pr_filter)
         } else if owner_repo.is_some() {
-            "No open pull requests"
+            "No open pull requests".to_string()
         } else {
-            "Select a repo"
+            "Select a repo".to_string()
         };
         f.render_widget(
             Paragraph::new(msg).style(Style::new().fg(Color::DarkGray)),
