@@ -411,19 +411,19 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
     // 4 = 2 borders + 2 highlight-symbol ("▶ ")
     let inner_width = area.width.saturating_sub(4) as usize;
 
-    let age_col = 3usize;
-    let status_col = 1 + 2; // rv + 2sp
+    let age_col = 4usize;
+    let status_col = 1 + 1 + 2; // 1sp + rv + 2sp
     let show_diff = app.config.ui.pr_columns.contains(&PrColumn::DiffStats);
     let show_age = app.config.ui.pr_columns.contains(&PrColumn::Age);
     let show_updated = app.config.ui.pr_columns.contains(&PrColumn::UpdatedAt);
     let show_comments = app.config.ui.pr_columns.contains(&PrColumn::Comments);
     let show_check_summary = app.config.ui.pr_columns.contains(&PrColumn::CheckSummary);
-    // "+9.9k -9.9k" = 11 chars max + 1 trailing space separator = 12; +1 leading pad = 13
-    let diff_col: usize = 13;
-    // each time col: 2 sep + 1 icon + 1 space + age_col value
-    let time_col_w = 2 + 1 + 1 + age_col;
-    // comment col: 2 sep + 1 icon + 1 sp + up to 3 digits
-    let comment_col_w = 2 + 1 + 1 + 3;
+    // "+9.9k -9.9k" = 11 chars max; time cols provide trailing separator
+    let diff_col: usize = 11;
+    // each time col: 2 sep + age_col value
+    let time_col_w = 2 + age_col;
+    // comment col: 2 sep + up to 3 digits
+    let comment_col_w = 2 + 3;
     // check summary col: 2 sep + 1 icon
     let check_summary_col_w = 2 + 1;
     let right_col_width = if show_comments { comment_col_w } else { 0 }
@@ -454,13 +454,13 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
             let number_str = format!("#{} ", pr.number);
             let age_str = if show_age {
                 let age = relative_time(&pr.created_at);
-                format!("  {:>width$}", age, width = 1 + 1 + age_col)
+                format!("  {:>agecol$}", age, agecol = age_col)
             } else {
                 String::new()
             };
             let updated_str = if show_updated {
                 let upd = relative_time(&pr.updated_at);
-                format!("  {:>width$}", upd, width = 1 + 1 + age_col)
+                format!("  {:>agecol$}", upd, agecol = age_col)
             } else {
                 String::new()
             };
@@ -501,24 +501,26 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
                 line1_spans.push(Span::raw("  "));
                 line1_spans.push(Span::styled(icon, Style::new().fg(color)));
             }
+            line1_spans.extend([
+                Span::raw(" "),
+                Span::styled(rv_sym, Style::new().fg(rv_col)),
+                Span::raw("  "),
+            ]);
             if show_diff {
                 if pr.additions == 0 && pr.deletions == 0 {
                     line1_spans.push(Span::raw(format!("{:width$}", "", width = diff_col)));
                 } else {
                     let add_str = format!("+{}", fmt_stat(pr.additions));
                     let del_str = format!("-{}", fmt_stat(pr.deletions));
-                    let content_w = add_str.len() + 1 + del_str.len() + 1;
+                    let content_w = add_str.len() + 1 + del_str.len();
                     let pad = diff_col.saturating_sub(content_w);
-                    line1_spans.push(Span::raw(" ".repeat(pad)));
                     line1_spans.push(Span::styled(add_str, Style::new().fg(Color::Green)));
                     line1_spans.push(Span::raw(" "));
                     line1_spans.push(Span::styled(del_str, Style::new().fg(Color::Red)));
-                    line1_spans.push(Span::raw(" "));
+                    line1_spans.push(Span::raw(" ".repeat(pad)));
                 }
             }
             line1_spans.extend([
-                Span::styled(rv_sym, Style::new().fg(rv_col)),
-                Span::raw("  "),
                 Span::styled(updated_str, meta_style),
                 Span::styled(age_str, meta_style),
             ]);
@@ -589,38 +591,34 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
     let header_style = Style::new()
         .fg(Color::DarkGray)
         .add_modifier(Modifier::BOLD);
-    let status_header = "\u{f4fb}  ";
+    let status_header = " \u{f0f6}  ";
     let comment_header = if show_comments {
         format!("{:>width$}", "\u{f086}", width = comment_col_w)
     } else {
         String::new()
     };
     let check_summary_header = if show_check_summary {
-        "  \u{e641}".to_string()
+        "  \u{f046}".to_string()
     } else {
         String::new()
     };
     let diff_header = if show_diff {
-        format!("{:>width$} ", "±", width = diff_col - 1)
+        format!("{:<width$}", "±", width = diff_col)
     } else {
         String::new()
     };
     let age_header = if show_age {
-        format!("  {ICON_CLOCK} {:>agecol$}", "Crd", agecol = age_col)
+        format!("{:>width$}", ICON_CLOCK, width = time_col_w)
     } else {
         String::new()
     };
     let updated_header = if show_updated {
-        format!(
-            "  {ICON_CLOCK_UPDATED} {:>agecol$}",
-            "Upd",
-            agecol = age_col
-        )
+        format!("{:>width$}", ICON_CLOCK_UPDATED, width = time_col_w)
     } else {
         String::new()
     };
     let right_header = format!(
-        "{comment_header}{check_summary_header}{diff_header}{status_header}{updated_header}{age_header}"
+        "{comment_header}{check_summary_header}{status_header}{diff_header}{updated_header}{age_header}"
     );
     let gap = inner_width.saturating_sub(right_col_width);
     let header_line = Line::from(vec![
@@ -1075,7 +1073,7 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
     );
 
     let inner_width = area.width.saturating_sub(4) as usize;
-    let age_col = 3usize;
+    let age_col = 4usize;
     let author_col = app
         .issues
         .iter()
