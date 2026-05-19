@@ -475,6 +475,9 @@ impl App {
         }
         self.repo_view = view;
         self.focus = Column::Repo;
+        self.pr_body_scroll = 0;
+        self.issue_body_scroll = 0;
+        self.repo_frontpage_scroll = 0;
         self.dispatch_repo_view_trigger();
     }
 

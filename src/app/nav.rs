@@ -150,6 +150,9 @@ impl App {
                 if self.selected_repo().is_some() {
                     self.focus = Column::Repo;
                     self.repo_view = self.config.ui.default_repo_view;
+                    self.pr_body_scroll = 0;
+                    self.issue_body_scroll = 0;
+                    self.repo_frontpage_scroll = 0;
                     self.dispatch_repo_view_trigger();
                 }
             }

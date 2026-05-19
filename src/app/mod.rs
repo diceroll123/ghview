@@ -625,6 +625,7 @@ impl App {
             None if len > 0 => self.pr_state.select(Some(0)),
             _ => {}
         }
+        self.pr_body_scroll = 0;
     }
 
     fn apply_sort_in_place(&mut self) {
@@ -732,8 +733,12 @@ impl App {
                 if self.focus == Column::Repos {
                     self.repo_sort_key = self.repo_sort_key.next();
                     self.sort_repos_in_place();
+                    if !self.repos.is_empty() {
+                        self.repo_state.select(Some(0));
+                    }
                 } else {
                     self.sort_key = self.sort_key.next();
+                    self.pr_state.select(Some(0));
                     self.rebuild_prs();
                 }
             }
