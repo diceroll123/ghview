@@ -500,7 +500,10 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
             };
             let meta_style = Style::new().fg(Color::DarkGray);
 
-            let (rv_sym, rv_col) = review_icon(app.review_statuses.get(&pr.number));
+            let (rv_sym, rv_col) = review_icon(
+                app.review_statuses.get(&pr.number),
+                app.mergeable_states.get(&pr.number),
+            );
 
             let number_str = format!("#{} ", pr.number);
             let age_str = if show_age {

@@ -294,8 +294,24 @@ impl StatusLike for crate::types::ReviewStatus {
 }
 
 #[inline]
-pub(super) fn review_icon(status: Option<&crate::types::ReviewStatus>) -> (&'static str, Color) {
-    status.map_or((ICON_DOT, Color::DarkGray), |s| (s.icon(), s.color()))
+pub(super) fn review_icon(
+    status: Option<&crate::types::ReviewStatus>,
+    merge: Option<&crate::types::MergeableState>,
+) -> (&'static str, Color) {
+    use crate::types::{MergeableState, ReviewStatus};
+    let Some(s) = status else {
+        return (ICON_DOT, Color::DarkGray);
+    };
+    let color = match s {
+        ReviewStatus::Approved => match merge {
+            Some(MergeableState::Dirty | MergeableState::Blocked) => Color::Red,
+            Some(MergeableState::Behind | MergeableState::Unstable | MergeableState::Unknown)
+            | None => Color::Yellow,
+            Some(MergeableState::Clean | MergeableState::HasHooks) => Color::Green,
+        },
+        _ => s.color(),
+    };
+    (s.icon(), color)
 }
 
 #[inline]
