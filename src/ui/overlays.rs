@@ -6,7 +6,6 @@ use crate::{
         find_binding,
     },
 };
-use ratatui::style::Stylize;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
