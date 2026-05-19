@@ -53,8 +53,8 @@ pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout
                 Alignment::Left,
             )
         } else if let Some((msg, is_err)) = &app.status_msg {
-            let color = if *is_err { Color::Red } else { Color::DarkGray };
-            (Cow::Borrowed(msg.as_str()), color, Alignment::Center)
+            let color = if *is_err { Color::Red } else { Color::Green };
+            (Cow::Borrowed(msg.as_str()), color, Alignment::Left)
         } else {
             (
                 Cow::Owned(hint_entries(app, hint_width)),
@@ -80,8 +80,11 @@ pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout
             .constraints([Constraint::Min(0), Constraint::Length(rl_width)])
             .split(area);
         f.render_widget(
-            Paragraph::new(Line::from(Span::styled(hint, Style::new().fg(hint_color))))
-                .alignment(hint_align),
+            Paragraph::new(Line::from(vec![
+                Span::raw(" "),
+                Span::styled(hint, Style::new().fg(hint_color)),
+            ]))
+            .alignment(hint_align),
             chunks[0],
         );
         f.render_widget(
@@ -90,8 +93,11 @@ pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout
         );
     } else {
         f.render_widget(
-            Paragraph::new(Line::from(Span::styled(hint, Style::new().fg(hint_color))))
-                .alignment(hint_align),
+            Paragraph::new(Line::from(vec![
+                Span::raw(" "),
+                Span::styled(hint, Style::new().fg(hint_color)),
+            ]))
+            .alignment(hint_align),
             area,
         );
     }
