@@ -220,8 +220,12 @@ impl App {
         };
         self.clear_pr_detail();
         self.mergeable_states.clear();
+        self.review_statuses.clear();
+        self.check_summary_cache.clear();
         self.repo_frontpage = None;
         self.repo_frontpage_scroll = 0;
+        self.issue_body = None;
+        self.issue_body_scroll = 0;
         self.viewer_can_push = None;
         let key = format!("{owner}/{repo}");
         {
