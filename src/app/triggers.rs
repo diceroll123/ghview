@@ -1,7 +1,7 @@
 use super::App;
 use crate::{
     actions,
-    config::{Keybinding, SourcesConfig},
+    config::{CheckContext, Keybinding, PrContext, RepoContext, SourcesConfig},
     data::{
         fetch_check_runs, fetch_diff, fetch_issue_body, fetch_issues, fetch_pr_body, fetch_prs,
         fetch_rate_limit, fetch_repo_frontpage, fetch_repos, fetch_review_status, fetch_sources,
@@ -688,7 +688,11 @@ impl App {
         let owner = self.selected_source_owner()?;
         let repo = self.selected_repo()?.to_string();
         let pr = self.selected_pr()?.clone();
-        let cmd = kb.expand_command_pr(&pr, &owner, &repo)?;
+        let cmd = kb.expand_command(&PrContext {
+            pr: &pr,
+            owner: &owner,
+            repo: &repo,
+        })?;
         self.dispatch_keybinding_cmd(kb, cmd, KbOutput::Silent)
     }
 
@@ -734,7 +738,12 @@ impl App {
         let pr_number = pr.number;
         let owner = self.selected_source_owner()?;
         let repo = self.selected_repo()?.to_string();
-        let cmd = kb.expand_command_check(run, pr_number, &owner, &repo)?;
+        let cmd = kb.expand_command(&CheckContext {
+            run,
+            pr_number,
+            owner: &owner,
+            repo: &repo,
+        })?;
         self.dispatch_keybinding_cmd(kb, cmd, KbOutput::CaptureStdout)
     }
 
@@ -746,7 +755,11 @@ impl App {
             .iter()
             .find(|r| r.name == repo)
             .and_then(|r| r.language.as_deref());
-        let cmd = kb.expand_command_repo(&owner, &repo, lang)?;
+        let cmd = kb.expand_command(&RepoContext {
+            owner: &owner,
+            repo: &repo,
+            language: lang,
+        })?;
         self.dispatch_keybinding_cmd(kb, cmd, KbOutput::Silent)
     }
 }

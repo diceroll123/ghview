@@ -83,6 +83,67 @@ pub struct KeybindingsConfig {
     pub checks: Vec<Keybinding>,
 }
 
+pub trait CommandContext {
+    fn expand(&self, cmd: &str) -> String;
+}
+
+pub struct PrContext<'a> {
+    pub pr: &'a crate::types::PR,
+    pub owner: &'a str,
+    pub repo: &'a str,
+}
+
+impl CommandContext for PrContext<'_> {
+    fn expand(&self, cmd: &str) -> String {
+        cmd.replace("{pr_number}", &self.pr.number.to_string())
+            .replace("{owner}", self.owner)
+            .replace("{org}", self.owner)
+            .replace("{repo}", self.repo)
+            .replace("{author}", &self.pr.author)
+            .replace("{head_ref}", &self.pr.head_ref)
+            .replace("{base_ref}", &self.pr.base_ref)
+            .replace("{url}", &self.pr.url)
+            .replace("{title}", &self.pr.title)
+    }
+}
+
+pub struct CheckContext<'a> {
+    pub run: &'a crate::types::CheckRun,
+    pub pr_number: u64,
+    pub owner: &'a str,
+    pub repo: &'a str,
+}
+
+impl CommandContext for CheckContext<'_> {
+    fn expand(&self, cmd: &str) -> String {
+        cmd.replace("{check_id}", &self.run.id.to_string())
+            .replace("{check_name}", &self.run.name)
+            .replace("{check_url}", &self.run.url)
+            .replace("{pr_number}", &self.pr_number.to_string())
+            .replace("{owner}", self.owner)
+            .replace("{org}", self.owner)
+            .replace("{repo}", self.repo)
+    }
+}
+
+pub struct RepoContext<'a> {
+    pub owner: &'a str,
+    pub repo: &'a str,
+    pub language: Option<&'a str>,
+}
+
+impl CommandContext for RepoContext<'_> {
+    fn expand(&self, cmd: &str) -> String {
+        let url = format!("https://github.com/{}/{}", self.owner, self.repo);
+        cmd.replace("{owner}", self.owner)
+            .replace("{org}", self.owner)
+            .replace("{repo}", self.repo)
+            .replace("{name}", self.repo)
+            .replace("{language}", self.language.unwrap_or(""))
+            .replace("{url}", &url)
+    }
+}
+
 /// A single keybinding entry.
 ///
 /// Exactly one of `builtin` or `command` should be set.
@@ -112,61 +173,9 @@ impl Keybinding {
             .is_some_and(|(code, mods)| key.code == code && key.modifiers.contains(mods))
     }
 
-    pub fn expand_command_pr(
-        &self,
-        pr: &crate::types::PR,
-        owner: &str,
-        repo: &str,
-    ) -> Option<String> {
-        let cmd = self.command.as_ref()?;
-        Some(
-            cmd.replace("{pr_number}", &pr.number.to_string())
-                .replace("{owner}", owner)
-                .replace("{org}", owner)
-                .replace("{repo}", repo)
-                .replace("{author}", &pr.author)
-                .replace("{head_ref}", &pr.head_ref)
-                .replace("{base_ref}", &pr.base_ref)
-                .replace("{url}", &pr.url)
-                .replace("{title}", &pr.title),
-        )
-    }
-
-    pub fn expand_command_check(
-        &self,
-        run: &crate::types::CheckRun,
-        pr_number: u64,
-        owner: &str,
-        repo: &str,
-    ) -> Option<String> {
+    pub fn expand_command<C: CommandContext>(&self, ctx: &C) -> Option<String> {
         let cmd = self.command.as_deref()?;
-        Some(
-            cmd.replace("{check_id}", &run.id.to_string())
-                .replace("{check_name}", &run.name)
-                .replace("{check_url}", &run.url)
-                .replace("{pr_number}", &pr_number.to_string())
-                .replace("{owner}", owner)
-                .replace("{org}", owner)
-                .replace("{repo}", repo),
-        )
-    }
-
-    pub fn expand_command_repo(
-        &self,
-        owner: &str,
-        repo: &str,
-        language: Option<&str>,
-    ) -> Option<String> {
-        let cmd = self.command.as_ref()?;
-        let url = format!("https://github.com/{owner}/{repo}");
-        Some(
-            cmd.replace("{owner}", owner)
-                .replace("{org}", owner)
-                .replace("{repo}", repo)
-                .replace("{name}", repo)
-                .replace("{language}", language.unwrap_or(""))
-                .replace("{url}", &url),
-        )
+        Some(ctx.expand(cmd))
     }
 }
 
@@ -360,16 +369,26 @@ mod tests {
 
     #[test]
     fn expand_command_pr_substitutes_all_placeholders() {
+        let pr = pr_fixture();
         let expanded = kb("gh pr checkout {pr_number} --repo {owner}/{repo}")
-            .expand_command_pr(&pr_fixture(), "myorg", "myrepo")
+            .expand_command(&PrContext {
+                pr: &pr,
+                owner: "myorg",
+                repo: "myrepo",
+            })
             .unwrap();
         assert_eq!(expanded, "gh pr checkout 42 --repo myorg/myrepo");
     }
 
     #[test]
     fn expand_command_pr_org_alias_for_owner() {
+        let pr = pr_fixture();
         let expanded = kb("echo {org}")
-            .expand_command_pr(&pr_fixture(), "myorg", "myrepo")
+            .expand_command(&PrContext {
+                pr: &pr,
+                owner: "myorg",
+                repo: "myrepo",
+            })
             .unwrap();
         assert_eq!(expanded, "echo myorg");
     }
@@ -377,7 +396,11 @@ mod tests {
     #[test]
     fn expand_command_repo_builds_url() {
         let expanded = kb("open {url}")
-            .expand_command_repo("myorg", "myrepo", Some("Rust"))
+            .expand_command(&RepoContext {
+                owner: "myorg",
+                repo: "myrepo",
+                language: Some("Rust"),
+            })
             .unwrap();
         assert_eq!(expanded, "open https://github.com/myorg/myrepo");
     }
@@ -385,7 +408,11 @@ mod tests {
     #[test]
     fn expand_command_repo_language_placeholder() {
         let expanded = kb("echo {language}")
-            .expand_command_repo("o", "r", Some("Go"))
+            .expand_command(&RepoContext {
+                owner: "o",
+                repo: "r",
+                language: Some("Go"),
+            })
             .unwrap();
         assert_eq!(expanded, "echo Go");
     }
@@ -393,7 +420,11 @@ mod tests {
     #[test]
     fn expand_command_repo_missing_language_empty_string() {
         let expanded = kb("echo {language}")
-            .expand_command_repo("o", "r", None)
+            .expand_command(&RepoContext {
+                owner: "o",
+                repo: "r",
+                language: None,
+            })
             .unwrap();
         assert_eq!(expanded, "echo ");
     }
@@ -407,6 +438,14 @@ mod tests {
             command: None,
             interactive: false,
         };
-        assert!(no_cmd.expand_command_repo("o", "r", None).is_none());
+        assert!(
+            no_cmd
+                .expand_command(&RepoContext {
+                    owner: "o",
+                    repo: "r",
+                    language: None
+                })
+                .is_none()
+        );
     }
 }
