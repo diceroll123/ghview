@@ -54,11 +54,16 @@ impl App {
     fn on_source_changed(&mut self) {
         self.repo_filter.clear();
         self.pr_filter.clear();
+        self.repo_state = ListState::default();
+        self.pr_state = ListState::default();
+        self.issue_state = ListState::default();
         self.trigger_load_repos();
     }
 
     fn on_repo_changed(&mut self) {
         self.pr_filter.clear();
+        self.pr_state = ListState::default();
+        self.issue_state = ListState::default();
         self.trigger_load_prs();
     }
 
