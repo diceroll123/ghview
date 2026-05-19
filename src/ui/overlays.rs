@@ -19,6 +19,7 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
     let bar_entries = |actions: &[Action]| -> Vec<(String, String)> {
         actions
             .iter()
+            .filter(|&&a| app.action_permitted(a))
             .filter_map(|&a| find_binding(a).map(|b| (b.display.to_string(), b.label.to_string())))
             .collect()
     };
@@ -51,7 +52,7 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
 
     let mut pr_entries = bar_entries(PRS_BAR);
     for b in PRS_BINDINGS {
-        if !pr_entries.iter().any(|(d, _)| d == b.display) {
+        if !pr_entries.iter().any(|(d, _)| d == b.display) && app.action_permitted(b.action) {
             pr_entries.push((b.display.to_string(), b.label.to_string()));
         }
     }

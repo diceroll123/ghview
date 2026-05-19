@@ -5,7 +5,7 @@ use crate::{
     data::{
         fetch_check_runs, fetch_diff, fetch_issue_body, fetch_issues, fetch_pr_body, fetch_prs,
         fetch_rate_limit, fetch_repo_frontpage, fetch_repos, fetch_review_status, fetch_sources,
-        rerun_check,
+        fetch_viewer_permission, rerun_check,
     },
     types::{Column, DataMsg, LoadingKind, PR, PrAction, RepoView},
 };
@@ -225,7 +225,21 @@ impl App {
         self.mergeable_states.clear();
         self.repo_frontpage = None;
         self.repo_frontpage_scroll = 0;
+        self.viewer_can_push = None;
         let key = format!("{owner}/{repo}");
+        {
+            let o = owner.clone();
+            let r = repo.clone();
+            let tx = self.tx.clone();
+            tokio::spawn(async move {
+                let can_push = fetch_viewer_permission(&o, &r).await;
+                let _ = tx.send(DataMsg::ViewerPermission {
+                    owner: o,
+                    repo: r,
+                    can_push,
+                });
+            });
+        }
 
         if let Some((fetched_at, cached)) = self.pr_cache.get(&key).cloned() {
             if fetched_at.elapsed() < self.config.cache_ttl() {

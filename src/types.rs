@@ -418,6 +418,11 @@ pub enum DataMsg {
         remaining: u32,
         limit: u32,
     },
+    ViewerPermission {
+        owner: String,
+        repo: String,
+        can_push: bool,
+    },
     ActionDone(Option<String>),
     Error(String),
 }

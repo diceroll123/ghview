@@ -152,6 +152,9 @@ fn hint_entries(app: &App, width: usize) -> String {
         {
             return None;
         }
+        if matches!(app.focus, Column::Repo | Column::Detail) && !app.action_permitted(action) {
+            return None;
+        }
         find_binding(action).map(|b| format!("{} {}", b.display, b.label))
     }));
     for kb in &app.config.keybindings.universal {

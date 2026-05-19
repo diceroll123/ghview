@@ -453,3 +453,20 @@ pub async fn fetch_pr_body(
         resp.deletions,
     ))
 }
+
+pub async fn fetch_viewer_permission(owner: &str, repo: &str) -> bool {
+    let endpoint = format!("repos/{owner}/{repo}");
+    let Ok(out) = Command::new("gh")
+        .args([
+            "api",
+            &endpoint,
+            "--jq",
+            ".permissions | (.push or .maintain or .admin) // false",
+        ])
+        .output()
+        .await
+    else {
+        return false;
+    };
+    out.status.success() && out.stdout.starts_with(b"true")
+}

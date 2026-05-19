@@ -40,6 +40,7 @@ pub struct App {
     pub source_state: ListState,
     pub source_filter: String,
     pub current_user: Option<String>,
+    pub viewer_can_push: Option<bool>,
 
     pub repos: Vec<Repo>,
     pub repo_state: ListState,
@@ -122,6 +123,7 @@ impl App {
             source_state: ListState::default(),
             source_filter: String::new(),
             current_user: None,
+            viewer_can_push: None,
             repos: vec![],
             repo_state: ListState::default(),
             repo_filter: String::new(),
@@ -244,6 +246,19 @@ impl App {
 
     pub fn checks_focusable(&self) -> bool {
         self.check_runs.as_ref().is_none_or(|runs| !runs.is_empty())
+    }
+
+    pub fn action_permitted(&self, action: Action) -> bool {
+        let pr = self.selected_pr();
+        let current_user = self.current_user.as_deref().unwrap_or("");
+        let is_author = pr.is_some_and(|p| p.author == current_user);
+        let can_push = self.viewer_can_push.unwrap_or(true);
+        match action {
+            Action::Approve => !is_author,
+            Action::Merge | Action::CheckRerun | Action::DependabotMenu => can_push,
+            Action::ClosePr | Action::ReopenPr | Action::MarkReady => can_push || is_author,
+            _ => true,
+        }
     }
 
     pub fn selected_pr_is_dependabot(&self) -> bool {
@@ -476,6 +491,15 @@ impl App {
             }
             DataMsg::RateLimit { remaining, limit } => {
                 self.rate_limit = Some((remaining, limit));
+            }
+            DataMsg::ViewerPermission {
+                owner,
+                repo,
+                can_push,
+            } => {
+                if self.current_repo_key().as_deref() == Some(&format!("{owner}/{repo}")) {
+                    self.viewer_can_push = Some(can_push);
+                }
             }
             DataMsg::ActionDone(msg) => {
                 if let Some(m) = msg {
