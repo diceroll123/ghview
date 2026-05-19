@@ -388,10 +388,14 @@ pub enum DataMsg {
         status: ReviewStatus,
     },
     CheckRuns {
+        owner: String,
+        repo: String,
         pr_number: u64,
         runs: Vec<CheckRun>,
     },
     PrBody {
+        owner: String,
+        repo: String,
         pr_number: u64,
         body: String,
         mergeable_state: MergeableState,
@@ -417,6 +421,8 @@ pub enum DataMsg {
         has_more: bool,
     },
     IssueBody {
+        owner: String,
+        repo: String,
         number: u64,
         body: String,
     },

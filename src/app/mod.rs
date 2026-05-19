@@ -402,9 +402,15 @@ impl App {
                 }
             }
             DataMsg::CheckRuns {
+                owner,
+                repo,
                 pr_number,
                 mut runs,
             } => {
+                let key = format!("{owner}/{repo}");
+                if self.current_repo_key().as_deref() != Some(&key) {
+                    return;
+                }
                 runs.sort_by_key(|r| r.status != crate::types::CheckStatus::Failing);
                 let summary = if runs.is_empty() {
                     CheckStatus::Unknown
@@ -440,12 +446,18 @@ impl App {
                 self.loading = None;
             }
             DataMsg::PrBody {
+                owner,
+                repo,
                 pr_number,
                 body,
                 mergeable_state,
                 additions,
                 deletions,
             } => {
+                let key = format!("{owner}/{repo}");
+                if self.current_repo_key().as_deref() != Some(&key) {
+                    return;
+                }
                 self.mergeable_states.insert(pr_number, mergeable_state);
                 if self.selected_pr().is_some_and(|pr| pr.number == pr_number) {
                     self.pr_body = Some(body);
@@ -502,7 +514,16 @@ impl App {
                 self.issues.extend(issues);
                 self.loading = None;
             }
-            DataMsg::IssueBody { number, body } => {
+            DataMsg::IssueBody {
+                owner,
+                repo,
+                number,
+                body,
+            } => {
+                let key = format!("{owner}/{repo}");
+                if self.current_repo_key().as_deref() != Some(&key) {
+                    return;
+                }
                 if self.selected_issue().is_some_and(|i| i.number == number) {
                     self.issue_body = Some(body);
                 }

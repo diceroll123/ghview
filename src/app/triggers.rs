@@ -200,6 +200,8 @@ impl App {
             let (body, mergeable_state, additions, deletions) =
                 fetch_pr_body(&o, &r, pr_number).await.unwrap_or_default();
             let _ = tx.send(DataMsg::PrBody {
+                owner: o,
+                repo: r,
                 pr_number,
                 body,
                 mergeable_state,
@@ -210,7 +212,12 @@ impl App {
         let tx2 = self.tx.clone();
         tokio::spawn(async move {
             let runs = fetch_check_runs(&owner, &repo, &sha).await;
-            let _ = tx2.send(DataMsg::CheckRuns { pr_number, runs });
+            let _ = tx2.send(DataMsg::CheckRuns {
+                owner,
+                repo,
+                pr_number,
+                runs,
+            });
         });
     }
 
@@ -446,7 +453,12 @@ impl App {
         let tx = self.tx.clone();
         tokio::spawn(async move {
             if let Ok(body) = fetch_issue_body(&owner, &repo, number).await {
-                let _ = tx.send(DataMsg::IssueBody { number, body });
+                let _ = tx.send(DataMsg::IssueBody {
+                    owner,
+                    repo,
+                    number,
+                    body,
+                });
             }
         });
     }

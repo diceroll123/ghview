@@ -223,7 +223,12 @@ pub async fn run_event_loop(
                     let tx = app.tx.clone();
                     tokio::spawn(async move {
                         let runs = crate::data::fetch_check_runs(&owner, &repo, &sha).await;
-                        let _ = tx.send(DataMsg::CheckRuns { pr_number, runs });
+                        let _ = tx.send(DataMsg::CheckRuns {
+                            owner,
+                            repo,
+                            pr_number,
+                            runs,
+                        });
                     });
                 }
             }
