@@ -68,6 +68,8 @@ pub struct UiConfig {
     pub per_page: u32,
     /// Merge method used by the `m` keybinding: "squash", "merge", or "rebase".
     pub merge_method: MergeMethod,
+    /// Pre-fetch diff stats, check summary, and mergeable state for all PRs on load.
+    pub prefetch_pr_details: bool,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -232,6 +234,7 @@ impl Default for UiConfig {
             default_repo_view: crate::types::RepoView::default(),
             per_page: 0,
             merge_method: MergeMethod::default(),
+            prefetch_pr_details: true,
         }
     }
 }

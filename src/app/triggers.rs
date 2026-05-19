@@ -368,6 +368,69 @@ impl App {
         }
     }
 
+    pub(crate) fn trigger_prefetch_pr_details(&mut self) {
+        if !self.config.ui.prefetch_pr_details {
+            return;
+        }
+        let Some((owner, repo)) = self.selected_owner_repo() else {
+            return;
+        };
+
+        let prs_to_fetch: Vec<(u64, String, bool)> = self
+            .prs
+            .iter()
+            .filter(|pr| !self.mergeable_states.contains_key(&pr.number))
+            .map(|pr| {
+                (
+                    pr.number,
+                    pr.head_sha.clone(),
+                    self.check_summary_cache.contains_key(&pr.number),
+                )
+            })
+            .collect();
+
+        if prs_to_fetch.is_empty() {
+            return;
+        }
+
+        let owner: std::sync::Arc<str> = owner.into();
+        let repo: std::sync::Arc<str> = repo.into();
+
+        for (pr_number, sha, has_checks) in prs_to_fetch {
+            let tx = self.tx.clone();
+            let o = owner.clone();
+            let r = repo.clone();
+            tokio::spawn(async move {
+                let (body, mergeable_state, additions, deletions) =
+                    fetch_pr_body(&o, &r, pr_number).await.unwrap_or_default();
+                let _ = tx.send(DataMsg::PrBody {
+                    owner: o.to_string(),
+                    repo: r.to_string(),
+                    pr_number,
+                    body,
+                    mergeable_state,
+                    additions,
+                    deletions,
+                });
+            });
+
+            if !has_checks && !sha.is_empty() {
+                let tx2 = self.tx.clone();
+                let o2 = owner.clone();
+                let r2 = repo.clone();
+                tokio::spawn(async move {
+                    let runs = fetch_check_runs(&o2, &r2, &sha).await;
+                    let _ = tx2.send(DataMsg::CheckRuns {
+                        owner: o2.to_string(),
+                        repo: r2.to_string(),
+                        pr_number,
+                        runs,
+                    });
+                });
+            }
+        }
+    }
+
     pub(crate) fn trigger_load_frontpage(&mut self) {
         let Some((owner, repo)) = self.selected_owner_repo() else {
             return;

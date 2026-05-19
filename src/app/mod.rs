@@ -607,6 +607,7 @@ impl App {
                 None => self.review_statuses.clear(),
             }
         }
+        self.trigger_prefetch_pr_details();
     }
 
     fn sort_repos_in_place(&mut self) {

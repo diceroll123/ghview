@@ -123,6 +123,9 @@ prs_limit = 50
 # repo_columns = ["stars"]
 # Default view when entering a repo: "prs", "frontpage" (README + stats), or "issues".
 # default_repo_view = "prs"
+# Pre-fetch diff stats, check summary, and mergeable state for all PRs when the list loads.
+# Costs 1–2 extra API calls per PR. Disable if you hit rate limits.
+# prefetch_pr_details = true
 
 [sources]
 # Automatically fetch org memberships for the authenticated user.
