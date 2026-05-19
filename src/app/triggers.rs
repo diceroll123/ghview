@@ -4,10 +4,10 @@ use crate::{
     config::{CheckContext, Keybinding, PrContext, RepoContext, SourcesConfig},
     data::{
         fetch_check_runs, fetch_diff, fetch_issue_body, fetch_issues, fetch_pr_body, fetch_prs,
-        fetch_rate_limit, fetch_repo_frontpage, fetch_repos, fetch_review_status, fetch_sources,
-        fetch_viewer_permission, rerun_check,
+        fetch_rate_limit, fetch_repo_frontpage, fetch_repos, fetch_review_status, fetch_source_prs,
+        fetch_sources, fetch_viewer_permission, rerun_check,
     },
-    types::{Column, DataMsg, LoadingKind, PR, PrAction, RepoView},
+    types::{Column, DataMsg, LoadingKind, PR, PrAction, RepoView, Source},
 };
 
 enum KbOutput {
@@ -27,6 +27,10 @@ impl App {
 
     pub(crate) fn selected_owner_repo(&self) -> Option<(String, String)> {
         let owner = self.selected_source_owner()?;
+        if self.repos_view == crate::types::ReposView::PrList {
+            let pr = self.selected_pr()?;
+            return Some((owner, pr.repo.clone()));
+        }
         let repo = self.selected_repo()?.to_string();
         Some((owner, repo))
     }
@@ -116,10 +120,11 @@ impl App {
 
         if let Some((fetched_at, cached)) = self.repo_cache.get(&owner).cloned() {
             if fetched_at.elapsed() < self.config.cache_ttl() {
-                self.repos_pagination
+                self.source_ctx
+                    .repos_pagination
                     .reset(cached.len() == per_page as usize);
                 self.apply_repos(cached);
-                if self.repo_state.selected().is_some() {
+                if self.source_ctx.repo_state.selected().is_some() {
                     self.trigger_load_prs();
                 }
                 return;
@@ -129,7 +134,7 @@ impl App {
 
         let current_user = self.current_user.clone().unwrap_or_default();
         self.loading = Some(LoadingKind::Repos);
-        self.repos_pagination.fetching_more = false;
+        self.source_ctx.repos_pagination.fetching_more = false;
         let tx = self.tx.clone();
         tokio::spawn(async move {
             match fetch_repos(&source, &current_user, per_page, 1).await {
@@ -156,7 +161,7 @@ impl App {
     }
 
     pub(crate) fn trigger_load_more_repos(&mut self) {
-        if !self.repos_pagination.can_load_more() {
+        if !self.source_ctx.repos_pagination.can_load_more() {
             return;
         }
         let Some(source) = self.selected_source().cloned() else {
@@ -166,7 +171,7 @@ impl App {
         let current_user = self.current_user.clone().unwrap_or_default();
         let per_page = self.per_page();
         self.loading = Some(LoadingKind::Repos);
-        let page = self.repos_pagination.begin_fetch();
+        let page = self.source_ctx.repos_pagination.begin_fetch();
         let tx = self.tx.clone();
         tokio::spawn(async move {
             match fetch_repos(&source, &current_user, per_page, page).await {
@@ -185,39 +190,113 @@ impl App {
         });
     }
 
+    pub(crate) fn trigger_load_source_prs(&mut self) {
+        let Some(source) = self.selected_source().cloned() else {
+            return;
+        };
+        let owner = source.owner().to_string();
+        let is_org = matches!(source, Source::Org(_));
+        let per_page = self.per_page();
+
+        if let Some((fetched_at, cached)) = self.source_prs_cache.get(&owner).cloned()
+            && fetched_at.elapsed() < self.config.cache_ttl()
+        {
+            self.source_ctx
+                .source_prs_pagination
+                .reset(cached.len() == per_page as usize);
+            self.apply_source_prs(cached);
+            return;
+        }
+
+        self.loading = Some(LoadingKind::Prs);
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            match fetch_source_prs(&owner, is_org, per_page, 1).await {
+                Ok(prs) => {
+                    let has_more = prs.len() == per_page as usize;
+                    let _ = tx.send(DataMsg::SourcePrs {
+                        owner,
+                        prs,
+                        has_more,
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(DataMsg::Error(e.to_string()));
+                }
+            }
+        });
+    }
+
+    pub(crate) fn trigger_load_more_source_prs(&mut self) {
+        if !self.source_ctx.source_prs_pagination.can_load_more() {
+            return;
+        }
+        let Some(source) = self.selected_source().cloned() else {
+            return;
+        };
+        let owner = source.owner().to_string();
+        let is_org = matches!(source, Source::Org(_));
+        let per_page = self.per_page();
+        let page = self.source_ctx.source_prs_pagination.begin_fetch();
+        self.loading = Some(LoadingKind::Prs);
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            match fetch_source_prs(&owner, is_org, per_page, page).await {
+                Ok(prs) => {
+                    let has_more = prs.len() == per_page as usize;
+                    let _ = tx.send(DataMsg::MoreSourcePrs {
+                        owner,
+                        prs,
+                        has_more,
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(DataMsg::Error(e.to_string()));
+                }
+            }
+        });
+    }
+
     pub(crate) fn trigger_load_pr_body(&mut self) {
         let Some((owner, repo)) = self.selected_owner_repo() else {
             return;
         };
         let Some(pr) = self.selected_pr() else { return };
         let pr_number = pr.number;
-        let sha = pr.head_sha.clone();
-        self.clear_pr_detail();
+        let known_sha = pr.head_sha.clone();
+        self.repo_ctx.pr_body = None;
+        self.repo_ctx.check_runs = None;
+        self.repo_ctx.check_runs_state = Default::default();
+        self.repo_ctx.pr_body_scroll = 0;
+        self.repo_ctx.detail_section = Default::default();
+        self.repo_ctx.diff_view = None;
         let tx = self.tx.clone();
-        let o = owner.clone();
-        let r = repo.clone();
         tokio::spawn(async move {
-            let (body, mergeable_state, additions, deletions) =
-                fetch_pr_body(&o, &r, pr_number).await.unwrap_or_default();
+            let (body, mergeable_state, additions, deletions, sha) =
+                fetch_pr_body(&owner, &repo, pr_number)
+                    .await
+                    .unwrap_or_default();
             let _ = tx.send(DataMsg::PrBody {
-                owner: o,
-                repo: r,
+                owner: owner.clone(),
+                repo: repo.clone(),
                 pr_number,
                 body,
                 mergeable_state,
                 additions,
                 deletions,
             });
-        });
-        let tx2 = self.tx.clone();
-        tokio::spawn(async move {
-            let runs = fetch_check_runs(&owner, &repo, &sha).await;
-            let _ = tx2.send(DataMsg::CheckRuns {
-                owner,
-                repo,
-                pr_number,
-                runs,
-            });
+            // Use the SHA from the API response; fall back to the value already in the PR
+            // struct (populated for repo-list PRs but empty for source-list PRs).
+            let sha = if sha.is_empty() { known_sha } else { sha };
+            if !sha.is_empty() {
+                let runs = fetch_check_runs(&owner, &repo, &sha).await;
+                let _ = tx.send(DataMsg::CheckRuns {
+                    owner,
+                    repo,
+                    pr_number,
+                    runs,
+                });
+            }
         });
     }
 
@@ -225,15 +304,7 @@ impl App {
         let Some((owner, repo)) = self.selected_owner_repo() else {
             return;
         };
-        self.clear_pr_detail();
-        self.mergeable_states.clear();
-        self.review_statuses.clear();
-        self.check_summary_cache.clear();
-        self.repo_frontpage = None;
-        self.repo_frontpage_scroll = 0;
-        self.issue_body = None;
-        self.issue_body_scroll = 0;
-        self.viewer_can_push = None;
+        self.invalidate_repo();
         let key = format!("{owner}/{repo}");
         {
             let o = owner.clone();
@@ -278,8 +349,7 @@ impl App {
         }
 
         self.loading = Some(LoadingKind::Prs);
-        self.clear_pr_state();
-        self.prs_pagination.fetching_more = false;
+        self.repo_ctx.prs_pagination.fetching_more = false;
         let per_page = self.per_page();
         let tx = self.tx.clone();
         tokio::spawn(async move {
@@ -301,14 +371,14 @@ impl App {
     }
 
     pub(crate) fn trigger_load_more_prs(&mut self) {
-        if !self.prs_pagination.can_load_more() {
+        if !self.repo_ctx.prs_pagination.can_load_more() {
             return;
         }
         let Some((owner, repo)) = self.selected_owner_repo() else {
             return;
         };
         let per_page = self.per_page();
-        let page = self.prs_pagination.begin_fetch();
+        let page = self.repo_ctx.prs_pagination.begin_fetch();
         self.loading = Some(LoadingKind::Prs);
         let tx = self.tx.clone();
         tokio::spawn(async move {
@@ -330,6 +400,10 @@ impl App {
     }
 
     pub(crate) fn trigger_review_and_check_fetches(&self) {
+        if self.repos_view == crate::types::ReposView::PrList {
+            self.trigger_source_pr_review_fetches();
+            return;
+        }
         let Some((owner, repo)) = self.selected_owner_repo() else {
             return;
         };
@@ -338,6 +412,7 @@ impl App {
 
         let existing_reviews = self.review_cache.get(&key).cloned().unwrap_or_default();
         let prs_to_fetch: Vec<PR> = self
+            .repo_ctx
             .prs
             .iter()
             .filter(|pr| !existing_reviews.contains_key(&pr.number))
@@ -368,40 +443,81 @@ impl App {
         }
     }
 
+    fn trigger_source_pr_review_fetches(&self) {
+        let Some(owner) = self.selected_source_owner() else {
+            return;
+        };
+        let owner: std::sync::Arc<str> = owner.into();
+        for pr in &self.source_ctx.source_prs {
+            let key = format!("{owner}/{}", pr.repo);
+            if self
+                .review_cache
+                .get(&key)
+                .is_some_and(|m| m.contains_key(&pr.number))
+            {
+                continue;
+            }
+            let o = owner.clone();
+            let r: std::sync::Arc<str> = pr.repo.clone().into();
+            let num = pr.number;
+            let tx = self.tx.clone();
+            tokio::spawn(async move {
+                let status = fetch_review_status(&o, &r, num).await;
+                let _ = tx.send(DataMsg::ReviewStatus {
+                    owner: o.to_string(),
+                    repo: r.to_string(),
+                    pr_number: num,
+                    status,
+                });
+            });
+        }
+    }
+
     pub(crate) fn trigger_prefetch_pr_details(&mut self) {
         if !self.config.ui.prefetch_pr_details {
             return;
         }
-        let Some((owner, repo)) = self.selected_owner_repo() else {
-            return;
-        };
+        let prs_to_fetch: Vec<(String, String, u64)> =
+            if self.repos_view == crate::types::ReposView::PrList {
+                let Some(owner) = self.selected_source_owner() else {
+                    return;
+                };
+                self.source_ctx
+                    .source_prs
+                    .iter()
+                    .filter(|pr| {
+                        !self.repo_ctx.mergeable_states.contains_key(&(
+                            owner.clone(),
+                            pr.repo.clone(),
+                            pr.number,
+                        ))
+                    })
+                    .map(|pr| (owner.clone(), pr.repo.clone(), pr.number))
+                    .collect()
+            } else {
+                let Some((owner, repo)) = self.selected_owner_repo() else {
+                    return;
+                };
+                self.repo_ctx
+                    .prs
+                    .iter()
+                    .filter(|pr| {
+                        !self.repo_ctx.mergeable_states.contains_key(&(
+                            owner.clone(),
+                            repo.clone(),
+                            pr.number,
+                        ))
+                    })
+                    .map(|pr| (owner.clone(), repo.clone(), pr.number))
+                    .collect()
+            };
 
-        let prs_to_fetch: Vec<(u64, String, bool)> = self
-            .prs
-            .iter()
-            .filter(|pr| !self.mergeable_states.contains_key(&pr.number))
-            .map(|pr| {
-                (
-                    pr.number,
-                    pr.head_sha.clone(),
-                    self.check_summary_cache.contains_key(&pr.number),
-                )
-            })
-            .collect();
-
-        if prs_to_fetch.is_empty() {
-            return;
-        }
-
-        let owner: std::sync::Arc<str> = owner.into();
-        let repo: std::sync::Arc<str> = repo.into();
-
-        for (pr_number, sha, has_checks) in prs_to_fetch {
+        for (owner, repo, pr_number) in prs_to_fetch {
             let tx = self.tx.clone();
-            let o = owner.clone();
-            let r = repo.clone();
+            let o: std::sync::Arc<str> = owner.into();
+            let r: std::sync::Arc<str> = repo.into();
             tokio::spawn(async move {
-                let (body, mergeable_state, additions, deletions) =
+                let (body, mergeable_state, additions, deletions, sha) =
                     fetch_pr_body(&o, &r, pr_number).await.unwrap_or_default();
                 let _ = tx.send(DataMsg::PrBody {
                     owner: o.to_string(),
@@ -412,22 +528,16 @@ impl App {
                     additions,
                     deletions,
                 });
-            });
-
-            if !has_checks && !sha.is_empty() {
-                let tx2 = self.tx.clone();
-                let o2 = owner.clone();
-                let r2 = repo.clone();
-                tokio::spawn(async move {
-                    let runs = fetch_check_runs(&o2, &r2, &sha).await;
-                    let _ = tx2.send(DataMsg::CheckRuns {
-                        owner: o2.to_string(),
-                        repo: r2.to_string(),
+                if !sha.is_empty() {
+                    let runs = fetch_check_runs(&o, &r, &sha).await;
+                    let _ = tx.send(DataMsg::CheckRuns {
+                        owner: o.to_string(),
+                        repo: r.to_string(),
                         pr_number,
                         runs,
                     });
-                });
-            }
+                }
+            });
         }
     }
 
@@ -435,8 +545,8 @@ impl App {
         let Some((owner, repo)) = self.selected_owner_repo() else {
             return;
         };
-        self.repo_frontpage = None;
-        self.repo_frontpage_scroll = 0;
+        self.repo_ctx.repo_frontpage = None;
+        self.repo_ctx.repo_frontpage_scroll = 0;
         let tx = self.tx.clone();
         tokio::spawn(async move {
             if let Ok((description, readme)) = fetch_repo_frontpage(&owner, &repo).await {
@@ -454,9 +564,12 @@ impl App {
         let Some((owner, repo)) = self.selected_owner_repo() else {
             return;
         };
-        self.clear_issue_state();
+        self.repo_ctx.issues = vec![];
+        self.repo_ctx.issue_state = Default::default();
+        self.repo_ctx.issue_body = None;
+        self.repo_ctx.issue_body_scroll = 0;
         self.loading = Some(LoadingKind::Issues);
-        self.issues_pagination.fetching_more = false;
+        self.repo_ctx.issues_pagination.fetching_more = false;
         let per_page = self.per_page();
         let tx = self.tx.clone();
         tokio::spawn(async move {
@@ -477,14 +590,14 @@ impl App {
     }
 
     pub(crate) fn trigger_load_more_issues(&mut self) {
-        if !self.issues_pagination.can_load_more() {
+        if !self.repo_ctx.issues_pagination.can_load_more() {
             return;
         }
         let Some((owner, repo)) = self.selected_owner_repo() else {
             return;
         };
         let per_page = self.per_page();
-        let page = self.issues_pagination.begin_fetch();
+        let page = self.repo_ctx.issues_pagination.begin_fetch();
         self.loading = Some(LoadingKind::Issues);
         let tx = self.tx.clone();
         tokio::spawn(async move {
@@ -511,8 +624,8 @@ impl App {
         let Some(number) = self.selected_issue().map(|i| i.number) else {
             return;
         };
-        self.issue_body = None;
-        self.issue_body_scroll = 0;
+        self.repo_ctx.issue_body = None;
+        self.repo_ctx.issue_body_scroll = 0;
         let tx = self.tx.clone();
         tokio::spawn(async move {
             if let Ok(body) = fetch_issue_body(&owner, &repo, number).await {
@@ -530,7 +643,7 @@ impl App {
         match self.repo_view {
             RepoView::Frontpage => self.trigger_load_frontpage(),
             RepoView::Prs => {
-                if self.prs.is_empty() {
+                if self.repo_ctx.prs.is_empty() {
                     self.trigger_load_prs();
                 }
                 self.trigger_load_pr_body();
@@ -545,9 +658,9 @@ impl App {
         }
         self.repo_view = view;
         self.focus = Column::Repo;
-        self.pr_body_scroll = 0;
-        self.issue_body_scroll = 0;
-        self.repo_frontpage_scroll = 0;
+        self.repo_ctx.pr_body_scroll = 0;
+        self.repo_ctx.issue_body_scroll = 0;
+        self.repo_ctx.repo_frontpage_scroll = 0;
         self.dispatch_repo_view_trigger();
     }
 
@@ -580,6 +693,7 @@ impl App {
         };
         let title = format!("#{} {}", pr.number, pr.title);
         self.loading = Some(LoadingKind::Action("diff".into()));
+        self.repo_ctx.diff_view = None;
         let tx = self.tx.clone();
         tokio::spawn(async move {
             match fetch_diff(&owner, &repo, pr.number).await {
@@ -634,10 +748,16 @@ impl App {
                 self.spawn_open_url(&format!("https://github.com/{owner}"));
             }
             Column::Repos => {
-                let Some((owner, repo)) = self.selected_owner_repo() else {
-                    return;
-                };
-                self.spawn_open_url(&format!("https://github.com/{owner}/{repo}"));
+                if self.repos_view == crate::types::ReposView::PrList {
+                    if let Some(pr) = self.selected_pr() {
+                        self.spawn_open_url(&pr.url);
+                    }
+                } else {
+                    let Some((owner, repo)) = self.selected_owner_repo() else {
+                        return;
+                    };
+                    self.spawn_open_url(&format!("https://github.com/{owner}/{repo}"));
+                }
             }
             Column::Repo | Column::Detail => match self.repo_view {
                 RepoView::Frontpage => {
@@ -721,7 +841,7 @@ impl App {
         copy_to_clipboard(&text);
     }
 
-    fn spawn_open_url(&self, url: &str) {
+    pub(crate) fn spawn_open_url(&self, url: &str) {
         if let Err(e) = actions::open_url(url) {
             let _ = self.tx.send(DataMsg::Error(e.to_string()));
         }
@@ -751,21 +871,20 @@ impl App {
     }
 
     pub(crate) fn diff_scroll(&mut self, n: u16) {
-        if let Some(d) = &mut self.diff_view {
+        if let Some(d) = &mut self.repo_ctx.diff_view {
             let max = u16::try_from(d.lines.len().saturating_sub(1)).unwrap_or(u16::MAX);
             d.scroll = (d.scroll + n).min(max);
         }
     }
 
     pub(crate) fn diff_scroll_up(&mut self, n: u16) {
-        if let Some(d) = &mut self.diff_view {
+        if let Some(d) = &mut self.repo_ctx.diff_view {
             d.scroll = d.scroll.saturating_sub(n);
         }
     }
 
     pub fn trigger_keybinding_pr(&mut self, kb: &Keybinding) -> Option<String> {
-        let owner = self.selected_source_owner()?;
-        let repo = self.selected_repo()?.to_string();
+        let (owner, repo) = self.selected_owner_repo()?;
         let pr = self.selected_pr()?.clone();
         let cmd = kb.expand_command(&PrContext {
             pr: &pr,
@@ -776,19 +895,23 @@ impl App {
     }
 
     pub(crate) fn open_selected_check(&mut self) {
-        let Some(idx) = self.check_runs_state.selected() else {
+        let Some(idx) = self.repo_ctx.check_runs_state.selected() else {
             return;
         };
-        let Some(runs) = &self.check_runs else { return };
+        let Some(runs) = &self.repo_ctx.check_runs else {
+            return;
+        };
         let Some(run) = runs.get(idx) else { return };
         self.spawn_open_url(&run.url);
     }
 
     pub(crate) fn rerun_selected_check(&mut self) {
-        let Some(idx) = self.check_runs_state.selected() else {
+        let Some(idx) = self.repo_ctx.check_runs_state.selected() else {
             return;
         };
-        let Some(runs) = &self.check_runs else { return };
+        let Some(runs) = &self.repo_ctx.check_runs else {
+            return;
+        };
         let Some(run) = runs.get(idx) else { return };
         let check_run_id = run.id;
         let name = run.name.clone();
@@ -810,8 +933,8 @@ impl App {
     }
 
     pub fn trigger_keybinding_check(&mut self, kb: &Keybinding) -> Option<String> {
-        let idx = self.check_runs_state.selected()?;
-        let runs = self.check_runs.as_ref()?;
+        let idx = self.repo_ctx.check_runs_state.selected()?;
+        let runs = self.repo_ctx.check_runs.as_ref()?;
         let run = runs.get(idx)?;
         let pr = self.selected_pr()?;
         let pr_number = pr.number;
@@ -830,6 +953,7 @@ impl App {
         let owner = self.selected_source_owner()?;
         let repo = self.selected_repo()?.to_string();
         let lang = self
+            .source_ctx
             .repos
             .iter()
             .find(|r| r.name == repo)

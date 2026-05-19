@@ -6,7 +6,7 @@ mod status;
 
 use crate::{
     app::App,
-    types::{Column, RepoView},
+    types::{Column, RepoView, ReposView},
 };
 use ratatui::{
     Frame,
@@ -93,7 +93,17 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let main_area = chunks[0];
     let status_area = chunks[1];
 
-    if matches!(app.focus, Column::Repo | Column::Detail) {
+    if matches!(app.focus, Column::Repo | Column::Detail) && app.repos_view == ReposView::PrList {
+        let cols = Layout::horizontal([
+            Constraint::Length(4),
+            Constraint::Fill(4),
+            Constraint::Fill(3),
+        ])
+        .split(main_area);
+        panels::draw_sources_strip(f, app, cols[0]);
+        panels::draw_source_prs(f, app, cols[1]);
+        panels::draw_pr_detail(f, app, cols[2]);
+    } else if matches!(app.focus, Column::Repo | Column::Detail) {
         match app.repo_view {
             RepoView::Frontpage => {
                 let cols = Layout::horizontal([
@@ -146,8 +156,16 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ])
         .split(main_area);
         panels::draw_sources(f, app, cols[0]);
-        panels::draw_repos(f, app, cols[1]);
-        panels::draw_prs(f, app, cols[2]);
+        match app.repos_view {
+            ReposView::RepoList => {
+                panels::draw_repos(f, app, cols[1]);
+                panels::draw_prs(f, app, cols[2]);
+            }
+            ReposView::PrList => {
+                panels::draw_source_prs(f, app, cols[1]);
+                panels::draw_pr_detail(f, app, cols[2]);
+            }
+        }
     }
     status::draw_status(f, app, status_area);
 
@@ -157,7 +175,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.show_dependabot_menu {
         overlays::draw_dependabot_menu(f, area);
     }
-    if app.diff_view.is_some() {
+    if app.repo_ctx.diff_view.is_some() {
         overlays::draw_diff(f, app, area);
     }
 }

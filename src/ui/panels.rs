@@ -9,7 +9,7 @@ use crate::{
     app::App,
     types::{
         CheckStatus, Column, DetailSection, LoadingKind, PrColumn, PrState, RepoColumn, RepoView,
-        Source, Visibility,
+        ReposView, Source, Visibility,
     },
 };
 use unicode_width::UnicodeWidthStr;
@@ -234,9 +234,9 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
     };
 
     let sort_label = app.repo_sort_key.label();
-    let repo_count_suffix = if app.filter_active || !app.repo_filter.is_empty() {
+    let repo_count_suffix = if app.filter_active || !app.source_ctx.repo_filter.is_empty() {
         let visible = app.visible_repos().len();
-        let total = app.repos.len();
+        let total = app.source_ctx.repos.len();
         format!("  {visible}/{total}")
     } else {
         String::new()
@@ -250,9 +250,18 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
             )
         },
     );
-    let title = filter_title(&base, &app.repo_filter, app.filter_active, focused);
+    let title = filter_title(
+        &base,
+        &app.source_ctx.repo_filter,
+        app.filter_active,
+        focused,
+    );
 
-    let block = panel_block(title, border_style);
+    let block = panel_block(title, border_style).title_bottom(repos_tab_line(
+        ReposView::RepoList,
+        app.source_ctx.source_prs.len(),
+        app.source_ctx.source_prs_pagination.has_more,
+    ));
 
     let cols_cfg: &[RepoColumn] = if focused {
         &app.config.ui.repo_columns
@@ -404,9 +413,9 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
         .collect();
 
     let total = items.len();
-    if total == 0 && !app.repo_filter.is_empty() && app.loading.is_none() {
+    if total == 0 && !app.source_ctx.repo_filter.is_empty() && app.loading.is_none() {
         f.render_widget(
-            Paragraph::new(format!("no results for \"{}\"", app.repo_filter))
+            Paragraph::new(format!("no results for \"{}\"", app.source_ctx.repo_filter))
                 .style(Style::new().fg(Color::DarkGray)),
             body_area,
         );
@@ -416,13 +425,13 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
         .highlight_style(list_highlight_style())
         .highlight_symbol("▶ ");
 
-    f.render_stateful_widget(list, body_area, &mut app.repo_state);
+    f.render_stateful_widget(list, body_area, &mut app.source_ctx.repo_state);
     render_list_scrollbar(
         f,
         area,
         total,
         area.height.saturating_sub(3),
-        app.repo_state.offset(),
+        app.source_ctx.repo_state.offset(),
     );
 }
 
@@ -438,8 +447,18 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
 
     let sort_label = app.sort_key.label();
     let owner_repo = app.selected_owner_repo();
+    let prs_owner: String = owner_repo
+        .as_ref()
+        .map_or_else(String::new, |(o, _)| o.clone());
+    let prs_repo_name: String = owner_repo
+        .as_ref()
+        .map_or_else(String::new, |(_, r)| r.clone());
     let pr_count_suffix = if app.filter_active || !app.pr_filter.is_empty() {
-        format!("  {}/{}", app.prs.len(), app.prs_raw.len())
+        format!(
+            "  {}/{}",
+            app.repo_ctx.prs.len(),
+            app.repo_ctx.prs_raw.len()
+        )
     } else {
         String::new()
     };
@@ -453,10 +472,10 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
     let block = panel_block(title, border_style).title_bottom(view_tab_line(
         RepoView::Prs,
         app.selected_repo_has_issues(),
-        app.prs_raw.len(),
-        app.prs_pagination.has_more,
-        app.issues.len(),
-        app.issues_pagination.has_more,
+        app.repo_ctx.prs_raw.len(),
+        app.repo_ctx.prs_pagination.has_more,
+        app.repo_ctx.issues.len(),
+        app.repo_ctx.issues_pagination.has_more,
     ));
 
     // 4 = 2 borders + 2 highlight-symbol ("▶ ")
@@ -489,6 +508,7 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
         + if show_age { time_col_w } else { 0 };
 
     let items: Vec<ListItem> = app
+        .repo_ctx
         .prs
         .iter()
         .map(|pr| {
@@ -501,8 +521,12 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
             let meta_style = Style::new().fg(Color::DarkGray);
 
             let (rv_sym, rv_col) = review_icon(
-                app.review_statuses.get(&pr.number),
-                app.mergeable_states.get(&pr.number),
+                app.repo_ctx.review_statuses.get(&pr.number),
+                app.repo_ctx.mergeable_states.get(&(
+                    prs_owner.clone(),
+                    prs_repo_name.clone(),
+                    pr.number,
+                )),
             );
 
             let number_str = format!("#{} ", pr.number);
@@ -547,8 +571,9 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
             }
             if show_check_summary {
                 let (icon, color) = app
+                    .repo_ctx
                     .check_summary_cache
-                    .get(&pr.number)
+                    .get(&(prs_owner.clone(), prs_repo_name.clone(), pr.number))
                     .map_or((ICON_DOT, Color::DarkGray), |s| (s.icon(), s.color()));
                 line1_spans.push(Span::raw("  "));
                 line1_spans.push(Span::styled(icon, Style::new().fg(color)));
@@ -587,7 +612,11 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
             } else {
                 Color::Green
             };
-            let merge_state_w: usize = match app.mergeable_states.get(&pr.number) {
+            let merge_state_w: usize = match app.repo_ctx.mergeable_states.get(&(
+                prs_owner.clone(),
+                prs_repo_name.clone(),
+                pr.number,
+            )) {
                 Some(crate::types::MergeableState::Behind) => "⟳ rebase  ".width(),
                 Some(crate::types::MergeableState::Dirty) => "✖ conflicts  ".width(),
                 _ => 0,
@@ -607,7 +636,11 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
                 Span::styled(state_icon, Style::new().fg(state_col)),
                 Span::raw(" "),
             ];
-            match app.mergeable_states.get(&pr.number) {
+            match app.repo_ctx.mergeable_states.get(&(
+                prs_owner.clone(),
+                prs_repo_name.clone(),
+                pr.number,
+            )) {
                 Some(crate::types::MergeableState::Behind) => {
                     meta_spans.push(Span::styled("⟳ rebase  ", Style::new().fg(Color::Yellow)))
                 }
@@ -700,8 +733,14 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
         .highlight_style(list_highlight_style())
         .highlight_symbol("▶ ");
 
-    f.render_stateful_widget(list, body_area, &mut app.pr_state);
-    render_list_scrollbar(f, area, total * 2, body_area.height, app.pr_state.offset());
+    f.render_stateful_widget(list, body_area, &mut app.repo_ctx.pr_state);
+    render_list_scrollbar(
+        f,
+        area,
+        total * 2,
+        body_area.height,
+        app.repo_ctx.pr_state.offset(),
+    );
 }
 
 fn draw_strip_vertical(
@@ -761,6 +800,9 @@ pub(super) fn draw_repos_strip(f: &mut Frame, app: &App, area: ratatui::layout::
 pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     let in_detail = app.focus == Column::Detail;
     let pr = app.selected_pr();
+    let (detail_owner, detail_repo) = app
+        .selected_owner_repo()
+        .unwrap_or_else(|| (String::new(), String::new()));
     let title = pr.map_or_else(|| " Detail ".to_string(), |pr| format!(" #{} ", pr.number));
     let outer_style = if in_detail {
         active_style()
@@ -791,7 +833,11 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
         || !pr.head_ref.is_empty()
         || !pr.requested_reviewers.is_empty()
         || matches!(
-            app.mergeable_states.get(&pr.number),
+            app.repo_ctx.mergeable_states.get(&(
+                detail_owner.clone(),
+                detail_repo.clone(),
+                pr.number
+            )),
             Some(crate::types::MergeableState::Behind | crate::types::MergeableState::Dirty)
         );
     let title_lines = u16::try_from(
@@ -825,7 +871,7 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
         Constraint::Length(3)
     };
 
-    let bar_runs = app.check_runs.as_deref().unwrap_or(&[]);
+    let bar_runs = app.repo_ctx.check_runs.as_deref().unwrap_or(&[]);
     let has_bar = !bar_runs.is_empty();
 
     let [header_area, body_area, checks_area] = Layout::vertical([
@@ -856,7 +902,11 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
         ));
         meta_line_spans.push(Span::raw("  "));
     }
-    match app.mergeable_states.get(&pr.number) {
+    match app
+        .repo_ctx
+        .mergeable_states
+        .get(&(detail_owner, detail_repo, pr.number))
+    {
         Some(crate::types::MergeableState::Behind) => {
             meta_line_spans.push(Span::styled("⟳ rebase  ", Style::new().fg(Color::Yellow)))
         }
@@ -902,8 +952,8 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
         header_area,
     );
 
-    let body_active = in_detail && app.detail_section == DetailSection::Body;
-    let checks_active = in_detail && app.detail_section == DetailSection::Checks;
+    let body_active = in_detail && app.repo_ctx.detail_section == DetailSection::Body;
+    let checks_active = in_detail && app.repo_ctx.detail_section == DetailSection::Checks;
 
     // Body section
     let body_style = if body_active {
@@ -925,8 +975,8 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
 
     draw_scrollable_body(
         f,
-        app.pr_body.as_ref(),
-        app.pr_body_scroll,
+        app.repo_ctx.pr_body.as_ref(),
+        app.repo_ctx.pr_body_scroll,
         body_inner,
         body_area,
     );
@@ -957,7 +1007,7 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
         f.render_widget(Paragraph::new(Line::from(spans)), bar_area);
     }
 
-    match &app.check_runs {
+    match &app.repo_ctx.check_runs {
         None => {
             f.render_widget(loading_placeholder(), list_area);
         }
@@ -979,10 +1029,10 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
             let list = List::new(items)
                 .highlight_style(list_highlight_style())
                 .highlight_symbol("▶ ");
-            f.render_stateful_widget(list, list_area, &mut app.check_runs_state);
+            f.render_stateful_widget(list, list_area, &mut app.repo_ctx.check_runs_state);
             if runs.len() > list_area.height as usize {
-                let mut sb =
-                    ScrollbarState::new(runs.len()).position(app.check_runs_state.offset());
+                let mut sb = ScrollbarState::new(runs.len())
+                    .position(app.repo_ctx.check_runs_state.offset());
                 f.render_stateful_widget(
                     Scrollbar::new(ScrollbarOrientation::VerticalRight),
                     checks_area,
@@ -1043,23 +1093,291 @@ fn view_tab_line(
     Line::from(spans)
 }
 
+fn repos_tab_line(current: ReposView, pr_count: usize, pr_has_more: bool) -> Line<'static> {
+    let key_active = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+    let key_dim = Style::new().fg(Color::DarkGray);
+    let label_active = Style::new().fg(Color::White).add_modifier(Modifier::BOLD);
+    let label_dim = Style::new().fg(Color::DarkGray);
+
+    let active = current == ReposView::PrList;
+    let pr_label = if pr_count > 0 {
+        let suffix = if pr_has_more { "+" } else { "" };
+        format!("·prs ({pr_count}{suffix})")
+    } else {
+        "·prs".to_string()
+    };
+
+    Line::from(vec![
+        Span::raw(" "),
+        Span::styled("r", if !active { key_active } else { key_dim }),
+        Span::styled("·repos", if !active { label_active } else { label_dim }),
+        Span::raw("  "),
+        Span::styled("p", if active { key_active } else { key_dim }),
+        Span::styled(pr_label, if active { label_active } else { label_dim }),
+        Span::raw(" "),
+    ])
+}
+
+pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
+    let focused = app.focus == Column::Repos;
+    let border_style = panel_focus(focused);
+
+    let loading_suffix = match &app.loading {
+        Some(LoadingKind::Prs) => " ⟳".to_string(),
+        Some(LoadingKind::Action(a)) => format!(" {a}…"),
+        _ => String::new(),
+    };
+    let source_name = app
+        .selected_source()
+        .map(|s| s.display().to_string())
+        .unwrap_or_default();
+    let pr_count_suffix = if app.filter_active || !app.source_ctx.source_pr_filter.is_empty() {
+        format!(
+            "  {}/{}",
+            app.visible_source_prs().len(),
+            app.source_ctx.source_prs.len()
+        )
+    } else {
+        String::new()
+    };
+    let base = format!(" {source_name}{loading_suffix}{pr_count_suffix} ");
+    let title = filter_title(
+        &base,
+        &app.source_ctx.source_pr_filter,
+        app.filter_active && app.focus == Column::Repos,
+        focused,
+    );
+
+    let block = panel_block(title, border_style).title_bottom(repos_tab_line(
+        ReposView::PrList,
+        app.source_ctx.source_prs.len(),
+        app.source_ctx.source_prs_pagination.has_more,
+    ));
+
+    // 4 = 2 borders + 2 highlight symbol chars
+    let inner_width = area.width.saturating_sub(4) as usize;
+
+    let age_col = 4usize;
+    // " " + rv + "  " = 4
+    let status_col = 1 + 1 + 2;
+    let diff_col: usize = 11; // "+9.9k -9.9k"
+    let time_col_w = 2 + age_col;
+    // right block: check(3) + rv(4) + diff(11) + updated(6) = 24
+    let right_col_width = 3 + status_col + diff_col + time_col_w;
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let [header_area, body_area] =
+        Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(inner);
+
+    // Header row
+    let header_style = Style::new()
+        .fg(Color::DarkGray)
+        .add_modifier(Modifier::BOLD);
+    let gap = inner_width.saturating_sub(right_col_width);
+    let header_line = Line::from(vec![
+        Span::raw("  "),
+        gap_span(gap),
+        Span::styled(
+            format!(
+                "  {ICON_CHECKLIST} {ICON_PR_HEADER}  {:<diff_col$}{:>time_col_w$}",
+                "±",
+                ICON_CLOCK_UPDATED,
+                diff_col = diff_col,
+                time_col_w = time_col_w,
+            ),
+            header_style,
+        ),
+    ]);
+    f.render_widget(Paragraph::new(header_line), header_area);
+
+    let visible_prs = app.visible_source_prs();
+
+    if visible_prs.is_empty() {
+        if app.loading.is_some() {
+            f.render_widget(loading_placeholder(), body_area);
+        } else if !app.source_ctx.source_pr_filter.is_empty() {
+            f.render_widget(dim_italic("no results"), body_area);
+        } else {
+            f.render_widget(dim_italic("(no open PRs)"), body_area);
+        }
+        return;
+    }
+
+    let owner = app.selected_source_owner().unwrap_or_default();
+
+    let items: Vec<ListItem> = visible_prs
+        .into_iter()
+        .map(|pr| {
+            let dimmed = pr.draft || pr.state == PrState::Closed;
+            let base_style = if dimmed {
+                Style::new().fg(Color::DarkGray)
+            } else {
+                item_style(focused)
+            };
+            let meta_style = Style::new().fg(Color::DarkGray);
+
+            let rv_cache_key = format!("{owner}/{}", pr.repo);
+            let rv_status = app
+                .review_cache
+                .get(&rv_cache_key)
+                .and_then(|m| m.get(&pr.number));
+            let (rv_sym, rv_col) = review_icon(
+                rv_status,
+                app.repo_ctx
+                    .mergeable_states
+                    .get(&(owner.clone(), pr.repo.clone(), pr.number)),
+            );
+
+            let updated_str = {
+                let upd = relative_time(&pr.updated_at);
+                format!("  {:>age_col$}", upd, age_col = age_col)
+            };
+
+            let repo_num = format!("{} #{}", pr.repo, pr.number);
+            let by_str = format!("by @{}", pr.author);
+            let left_w = repo_num.width() + 1 + by_str.width();
+            let gap = inner_width.saturating_sub(left_w + right_col_width);
+
+            let mut line1_spans = vec![
+                Span::styled(repo_num, base_style.add_modifier(Modifier::BOLD)),
+                Span::raw(" "),
+                Span::styled("by ", meta_style),
+                Span::styled(
+                    format!("@{}", pr.author),
+                    meta_style.add_modifier(Modifier::BOLD),
+                ),
+                gap_span(gap),
+            ];
+
+            let (chk_icon, chk_col) = app
+                .repo_ctx
+                .check_summary_cache
+                .get(&(owner.clone(), pr.repo.clone(), pr.number))
+                .map_or((super::ICON_DOT, Color::DarkGray), |s| {
+                    (s.icon(), s.color())
+                });
+            line1_spans.push(Span::raw("  "));
+            line1_spans.push(Span::styled(chk_icon, Style::new().fg(chk_col)));
+            line1_spans.extend([
+                Span::raw(" "),
+                Span::styled(rv_sym, Style::new().fg(rv_col)),
+                Span::raw("  "),
+            ]);
+
+            if pr.additions == 0 && pr.deletions == 0 {
+                line1_spans.push(Span::raw(format!("{:width$}", "", width = diff_col)));
+            } else {
+                let add_str = format!("+{}", fmt_stat(pr.additions));
+                let del_str = format!("-{}", fmt_stat(pr.deletions));
+                let content_w = add_str.len() + 1 + del_str.len();
+                let pad = diff_col.saturating_sub(content_w);
+                line1_spans.push(Span::styled(add_str, Style::new().fg(Color::Green)));
+                line1_spans.push(Span::raw(" "));
+                line1_spans.push(Span::styled(del_str, Style::new().fg(Color::Red)));
+                line1_spans.push(Span::raw(" ".repeat(pad)));
+            }
+            line1_spans.push(Span::styled(updated_str, meta_style));
+
+            let line1 = Line::from(line1_spans);
+
+            // Line 2: state icon + merge warning + title + labels
+            let state_icon = pr_state_icon(pr.draft, pr.state);
+            let state_col = if pr.draft {
+                Color::DarkGray
+            } else if pr.state == PrState::Closed {
+                Color::Red
+            } else {
+                Color::Green
+            };
+            let merge_state_w: usize = match app.repo_ctx.mergeable_states.get(&(
+                owner.clone(),
+                pr.repo.clone(),
+                pr.number,
+            )) {
+                Some(crate::types::MergeableState::Behind) => "⟳ rebase  ".width(),
+                Some(crate::types::MergeableState::Dirty) => "✖ conflicts  ".width(),
+                _ => 0,
+            };
+            let label_section_w: usize = if pr.labels.is_empty() {
+                0
+            } else {
+                2 + pr.labels.iter().map(|l| l.len() + 2).sum::<usize>()
+                    + pr.labels.len().saturating_sub(1)
+            };
+            let title2_budget = inner_width.saturating_sub(5 + merge_state_w + label_section_w);
+            let title2_text = truncate(&pr.title, title2_budget);
+
+            let mut line2_spans: Vec<Span> = vec![
+                Span::raw("  "),
+                Span::styled(state_icon, Style::new().fg(state_col)),
+                Span::raw(" "),
+            ];
+            match app
+                .repo_ctx
+                .mergeable_states
+                .get(&(owner.clone(), pr.repo.clone(), pr.number))
+            {
+                Some(crate::types::MergeableState::Behind) => {
+                    line2_spans.push(Span::styled("⟳ rebase  ", Style::new().fg(Color::Yellow)));
+                }
+                Some(crate::types::MergeableState::Dirty) => {
+                    line2_spans.push(Span::styled("✖ conflicts  ", Style::new().fg(Color::Red)));
+                }
+                _ => {}
+            }
+            line2_spans.push(Span::styled(title2_text, base_style));
+            if !pr.labels.is_empty() {
+                line2_spans.push(Span::raw("  "));
+                for (i, label) in pr.labels.iter().enumerate() {
+                    if i > 0 {
+                        line2_spans.push(Span::raw(" "));
+                    }
+                    line2_spans.push(Span::styled(
+                        format!("[{label}]"),
+                        Style::new().fg(Color::Green),
+                    ));
+                }
+            }
+            let line2 = Line::from(line2_spans);
+
+            ListItem::new(Text::from(vec![line1, line2]))
+        })
+        .collect();
+
+    let total = items.len();
+    let list = List::new(items)
+        .highlight_style(list_highlight_style())
+        .highlight_symbol("▶ ");
+
+    f.render_stateful_widget(list, body_area, &mut app.source_ctx.source_pr_state);
+    render_list_scrollbar(
+        f,
+        area,
+        total * 2,
+        body_area.height,
+        app.source_ctx.source_pr_state.offset(),
+    );
+}
+
 pub(super) fn draw_repo_frontpage(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     let repo_name = app.selected_repo().map(str::to_string).unwrap_or_default();
-    let scroll = app.repo_frontpage_scroll;
+    let scroll = app.repo_ctx.repo_frontpage_scroll;
     let border_style = active_style();
 
     let block = panel_block(format!(" {repo_name} "), border_style).title_bottom(view_tab_line(
         RepoView::Frontpage,
         app.selected_repo_has_issues(),
-        app.prs_raw.len(),
-        app.prs_pagination.has_more,
-        app.issues.len(),
-        app.issues_pagination.has_more,
+        app.repo_ctx.prs_raw.len(),
+        app.repo_ctx.prs_pagination.has_more,
+        app.repo_ctx.issues.len(),
+        app.repo_ctx.issues_pagination.has_more,
     ));
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let frontpage = app.repo_frontpage.clone();
+    let frontpage = app.repo_ctx.repo_frontpage.clone();
     match frontpage {
         None => {
             f.render_widget(loading_placeholder(), inner);
@@ -1128,10 +1446,10 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
     let block = panel_block(base, border_style).title_bottom(view_tab_line(
         RepoView::Issues,
         true,
-        app.prs_raw.len(),
-        app.prs_pagination.has_more,
-        app.issues.len(),
-        app.issues_pagination.has_more,
+        app.repo_ctx.prs_raw.len(),
+        app.repo_ctx.prs_pagination.has_more,
+        app.repo_ctx.issues.len(),
+        app.repo_ctx.issues_pagination.has_more,
     ));
 
     let inner = block.inner(area);
@@ -1153,6 +1471,7 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
     let inner_width = area.width.saturating_sub(4) as usize;
     let age_col = 4usize;
     let author_col = app
+        .repo_ctx
         .issues
         .iter()
         .map(|i| i.author.len())
@@ -1161,6 +1480,7 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
         .clamp(6, 20);
 
     let items: Vec<ListItem> = app
+        .repo_ctx
         .issues
         .iter()
         .map(|issue| {
@@ -1221,13 +1541,13 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
     let list = List::new(items)
         .highlight_style(list_highlight_style())
         .highlight_symbol("▶ ");
-    f.render_stateful_widget(list, body_area, &mut app.issue_state);
+    f.render_stateful_widget(list, body_area, &mut app.repo_ctx.issue_state);
     render_list_scrollbar(
         f,
         area,
         total * 2,
         body_area.height,
-        app.issue_state.offset(),
+        app.repo_ctx.issue_state.offset(),
     );
 }
 
@@ -1284,8 +1604,8 @@ pub(super) fn draw_issue_detail(f: &mut Frame, app: &mut App, area: ratatui::lay
 
     draw_scrollable_body(
         f,
-        app.issue_body.as_ref(),
-        app.issue_body_scroll,
+        app.repo_ctx.issue_body.as_ref(),
+        app.repo_ctx.issue_body_scroll,
         body_area,
         area,
     );

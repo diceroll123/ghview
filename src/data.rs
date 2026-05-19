@@ -171,7 +171,7 @@ pub async fn fetch_prs(org: &str, repo: &str, per_page: u32, page: u32) -> Resul
     let endpoint = format!(
         "repos/{org}/{repo}/pulls?state=open&per_page={per_page}&page={page}&sort=created&direction=desc"
     );
-    let jq = r#".[] | {number, title, login: .user.login, draft, state, created_at, updated_at, url: .html_url, requested_reviewers: ([.requested_reviewers[] | .login] + [.requested_teams[] | .slug]), labels: [.labels[].name], head_ref: .head.ref, base_ref: .base.ref, head_sha: .head.sha, comments: ((.comments // 0) + (.review_comments // 0))}"#;
+    let jq = r#".[] | {number, title, author: .user.login, draft, state, created_at, updated_at, url: .html_url, requested_reviewers: ([.requested_reviewers[] | .login] + [.requested_teams[] | .slug]), labels: [.labels[].name], head_ref: .head.ref, base_ref: .base.ref, head_sha: .head.sha, comments: ((.comments // 0) + (.review_comments // 0))}"#;
     let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
     let mut prs = Vec::new();
     let mut first_err: Option<String> = None;
@@ -190,6 +190,44 @@ pub async fn fetch_prs(org: &str, repo: &str, per_page: u32, page: u32) -> Resul
         bail!("{err}");
     }
     debug!("fetch_prs: {org}/{repo} page={page} -> {} prs", prs.len());
+    Ok(prs)
+}
+
+pub async fn fetch_source_prs(
+    owner: &str,
+    is_org: bool,
+    per_page: u32,
+    page: u32,
+) -> Result<Vec<PR>> {
+    debug!("fetch_source_prs: {owner} is_org={is_org} per_page={per_page} page={page}");
+    let per_page = per_page.clamp(1, 100);
+    let scope = if is_org {
+        format!("org:{owner}")
+    } else {
+        format!("user:{owner}")
+    };
+    let endpoint = format!(
+        "search/issues?q=is:pr+is:open+{scope}&sort=created&order=desc&per_page={per_page}&page={page}"
+    );
+    let jq = r#".items[] | {number, title, author: .user.login, state, created_at, updated_at, url: .html_url, labels: [.labels[].name], comments: ((.comments // 0)), repo: (.repository_url | split("/") | .[-1])}"#;
+    let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
+    let mut prs = Vec::new();
+    let mut first_err: Option<String> = None;
+    for line in raw.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str::<PR>(line) {
+            Ok(pr) => prs.push(pr),
+            Err(e) if first_err.is_none() => {
+                first_err = Some(format!("parse error: {e}\nraw: {line}"));
+            }
+            _ => {}
+        }
+    }
+    if prs.is_empty()
+        && let Some(err) = first_err
+    {
+        bail!("{err}");
+    }
+    debug!("fetch_source_prs: {owner} page={page} -> {} prs", prs.len());
     Ok(prs)
 }
 
@@ -436,16 +474,17 @@ pub async fn fetch_pr_body(
     owner: &str,
     repo: &str,
     pr_number: u64,
-) -> Result<(String, crate::types::MergeableState, u32, u32)> {
+) -> Result<(String, crate::types::MergeableState, u32, u32, String)> {
     debug!("fetch_pr_body: {owner}/{repo}#{pr_number}");
     let endpoint = format!("repos/{owner}/{repo}/pulls/{pr_number}");
-    let raw = gh_run(&["api", &endpoint, "--jq", r#"{body: (.body // ""), mergeable_state: (.mergeable_state // "unknown"), additions: (.additions // 0), deletions: (.deletions // 0)}"#]).await?;
+    let raw = gh_run(&["api", &endpoint, "--jq", r#"{body: (.body // ""), mergeable_state: (.mergeable_state // "unknown"), additions: (.additions // 0), deletions: (.deletions // 0), head_sha: .head.sha}"#]).await?;
     #[derive(serde::Deserialize)]
     struct Resp {
         body: String,
         mergeable_state: crate::types::MergeableState,
         additions: u32,
         deletions: u32,
+        head_sha: String,
     }
     let resp: Resp = serde_json::from_str(&raw).context("parse pr body response")?;
     Ok((
@@ -453,6 +492,7 @@ pub async fn fetch_pr_body(
         resp.mergeable_state,
         resp.additions,
         resp.deletions,
+        resp.head_sha,
     ))
 }
 

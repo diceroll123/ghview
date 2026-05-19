@@ -50,7 +50,7 @@ pub struct CacheConfig {
 pub struct UiConfig {
     /// Milliseconds between UI ticks.
     pub tick_ms: u64,
-    /// Default sort for the repos column: "`recently_updated`" (default) or "alphabetical".
+    /// Default sort for the Browse column: "`recently_updated`" (default) or "alphabetical".
     pub repo_sort: crate::types::RepoSortKey,
     /// Max repos to fetch per source (1–100).
     pub repos_limit: u32,
@@ -64,6 +64,8 @@ pub struct UiConfig {
     pub pr_columns: Vec<crate::types::PrColumn>,
     /// Default view when entering a repo: "frontpage" (default), "prs", or "issues".
     pub default_repo_view: crate::types::RepoView,
+    /// Default view for the Browse column: "repos" (default) or "prs".
+    pub default_repos_view: crate::types::ReposView,
     /// Items per page when fetching lists. 0 = dynamic (terminal_height × 1.5). Max 100.
     pub per_page: u32,
     /// Merge method used by the `m` keybinding: "squash", "merge", or "rebase".
@@ -77,7 +79,7 @@ pub struct UiConfig {
 pub struct KeybindingsConfig {
     /// Keybindings active in every column. Can override defaults.
     pub universal: Vec<Keybinding>,
-    /// Keybindings active when the Repos column is focused.
+    /// Keybindings active when the Browse column is focused.
     pub repos: Vec<Keybinding>,
     /// Keybindings active when the PRs column is focused.
     pub prs: Vec<Keybinding>,
@@ -232,6 +234,7 @@ impl Default for UiConfig {
                 crate::types::PrColumn::Age,
             ],
             default_repo_view: crate::types::RepoView::default(),
+            default_repos_view: crate::types::ReposView::default(),
             per_page: 0,
             merge_method: MergeMethod::default(),
             prefetch_pr_details: true,
@@ -357,6 +360,7 @@ mod tests {
             additions: 0,
             deletions: 0,
             comments: 0,
+            repo: String::new(),
         }
     }
 

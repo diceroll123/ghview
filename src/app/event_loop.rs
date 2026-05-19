@@ -1,7 +1,7 @@
 use super::App;
 use crate::{
     keys::{Action, builtin_to_action, map_key_checks, map_key_prs, map_key_universal},
-    types::{Column, DataMsg, DetailSection, RepoView},
+    types::{Column, DataMsg, DetailSection, RepoView, ReposView},
     ui::draw,
 };
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
@@ -68,9 +68,27 @@ pub async fn run_event_loop(
                 }
 
                 if app.focus == Column::Detail && key.code == KeyCode::Tab
-                    && app.repo_view == RepoView::Prs {
+                    && (app.repo_view == RepoView::Prs || app.repos_view == ReposView::PrList) {
                     app.detail_tab();
                     continue;
+                }
+
+                // View switching in the Browse column (p = PR list, r = repo list).
+                if app.focus == Column::Repos {
+                    match key.code {
+                        KeyCode::Char('p') => {
+                            app.repos_view = ReposView::PrList;
+                            if app.source_ctx.source_prs.is_empty() {
+                                app.trigger_load_source_prs();
+                            }
+                            continue;
+                        }
+                        KeyCode::Char('r') if app.repos_view == ReposView::PrList => {
+                            app.repos_view = ReposView::RepoList;
+                            continue;
+                        }
+                        _ => {}
+                    }
                 }
 
                 // View switching when in repo workspace (f/p/i).
@@ -147,7 +165,7 @@ pub async fn run_event_loop(
                 // 2. Column user keybindings — Checks config before checks defaults.
                 // Also apply checks defaults here (before universal defaults) so that
                 // Enter/l open the selected check rather than triggering the universal Right action.
-                if app.focus == Column::Detail && app.detail_section == DetailSection::Checks {
+                if app.focus == Column::Detail && app.repo_ctx.detail_section == DetailSection::Checks {
                     let kb = app.config.keybindings.checks.iter().find(|kb| kb.matches(key)).cloned();
                     if let Some(kb) = kb {
                         if let Some(action) = kb.builtin.as_deref().and_then(builtin_to_action) {

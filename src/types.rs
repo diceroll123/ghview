@@ -62,7 +62,6 @@ pub enum MergeableState {
 pub struct PR {
     pub number: u64,
     pub title: String,
-    #[serde(rename = "login")]
     pub author: String,
     #[serde(default)]
     pub draft: bool,
@@ -88,6 +87,9 @@ pub struct PR {
     pub deletions: u32,
     #[serde(default)]
     pub comments: u32,
+    /// Populated for source-level PR lists; empty for per-repo lists.
+    #[serde(default)]
+    pub repo: String,
 }
 
 /// A source in the leftmost column — either the current user or an org.
@@ -128,6 +130,15 @@ pub enum RepoView {
     #[default]
     Prs,
     Issues,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Default)]
+pub enum ReposView {
+    #[default]
+    #[serde(rename = "repos")]
+    RepoList,
+    #[serde(rename = "prs")]
+    PrList,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -434,6 +445,16 @@ pub enum DataMsg {
         owner: String,
         repo: String,
         can_push: bool,
+    },
+    SourcePrs {
+        owner: String,
+        prs: Vec<PR>,
+        has_more: bool,
+    },
+    MoreSourcePrs {
+        owner: String,
+        prs: Vec<PR>,
+        has_more: bool,
     },
     ActionDone(Option<String>),
     Error(String),

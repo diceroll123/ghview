@@ -24,7 +24,7 @@ pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout
     let hint_width = area.width.saturating_sub(rl_width) as usize;
 
     let (hint, hint_color, hint_align): (Cow<'a, str>, Color, Alignment) =
-        if app.diff_view.is_some() {
+        if app.repo_ctx.diff_view.is_some() {
             (
                 Cow::Borrowed(DIFF_HINT_TEXT),
                 Color::DarkGray,
@@ -113,7 +113,7 @@ fn hint_entries(app: &App, width: usize) -> String {
             RepoView::Issues => ISSUES_BAR,
         },
         Column::Detail => {
-            if app.detail_section == DetailSection::Checks {
+            if app.repo_ctx.detail_section == DetailSection::Checks {
                 CHECKS_BAR
             } else {
                 PRS_BAR
@@ -138,7 +138,7 @@ fn hint_entries(app: &App, width: usize) -> String {
             _ => &[],
         },
         Column::Detail => {
-            if app.detail_section == DetailSection::Checks {
+            if app.repo_ctx.detail_section == DetailSection::Checks {
                 &app.config.keybindings.checks
             } else {
                 &app.config.keybindings.prs

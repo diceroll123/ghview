@@ -1,5 +1,5 @@
 use super::App;
-use crate::types::{Column, DetailSection, RepoView};
+use crate::types::{Column, DetailSection, RepoView, ReposView};
 use ratatui::widgets::ListState;
 
 fn clamp_list_state(state: &mut ListState, len: usize) {
@@ -48,22 +48,25 @@ impl App {
 
     pub(crate) fn clamp_repo_selection(&mut self) {
         let len = self.visible_repos().len();
-        clamp_list_state(&mut self.repo_state, len);
+        clamp_list_state(&mut self.source_ctx.repo_state, len);
+    }
+
+    pub(crate) fn clamp_source_pr_selection(&mut self) {
+        let len = self.visible_source_prs().len();
+        clamp_list_state(&mut self.source_ctx.source_pr_state, len);
     }
 
     fn on_source_changed(&mut self) {
-        self.repo_filter.clear();
-        self.pr_filter.clear();
-        self.repo_state = ListState::default();
-        self.pr_state = ListState::default();
-        self.issue_state = ListState::default();
+        self.invalidate_source();
         self.trigger_load_repos();
+        if self.repos_view == ReposView::PrList {
+            self.trigger_load_source_prs();
+        }
     }
 
     fn on_repo_changed(&mut self) {
         self.pr_filter.clear();
-        self.pr_state = ListState::default();
-        self.issue_state = ListState::default();
+        self.invalidate_repo();
         self.trigger_load_prs();
     }
 
@@ -75,38 +78,53 @@ impl App {
                     self.on_source_changed();
                 }
             }
-            Column::Repos => {
-                let len = self.visible_repos().len();
-                if self.repo_state.nav_prev(len) {
-                    self.on_repo_changed();
+            Column::Repos => match self.repos_view {
+                ReposView::RepoList => {
+                    let len = self.visible_repos().len();
+                    if self.source_ctx.repo_state.nav_prev(len) {
+                        self.on_repo_changed();
+                    }
                 }
-            }
+                ReposView::PrList => {
+                    let len = self.visible_source_prs().len();
+                    if self.source_ctx.source_pr_state.nav_prev(len) {
+                        self.trigger_load_pr_body();
+                    }
+                }
+            },
             Column::Repo => match self.repo_view {
                 RepoView::Frontpage => {
-                    self.repo_frontpage_scroll = self.repo_frontpage_scroll.saturating_sub(1);
+                    self.repo_ctx.repo_frontpage_scroll =
+                        self.repo_ctx.repo_frontpage_scroll.saturating_sub(1);
                 }
                 RepoView::Prs => {
-                    if self.pr_state.nav_prev(self.prs.len()) {
+                    if self.repo_ctx.pr_state.nav_prev(self.repo_ctx.prs.len()) {
                         self.trigger_load_pr_body();
                     }
                 }
                 RepoView::Issues => {
-                    if self.issue_state.nav_prev(self.issues.len()) {
+                    if self
+                        .repo_ctx
+                        .issue_state
+                        .nav_prev(self.repo_ctx.issues.len())
+                    {
                         self.trigger_load_issue_body();
                     }
                 }
             },
             Column::Detail => match self.repo_view {
                 RepoView::Issues => {
-                    self.issue_body_scroll = self.issue_body_scroll.saturating_sub(1);
+                    self.repo_ctx.issue_body_scroll =
+                        self.repo_ctx.issue_body_scroll.saturating_sub(1);
                 }
-                _ => match self.detail_section {
+                _ => match self.repo_ctx.detail_section {
                     DetailSection::Body => {
-                        self.pr_body_scroll = self.pr_body_scroll.saturating_sub(1);
+                        self.repo_ctx.pr_body_scroll =
+                            self.repo_ctx.pr_body_scroll.saturating_sub(1);
                     }
                     DetailSection::Checks => {
-                        let len = self.check_runs.as_ref().map_or(0, Vec::len);
-                        self.check_runs_state.nav_prev(len);
+                        let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
+                        self.repo_ctx.check_runs_state.nav_prev(len);
                     }
                 },
             },
@@ -121,24 +139,39 @@ impl App {
                     self.on_source_changed();
                 }
             }
-            Column::Repos => {
-                let len = self.visible_repos().len();
-                let at_last = len > 0 && self.repo_state.selected() == Some(len - 1);
-                if self.repo_state.nav_next(len) {
-                    self.on_repo_changed();
+            Column::Repos => match self.repos_view {
+                ReposView::RepoList => {
+                    let len = self.visible_repos().len();
+                    let at_last = len > 0 && self.source_ctx.repo_state.selected() == Some(len - 1);
+                    if self.source_ctx.repo_state.nav_next(len) {
+                        self.on_repo_changed();
+                    }
+                    if at_last && self.source_ctx.repo_filter.is_empty() {
+                        self.trigger_load_more_repos();
+                    }
                 }
-                if at_last && self.repo_filter.is_empty() {
-                    self.trigger_load_more_repos();
+                ReposView::PrList => {
+                    let len = self.visible_source_prs().len();
+                    let at_last = len > 0
+                        && self.source_ctx.source_pr_state.selected() == Some(len - 1)
+                        && self.source_ctx.source_pr_filter.is_empty();
+                    if self.source_ctx.source_pr_state.nav_next(len) {
+                        self.trigger_load_pr_body();
+                    }
+                    if at_last {
+                        self.trigger_load_more_source_prs();
+                    }
                 }
-            }
+            },
             Column::Repo => match self.repo_view {
                 RepoView::Frontpage => {
-                    self.repo_frontpage_scroll = self.repo_frontpage_scroll.saturating_add(1);
+                    self.repo_ctx.repo_frontpage_scroll =
+                        self.repo_ctx.repo_frontpage_scroll.saturating_add(1);
                 }
                 RepoView::Prs => {
-                    let len = self.prs.len();
-                    let at_last = len > 0 && self.pr_state.selected() == Some(len - 1);
-                    if self.pr_state.nav_next(len) {
+                    let len = self.repo_ctx.prs.len();
+                    let at_last = len > 0 && self.repo_ctx.pr_state.selected() == Some(len - 1);
+                    if self.repo_ctx.pr_state.nav_next(len) {
                         self.trigger_load_pr_body();
                     }
                     if at_last && self.pr_filter.is_empty() {
@@ -146,9 +179,9 @@ impl App {
                     }
                 }
                 RepoView::Issues => {
-                    let len = self.issues.len();
-                    let at_last = len > 0 && self.issue_state.selected() == Some(len - 1);
-                    if self.issue_state.nav_next(len) {
+                    let len = self.repo_ctx.issues.len();
+                    let at_last = len > 0 && self.repo_ctx.issue_state.selected() == Some(len - 1);
+                    if self.repo_ctx.issue_state.nav_next(len) {
                         self.trigger_load_issue_body();
                     }
                     if at_last {
@@ -158,15 +191,17 @@ impl App {
             },
             Column::Detail => match self.repo_view {
                 RepoView::Issues => {
-                    self.issue_body_scroll = self.issue_body_scroll.saturating_add(1);
+                    self.repo_ctx.issue_body_scroll =
+                        self.repo_ctx.issue_body_scroll.saturating_add(1);
                 }
-                _ => match self.detail_section {
+                _ => match self.repo_ctx.detail_section {
                     DetailSection::Body => {
-                        self.pr_body_scroll = self.pr_body_scroll.saturating_add(1);
+                        self.repo_ctx.pr_body_scroll =
+                            self.repo_ctx.pr_body_scroll.saturating_add(1);
                     }
                     DetailSection::Checks => {
-                        let len = self.check_runs.as_ref().map_or(0, Vec::len);
-                        self.check_runs_state.nav_next(len);
+                        let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
+                        self.repo_ctx.check_runs_state.nav_next(len);
                     }
                 },
             },
@@ -177,7 +212,13 @@ impl App {
         match self.focus {
             Column::Repos => self.focus = Column::Sources,
             Column::Repo => self.focus = Column::Repos,
-            Column::Detail => self.focus = Column::Repo,
+            Column::Detail => {
+                if self.repos_view == ReposView::PrList {
+                    self.focus = Column::Repos;
+                } else {
+                    self.focus = Column::Repo;
+                }
+            }
             Column::Sources => {}
         }
     }
@@ -187,41 +228,59 @@ impl App {
             Column::Sources => {
                 if self.selected_source().is_some() {
                     self.focus = Column::Repos;
-                    if self.repos.is_empty() {
+                    if self.source_ctx.repos.is_empty() {
                         self.trigger_load_repos();
                     }
                 }
             }
-            Column::Repos => {
-                if self.selected_repo().is_some() {
-                    self.focus = Column::Repo;
-                    self.repo_view = self.config.ui.default_repo_view;
-                    self.pr_body_scroll = 0;
-                    self.issue_body_scroll = 0;
-                    self.repo_frontpage_scroll = 0;
-                    self.dispatch_repo_view_trigger();
+            Column::Repos => match self.repos_view {
+                ReposView::RepoList => {
+                    if self.selected_repo().is_some() {
+                        self.focus = Column::Repo;
+                        self.repo_view = self.config.ui.default_repo_view;
+                        self.repo_ctx.pr_body_scroll = 0;
+                        self.repo_ctx.issue_body_scroll = 0;
+                        self.repo_ctx.repo_frontpage_scroll = 0;
+                        self.dispatch_repo_view_trigger();
+                    }
                 }
-            }
+                ReposView::PrList => {
+                    if self
+                        .source_ctx
+                        .source_pr_state
+                        .selected()
+                        .and_then(|i| self.source_ctx.source_prs.get(i))
+                        .is_some()
+                    {
+                        self.focus = Column::Detail;
+                        self.repo_view = crate::types::RepoView::Prs;
+                        self.repo_ctx.detail_section = DetailSection::Body;
+                        self.repo_ctx.pr_body_scroll = 0;
+                        self.repo_ctx.check_runs_state = Default::default();
+                        self.trigger_load_pr_body();
+                    }
+                }
+            },
             Column::Repo => match self.repo_view {
                 RepoView::Frontpage => {}
                 RepoView::Prs => {
                     if self.selected_pr().is_some() {
                         self.focus = Column::Detail;
-                        self.detail_section = if self.pr_body_focusable() {
+                        self.repo_ctx.detail_section = if self.pr_body_focusable() {
                             DetailSection::Body
                         } else if self.checks_focusable() {
                             DetailSection::Checks
                         } else {
                             DetailSection::Body
                         };
-                        self.pr_body_scroll = 0;
-                        self.check_runs_state = ListState::default();
+                        self.repo_ctx.pr_body_scroll = 0;
+                        self.repo_ctx.check_runs_state = Default::default();
                     }
                 }
                 RepoView::Issues => {
                     if self.selected_issue().is_some() {
                         self.focus = Column::Detail;
-                        self.issue_body_scroll = 0;
+                        self.repo_ctx.issue_body_scroll = 0;
                     }
                 }
             },
@@ -233,7 +292,7 @@ impl App {
         if self.focus != Column::Detail {
             return;
         }
-        self.detail_section = match self.detail_section {
+        self.repo_ctx.detail_section = match self.repo_ctx.detail_section {
             DetailSection::Body if self.checks_focusable() => DetailSection::Checks,
             DetailSection::Body => DetailSection::Body,
             DetailSection::Checks if self.pr_body_focusable() => DetailSection::Body,
@@ -248,38 +307,45 @@ impl App {
                     self.on_source_changed();
                 }
             }
-            Column::Repos => {
-                if !self.visible_repos().is_empty() && self.repo_state.select_changed(Some(0)) {
-                    self.on_repo_changed();
+            Column::Repos => match self.repos_view {
+                ReposView::RepoList => {
+                    if !self.visible_repos().is_empty()
+                        && self.source_ctx.repo_state.select_changed(Some(0))
+                    {
+                        self.on_repo_changed();
+                    }
                 }
-            }
+                ReposView::PrList => {
+                    self.source_ctx.source_pr_state.select(Some(0));
+                }
+            },
             Column::Repo => match self.repo_view {
                 RepoView::Frontpage => {
-                    self.repo_frontpage_scroll = 0;
+                    self.repo_ctx.repo_frontpage_scroll = 0;
                 }
                 RepoView::Prs => {
-                    if !self.prs.is_empty() {
-                        self.pr_state.select(Some(0));
+                    if !self.repo_ctx.prs.is_empty() {
+                        self.repo_ctx.pr_state.select(Some(0));
                         self.trigger_load_pr_body();
                     }
                 }
                 RepoView::Issues => {
-                    if !self.issues.is_empty() {
-                        self.issue_state.select(Some(0));
+                    if !self.repo_ctx.issues.is_empty() {
+                        self.repo_ctx.issue_state.select(Some(0));
                         self.trigger_load_issue_body();
                     }
                 }
             },
             Column::Detail => match self.repo_view {
                 RepoView::Issues => {
-                    self.issue_body_scroll = 0;
+                    self.repo_ctx.issue_body_scroll = 0;
                 }
-                _ => match self.detail_section {
+                _ => match self.repo_ctx.detail_section {
                     DetailSection::Body => {
-                        self.pr_body_scroll = 0;
+                        self.repo_ctx.pr_body_scroll = 0;
                     }
                     DetailSection::Checks => {
-                        self.check_runs_state.select(Some(0));
+                        self.repo_ctx.check_runs_state.select(Some(0));
                     }
                 },
             },
@@ -294,41 +360,53 @@ impl App {
                     self.on_source_changed();
                 }
             }
-            Column::Repos => {
-                let len = self.visible_repos().len();
-                if len > 0 && self.repo_state.select_changed(Some(len - 1)) {
-                    self.on_repo_changed();
+            Column::Repos => match self.repos_view {
+                ReposView::RepoList => {
+                    let len = self.visible_repos().len();
+                    if len > 0 && self.source_ctx.repo_state.select_changed(Some(len - 1)) {
+                        self.on_repo_changed();
+                    }
                 }
-            }
+                ReposView::PrList => {
+                    let len = self.source_ctx.source_prs.len();
+                    if len > 0 {
+                        self.source_ctx.source_pr_state.select(Some(len - 1));
+                    }
+                }
+            },
             Column::Repo => match self.repo_view {
                 RepoView::Frontpage => {
-                    self.repo_frontpage_scroll = u16::MAX;
+                    self.repo_ctx.repo_frontpage_scroll = u16::MAX;
                 }
                 RepoView::Prs => {
-                    if !self.prs.is_empty() {
-                        self.pr_state.select(Some(self.prs.len() - 1));
+                    if !self.repo_ctx.prs.is_empty() {
+                        self.repo_ctx
+                            .pr_state
+                            .select(Some(self.repo_ctx.prs.len() - 1));
                         self.trigger_load_pr_body();
                     }
                 }
                 RepoView::Issues => {
-                    if !self.issues.is_empty() {
-                        self.issue_state.select(Some(self.issues.len() - 1));
+                    if !self.repo_ctx.issues.is_empty() {
+                        self.repo_ctx
+                            .issue_state
+                            .select(Some(self.repo_ctx.issues.len() - 1));
                         self.trigger_load_issue_body();
                     }
                 }
             },
             Column::Detail => match self.repo_view {
                 RepoView::Issues => {
-                    self.issue_body_scroll = u16::MAX;
+                    self.repo_ctx.issue_body_scroll = u16::MAX;
                 }
-                _ => match self.detail_section {
+                _ => match self.repo_ctx.detail_section {
                     DetailSection::Body => {
-                        self.pr_body_scroll = u16::MAX;
+                        self.repo_ctx.pr_body_scroll = u16::MAX;
                     }
                     DetailSection::Checks => {
-                        let len = self.check_runs.as_ref().map_or(0, Vec::len);
+                        let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
                         if len > 0 {
-                            self.check_runs_state.select(Some(len - 1));
+                            self.repo_ctx.check_runs_state.select(Some(len - 1));
                         }
                     }
                 },

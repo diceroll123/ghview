@@ -80,7 +80,7 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
     let left_sections: Vec<(&str, Vec<(String, String)>)> = vec![
         ("\u{f14e}  Navigation", bar_entries(NAV_ACTIONS)),
         ("\u{f0c0}  Sources", bar_entries(SOURCES_BAR)),
-        ("\u{e702}  Repos", bar_entries(REPOS_BAR)),
+        ("\u{e702}  Browse", bar_entries(REPOS_BAR)),
     ];
     let mut right_sections: Vec<(&str, Vec<(String, String)>)> = vec![
         ("\u{f407}  PRs", pr_entries),
@@ -90,7 +90,7 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
         right_sections.push(("\u{f013}  Universal (custom)", custom_kv(&kb.universal)));
     }
     if !kb.repos.is_empty() {
-        right_sections.push(("\u{f013}  Repos (custom)", custom_kv(&kb.repos)));
+        right_sections.push(("\u{f013}  Browse (custom)", custom_kv(&kb.repos)));
     }
     if !kb.prs.is_empty() {
         right_sections.push(("\u{f013}  PRs (custom)", custom_kv(&kb.prs)));
@@ -189,7 +189,9 @@ pub(super) fn draw_dependabot_menu(f: &mut Frame, area: Rect) {
 
 pub(super) fn draw_diff(f: &mut Frame, app: &App, area: Rect) {
     use ratatui::text::Line;
-    let Some(diff) = &app.diff_view else { return };
+    let Some(diff) = &app.repo_ctx.diff_view else {
+        return;
+    };
     let block = Block::default()
         .title(format!(" diff: {} ", diff.title))
         .borders(Borders::ALL)
