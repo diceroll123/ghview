@@ -1,9 +1,9 @@
 use super::{
-    ICON_ARCHIVE, ICON_BUG, ICON_CHECK_FAIL, ICON_CHECK_PASS, ICON_CHECK_PENDING, ICON_CHECKLIST,
-    ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_COMMENT, ICON_DOT, ICON_FORK, ICON_ISSUE_OPEN, ICON_LOCK,
-    ICON_ORG, ICON_ORG_GLYPH, ICON_PR_CLOSED, ICON_PR_HEADER, ICON_REPO_GLYPH, ICON_STAR,
-    ICON_USER, ICON_USER_GLYPH, active_style, filter_title, inactive_style, item_style, lang_icon,
-    panel_focus, pr_state_icon, relative_time, render_list_scrollbar, review_icon, truncate,
+    ICON_ARCHIVE, ICON_BUG, ICON_CHECKLIST, ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_COMMENT, ICON_DOT,
+    ICON_FORK, ICON_ISSUE_OPEN, ICON_LOCK, ICON_ORG, ICON_ORG_GLYPH, ICON_PR_CLOSED,
+    ICON_PR_HEADER, ICON_REPO_GLYPH, ICON_STAR, ICON_USER, ICON_USER_GLYPH, StatusLike,
+    active_style, filter_title, inactive_style, item_style, lang_icon, panel_focus, pr_state_icon,
+    relative_time, render_list_scrollbar, review_icon, truncate,
 };
 use crate::{
     app::App,
@@ -543,12 +543,10 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
                 ));
             }
             if show_check_summary {
-                let (icon, color) = match app.check_summary_cache.get(&pr.number) {
-                    Some(CheckStatus::Passing) => (ICON_CHECK_PASS, Color::Green),
-                    Some(CheckStatus::Failing) => (ICON_CHECK_FAIL, Color::Red),
-                    Some(CheckStatus::Pending) => (ICON_CHECK_PENDING, Color::Yellow),
-                    Some(CheckStatus::Unknown) | None => (ICON_DOT, Color::DarkGray),
-                };
+                let (icon, color) = app
+                    .check_summary_cache
+                    .get(&pr.number)
+                    .map_or((ICON_DOT, Color::DarkGray), |s| (s.icon(), s.color()));
                 line1_spans.push(Span::raw("  "));
                 line1_spans.push(Span::styled(icon, Style::new().fg(color)));
             }
@@ -967,12 +965,7 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
             let items: Vec<ListItem> = runs
                 .iter()
                 .map(|run| {
-                    let (icon, color) = match run.status {
-                        CheckStatus::Passing => (ICON_CHECK_PASS, Color::Green),
-                        CheckStatus::Failing => (ICON_CHECK_FAIL, Color::Red),
-                        CheckStatus::Pending => (ICON_CHECK_PENDING, Color::Yellow),
-                        CheckStatus::Unknown => (ICON_DOT, Color::DarkGray),
-                    };
+                    let (icon, color) = (run.status.icon(), run.status.color());
                     Line::from(vec![
                         Span::styled(format!("{icon} "), Style::new().fg(color)),
                         Span::styled(run.name.clone(), Style::new().fg(Color::White)),

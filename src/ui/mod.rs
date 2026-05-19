@@ -245,17 +245,57 @@ pub(super) fn lang_icon(lang: Option<&str>) -> &'static str {
     }
 }
 
-#[inline]
-pub(super) const fn review_icon(
-    status: Option<&crate::types::ReviewStatus>,
-) -> (&'static str, Color) {
-    use crate::types::ReviewStatus;
-    match status {
-        Some(ReviewStatus::Approved) => (ICON_REVIEW_APPROVED, Color::Green),
-        Some(ReviewStatus::ChangesRequested) => (ICON_REVIEW_CHANGES, Color::Red),
-        Some(ReviewStatus::Pending) => (ICON_REVIEW_PENDING, Color::DarkGray),
-        Some(ReviewStatus::Unknown) | None => (ICON_DOT, Color::DarkGray),
+pub(super) trait StatusLike: Copy {
+    fn icon(self) -> &'static str;
+    fn color(self) -> Color;
+}
+
+impl StatusLike for crate::types::CheckStatus {
+    fn icon(self) -> &'static str {
+        use crate::types::CheckStatus;
+        match self {
+            CheckStatus::Passing => ICON_CHECK_PASS,
+            CheckStatus::Failing => ICON_CHECK_FAIL,
+            CheckStatus::Pending => ICON_CHECK_PENDING,
+            CheckStatus::Unknown => ICON_DOT,
+        }
     }
+
+    fn color(self) -> Color {
+        use crate::types::CheckStatus;
+        match self {
+            CheckStatus::Passing => Color::Green,
+            CheckStatus::Failing => Color::Red,
+            CheckStatus::Pending => Color::Yellow,
+            CheckStatus::Unknown => Color::DarkGray,
+        }
+    }
+}
+
+impl StatusLike for crate::types::ReviewStatus {
+    fn icon(self) -> &'static str {
+        use crate::types::ReviewStatus;
+        match self {
+            ReviewStatus::Approved => ICON_REVIEW_APPROVED,
+            ReviewStatus::ChangesRequested => ICON_REVIEW_CHANGES,
+            ReviewStatus::Pending => ICON_REVIEW_PENDING,
+            ReviewStatus::Unknown => ICON_DOT,
+        }
+    }
+
+    fn color(self) -> Color {
+        use crate::types::ReviewStatus;
+        match self {
+            ReviewStatus::Approved => Color::Green,
+            ReviewStatus::ChangesRequested => Color::Red,
+            ReviewStatus::Pending | ReviewStatus::Unknown => Color::DarkGray,
+        }
+    }
+}
+
+#[inline]
+pub(super) fn review_icon(status: Option<&crate::types::ReviewStatus>) -> (&'static str, Color) {
+    status.map_or((ICON_DOT, Color::DarkGray), |s| (s.icon(), s.color()))
 }
 
 #[inline]
