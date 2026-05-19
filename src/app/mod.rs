@@ -4,6 +4,36 @@ mod triggers;
 
 pub use event_loop::{InteractiveCmd, InteractiveKind, run_event_loop};
 
+#[derive(Debug, Default)]
+pub struct PaginationState {
+    pub page: u32,
+    pub has_more: bool,
+    pub fetching_more: bool,
+}
+
+impl PaginationState {
+    pub fn can_load_more(&self) -> bool {
+        !self.fetching_more && self.has_more
+    }
+
+    pub fn begin_fetch(&mut self) -> u32 {
+        self.page += 1;
+        self.fetching_more = true;
+        self.page
+    }
+
+    pub fn reset(&mut self, has_more: bool) {
+        self.page = 1;
+        self.has_more = has_more;
+        self.fetching_more = false;
+    }
+
+    pub fn finish(&mut self, has_more: bool) {
+        self.has_more = has_more;
+        self.fetching_more = false;
+    }
+}
+
 use crate::{
     config::Config,
     keys::Action,
@@ -46,9 +76,7 @@ pub struct App {
     pub repo_state: ListState,
     pub repo_filter: String,
 
-    pub repos_page: u32,
-    pub repos_has_more: bool,
-    pub repos_fetching_more: bool,
+    pub repos_pagination: PaginationState,
     pub repo_cache: HashMap<String, (Instant, Vec<Repo>)>,
 
     pub prs_raw: Vec<PR>,
@@ -86,13 +114,8 @@ pub struct App {
     pub repo_frontpage: Option<(String, String)>,
     pub repo_frontpage_scroll: u16,
 
-    pub prs_page: u32,
-    pub prs_has_more: bool,
-    pub prs_fetching_more: bool,
-
-    pub issues_page: u32,
-    pub issues_has_more: bool,
-    pub issues_fetching_more: bool,
+    pub prs_pagination: PaginationState,
+    pub issues_pagination: PaginationState,
 
     pub issues: Vec<Issue>,
     pub issue_state: ListState,
@@ -157,16 +180,10 @@ impl App {
             pr_body: None,
             repo_frontpage: None,
             repo_frontpage_scroll: 0,
-            repos_page: 1,
-            repos_has_more: false,
-            repos_fetching_more: false,
+            repos_pagination: PaginationState::default(),
             repo_cache: HashMap::new(),
-            prs_page: 1,
-            prs_has_more: false,
-            prs_fetching_more: false,
-            issues_page: 1,
-            issues_has_more: false,
-            issues_fetching_more: false,
+            prs_pagination: PaginationState::default(),
+            issues_pagination: PaginationState::default(),
             issues: vec![],
             issue_state: ListState::default(),
             issue_body: None,
@@ -315,9 +332,7 @@ impl App {
                 }
                 self.repo_cache
                     .insert(owner, (Instant::now(), repos.clone()));
-                self.repos_page = 1;
-                self.repos_has_more = has_more;
-                self.repos_fetching_more = false;
+                self.repos_pagination.reset(has_more);
                 self.apply_repos(repos);
                 if self.repo_state.selected().is_some() {
                     self.trigger_load_prs();
@@ -333,8 +348,7 @@ impl App {
                 if self.selected_source_owner().as_deref() != Some(&owner) {
                     return;
                 }
-                self.repos_has_more = has_more;
-                self.repos_fetching_more = false;
+                self.repos_pagination.finish(has_more);
                 self.repos.extend(repos);
                 self.sort_repos_in_place();
                 self.loading = None;
@@ -348,9 +362,7 @@ impl App {
                 let key = format!("{owner}/{repo}");
                 let is_current = self.current_repo_key().as_deref() == Some(&key);
                 if is_current {
-                    self.prs_page = 1;
-                    self.prs_has_more = has_more;
-                    self.prs_fetching_more = false;
+                    self.prs_pagination.reset(has_more);
                     self.pr_cache.insert(key, (Instant::now(), prs.clone()));
                     self.apply_prs(prs);
                     self.loading = None;
@@ -362,16 +374,13 @@ impl App {
                 owner,
                 repo,
                 prs,
-                page,
                 has_more,
             } => {
                 let key = format!("{owner}/{repo}");
                 if self.current_repo_key().as_deref() != Some(&key) {
                     return;
                 }
-                self.prs_page = page;
-                self.prs_has_more = has_more;
-                self.prs_fetching_more = false;
+                self.prs_pagination.finish(has_more);
                 self.prs_raw.extend(prs);
                 self.rebuild_prs();
                 self.loading = None;
@@ -470,9 +479,7 @@ impl App {
             } => {
                 let key = format!("{owner}/{repo}");
                 if self.current_repo_key().as_deref() == Some(&key) {
-                    self.issues_page = 1;
-                    self.issues_has_more = has_more;
-                    self.issues_fetching_more = false;
+                    self.issues_pagination.reset(has_more);
                     self.issues = issues;
                     if !self.issues.is_empty() && self.issue_state.selected().is_none() {
                         self.issue_state.select(Some(0));
@@ -485,16 +492,13 @@ impl App {
                 owner,
                 repo,
                 issues,
-                page,
                 has_more,
             } => {
                 let key = format!("{owner}/{repo}");
                 if self.current_repo_key().as_deref() != Some(&key) {
                     return;
                 }
-                self.issues_page = page;
-                self.issues_has_more = has_more;
-                self.issues_fetching_more = false;
+                self.issues_pagination.finish(has_more);
                 self.issues.extend(issues);
                 self.loading = None;
             }

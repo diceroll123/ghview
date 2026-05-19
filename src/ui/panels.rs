@@ -454,9 +454,9 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
         RepoView::Prs,
         app.selected_repo_has_issues(),
         app.prs_raw.len(),
-        app.prs_has_more,
+        app.prs_pagination.has_more,
         app.issues.len(),
-        app.issues_has_more,
+        app.issues_pagination.has_more,
     ));
 
     // 4 = 2 borders + 2 highlight-symbol ("▶ ")
@@ -1056,9 +1056,9 @@ pub(super) fn draw_repo_frontpage(f: &mut Frame, app: &mut App, area: ratatui::l
         RepoView::Frontpage,
         app.selected_repo_has_issues(),
         app.prs_raw.len(),
-        app.prs_has_more,
+        app.prs_pagination.has_more,
         app.issues.len(),
-        app.issues_has_more,
+        app.issues_pagination.has_more,
     ));
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -1133,9 +1133,9 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
         RepoView::Issues,
         true,
         app.prs_raw.len(),
-        app.prs_has_more,
+        app.prs_pagination.has_more,
         app.issues.len(),
-        app.issues_has_more,
+        app.issues_pagination.has_more,
     ));
 
     let inner = block.inner(area);

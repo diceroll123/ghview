@@ -375,7 +375,6 @@ pub enum DataMsg {
         owner: String,
         repo: String,
         prs: Vec<PR>,
-        page: u32,
         has_more: bool,
     },
     DiffContent {
@@ -415,7 +414,6 @@ pub enum DataMsg {
         owner: String,
         repo: String,
         issues: Vec<Issue>,
-        page: u32,
         has_more: bool,
     },
     IssueBody {

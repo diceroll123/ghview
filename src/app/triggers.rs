@@ -116,9 +116,8 @@ impl App {
 
         if let Some((fetched_at, cached)) = self.repo_cache.get(&owner).cloned() {
             if fetched_at.elapsed() < self.config.cache_ttl() {
-                self.repos_page = 1;
-                self.repos_has_more = cached.len() == per_page as usize;
-                self.repos_fetching_more = false;
+                self.repos_pagination
+                    .reset(cached.len() == per_page as usize);
                 self.apply_repos(cached);
                 if self.repo_state.selected().is_some() {
                     self.trigger_load_prs();
@@ -130,7 +129,7 @@ impl App {
 
         let current_user = self.current_user.clone().unwrap_or_default();
         self.loading = Some(LoadingKind::Repos);
-        self.repos_fetching_more = false;
+        self.repos_pagination.fetching_more = false;
         let tx = self.tx.clone();
         tokio::spawn(async move {
             match fetch_repos(&source, &current_user, per_page, 1).await {
@@ -157,7 +156,7 @@ impl App {
     }
 
     pub(crate) fn trigger_load_more_repos(&mut self) {
-        if self.repos_fetching_more || !self.repos_has_more {
+        if !self.repos_pagination.can_load_more() {
             return;
         }
         let Some(source) = self.selected_source().cloned() else {
@@ -167,9 +166,7 @@ impl App {
         let current_user = self.current_user.clone().unwrap_or_default();
         let per_page = self.per_page();
         self.loading = Some(LoadingKind::Repos);
-        let page = self.repos_page + 1;
-        self.repos_page = page;
-        self.repos_fetching_more = true;
+        let page = self.repos_pagination.begin_fetch();
         let tx = self.tx.clone();
         tokio::spawn(async move {
             match fetch_repos(&source, &current_user, per_page, page).await {
@@ -271,7 +268,7 @@ impl App {
 
         self.loading = Some(LoadingKind::Prs);
         self.clear_pr_state();
-        self.prs_fetching_more = false;
+        self.prs_pagination.fetching_more = false;
         let per_page = self.per_page();
         let tx = self.tx.clone();
         tokio::spawn(async move {
@@ -293,17 +290,15 @@ impl App {
     }
 
     pub(crate) fn trigger_load_more_prs(&mut self) {
-        if self.prs_fetching_more || !self.prs_has_more {
+        if !self.prs_pagination.can_load_more() {
             return;
         }
         let Some((owner, repo)) = self.selected_owner_repo() else {
             return;
         };
         let per_page = self.per_page();
-        let page = self.prs_page + 1;
-        self.prs_page = page;
+        let page = self.prs_pagination.begin_fetch();
         self.loading = Some(LoadingKind::Prs);
-        self.prs_fetching_more = true;
         let tx = self.tx.clone();
         tokio::spawn(async move {
             match fetch_prs(&owner, &repo, per_page, page).await {
@@ -313,7 +308,6 @@ impl App {
                         owner,
                         repo,
                         prs,
-                        page,
                         has_more,
                     });
                 }
@@ -388,7 +382,7 @@ impl App {
         };
         self.clear_issue_state();
         self.loading = Some(LoadingKind::Issues);
-        self.issues_fetching_more = false;
+        self.issues_pagination.fetching_more = false;
         let per_page = self.per_page();
         let tx = self.tx.clone();
         tokio::spawn(async move {
@@ -409,17 +403,15 @@ impl App {
     }
 
     pub(crate) fn trigger_load_more_issues(&mut self) {
-        if self.issues_fetching_more || !self.issues_has_more {
+        if !self.issues_pagination.can_load_more() {
             return;
         }
         let Some((owner, repo)) = self.selected_owner_repo() else {
             return;
         };
         let per_page = self.per_page();
-        let page = self.issues_page + 1;
-        self.issues_page = page;
+        let page = self.issues_pagination.begin_fetch();
         self.loading = Some(LoadingKind::Issues);
-        self.issues_fetching_more = true;
         let tx = self.tx.clone();
         tokio::spawn(async move {
             match fetch_issues(&owner, &repo, per_page, page).await {
@@ -428,7 +420,6 @@ impl App {
                         owner,
                         repo,
                         issues,
-                        page,
                         has_more,
                     });
                 }
