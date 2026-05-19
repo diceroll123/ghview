@@ -405,8 +405,14 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
     };
     let title = filter_title(&base, &app.pr_filter, app.filter_active, focused);
 
-    let block = panel_block(title, border_style)
-        .title_bottom(view_tab_line(RepoView::Prs, app.selected_repo_has_issues()));
+    let block = panel_block(title, border_style).title_bottom(view_tab_line(
+        RepoView::Prs,
+        app.selected_repo_has_issues(),
+        app.prs_raw.len(),
+        app.prs_has_more,
+        app.issues.len(),
+        app.issues_has_more,
+    ));
 
     // 4 = 2 borders + 2 highlight-symbol ("▶ ")
     let inner_width = area.width.saturating_sub(4) as usize;
@@ -946,14 +952,21 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
     }
 }
 
-fn view_tab_line(current: RepoView, show_issues: bool) -> Line<'static> {
+fn view_tab_line(
+    current: RepoView,
+    show_issues: bool,
+    pr_count: usize,
+    pr_has_more: bool,
+    issue_count: usize,
+    issue_has_more: bool,
+) -> Line<'static> {
     let sep = Span::raw("  ");
     let key_active = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
     let key_dim = Style::new().fg(Color::DarkGray);
     let label_active = Style::new().fg(Color::White).add_modifier(Modifier::BOLD);
     let label_dim = Style::new().fg(Color::DarkGray);
 
-    let tab = |key: &'static str, label: &'static str, view: RepoView| {
+    let tab = |key: &'static str, label: String, view: RepoView| {
         if view == current {
             vec![
                 Span::styled(key, key_active),
@@ -964,13 +977,26 @@ fn view_tab_line(current: RepoView, show_issues: bool) -> Line<'static> {
         }
     };
 
+    let pr_label = if pr_count > 0 {
+        let suffix = if pr_has_more { "+" } else { "" };
+        format!("·prs ({}{})", pr_count, suffix)
+    } else {
+        "·prs".to_string()
+    };
+    let issue_label = if issue_count > 0 {
+        let suffix = if issue_has_more { "+" } else { "" };
+        format!("·issues ({}{})", issue_count, suffix)
+    } else {
+        "·issues".to_string()
+    };
+
     let mut spans = vec![Span::raw(" ")];
-    spans.extend(tab("f·", "page", RepoView::Frontpage));
+    spans.extend(tab("f", "·page".to_string(), RepoView::Frontpage));
     spans.push(sep.clone());
-    spans.extend(tab("p·", "prs", RepoView::Prs));
+    spans.extend(tab("p", pr_label, RepoView::Prs));
     if show_issues {
         spans.push(sep.clone());
-        spans.extend(tab("i·", "issues", RepoView::Issues));
+        spans.extend(tab("i", issue_label, RepoView::Issues));
     }
     spans.push(Span::raw(" "));
     Line::from(spans)
@@ -984,6 +1010,10 @@ pub(super) fn draw_repo_frontpage(f: &mut Frame, app: &mut App, area: ratatui::l
     let block = panel_block(format!(" {repo_name} "), border_style).title_bottom(view_tab_line(
         RepoView::Frontpage,
         app.selected_repo_has_issues(),
+        app.prs_raw.len(),
+        app.prs_has_more,
+        app.issues.len(),
+        app.issues_has_more,
     ));
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -1054,7 +1084,14 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
         format!(" Issues{loading_suffix} ")
     };
 
-    let block = panel_block(base, border_style).title_bottom(view_tab_line(RepoView::Issues, true));
+    let block = panel_block(base, border_style).title_bottom(view_tab_line(
+        RepoView::Issues,
+        true,
+        app.prs_raw.len(),
+        app.prs_has_more,
+        app.issues.len(),
+        app.issues_has_more,
+    ));
 
     let inner = block.inner(area);
     f.render_widget(block, area);
