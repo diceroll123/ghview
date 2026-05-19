@@ -592,6 +592,9 @@ impl App {
             RepoSortKey::Alphabetical => {
                 self.repos.sort_by_cached_key(|r| r.name.to_lowercase());
             }
+            RepoSortKey::Created => {
+                self.repos.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            }
         }
     }
 

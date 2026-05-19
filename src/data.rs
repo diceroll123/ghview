@@ -10,6 +10,7 @@ struct RepoRaw {
     name: String,
     language: Option<String>,
     pushed_at: Option<String>,
+    created_at: Option<String>,
     owner_login: String,
     #[serde(default)]
     stargazers_count: u32,
@@ -140,7 +141,7 @@ pub async fn fetch_repos(
     };
     let per_page = per_page.clamp(1, 100);
     let endpoint = format!("{base}?per_page={per_page}&page={page}");
-    let jq = ".[] | {name, language, pushed_at, owner_login: .owner.login, stargazers_count, forks_count, open_issues_count, visibility, has_issues, archived}";
+    let jq = ".[] | {name, language, pushed_at, created_at, owner_login: .owner.login, stargazers_count, forks_count, open_issues_count, visibility, has_issues, archived}";
     let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
     let repos: Vec<Repo> = raw
         .lines()
@@ -151,6 +152,7 @@ pub async fn fetch_repos(
             name: r.name,
             language: r.language,
             pushed_at: r.pushed_at,
+            created_at: r.created_at,
             stars: r.stargazers_count,
             forks: r.forks_count,
             issues: r.open_issues_count,

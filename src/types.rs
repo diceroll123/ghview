@@ -17,6 +17,8 @@ pub struct Repo {
     #[serde(default)]
     pub pushed_at: Option<String>,
     #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
     pub stars: u32,
     #[serde(default)]
     pub forks: u32,
@@ -215,13 +217,15 @@ pub enum RepoSortKey {
     RecentlyUpdated,
     #[serde(alias = "alpha")]
     Alphabetical,
+    Created,
 }
 
 impl RepoSortKey {
     pub const fn next(self) -> Self {
         match self {
             Self::RecentlyUpdated => Self::Alphabetical,
-            Self::Alphabetical => Self::RecentlyUpdated,
+            Self::Alphabetical => Self::Created,
+            Self::Created => Self::RecentlyUpdated,
         }
     }
 
@@ -229,6 +233,7 @@ impl RepoSortKey {
         match self {
             Self::RecentlyUpdated => "updated",
             Self::Alphabetical => "a-z",
+            Self::Created => "created",
         }
     }
 }
@@ -318,15 +323,13 @@ mod tests {
     }
 
     #[test]
-    fn repo_sort_key_toggles() {
+    fn repo_sort_key_cycles_all_variants() {
         assert_eq!(
             RepoSortKey::RecentlyUpdated.next(),
             RepoSortKey::Alphabetical
         );
-        assert_eq!(
-            RepoSortKey::Alphabetical.next(),
-            RepoSortKey::RecentlyUpdated
-        );
+        assert_eq!(RepoSortKey::Alphabetical.next(), RepoSortKey::Created);
+        assert_eq!(RepoSortKey::Created.next(), RepoSortKey::RecentlyUpdated);
     }
 
     #[test]
