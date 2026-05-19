@@ -16,12 +16,73 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-// Nerd Font glyphs
+// Nerd Font glyphs — inline variants include a trailing space for separation from text
 pub(super) const ICON_USER: &str = "\u{f007} ";
 pub(super) const ICON_ORG: &str = "\u{f0af} ";
 pub(super) const ICON_REPO: &str = "\u{e702} ";
 pub(super) const ICON_CLOCK: &str = "\u{f017}";
 pub(super) const ICON_CLOCK_UPDATED: &str = "\u{f520}";
+
+// Bare glyphs (no trailing space) for strip/vertical layouts
+pub(super) const ICON_USER_GLYPH: &str = "\u{f007}";
+pub(super) const ICON_ORG_GLYPH: &str = "\u{f0af}";
+pub(super) const ICON_REPO_GLYPH: &str = "\u{e702}";
+
+// Repo list column header icons
+pub(super) const ICON_STAR: &str = "\u{f005}";
+pub(super) const ICON_FORK: &str = "\u{f126}";
+pub(super) const ICON_BUG: &str = "\u{f41b}";
+pub(super) const ICON_LOCK: &str = "\u{f023}";
+pub(super) const ICON_ARCHIVE: &str = "\u{f187}";
+
+// PR list column header icons
+pub(super) const ICON_PR_HEADER: &str = "\u{f0f6}";
+pub(super) const ICON_COMMENT: &str = "\u{f086}";
+pub(super) const ICON_CHECKLIST: &str = "\u{f046}";
+
+// CI check status icons
+pub(super) const ICON_CHECK_PASS: &str = "\u{f058}";
+pub(super) const ICON_CHECK_FAIL: &str = "\u{f0159}";
+pub(super) const ICON_CHECK_PENDING: &str = "\u{e641}";
+
+// PR state icons (trailing space included — layout-sensitive)
+pub(super) const ICON_PR_DRAFT: &str = "\u{ebdb} ";
+pub(super) const ICON_PR_CLOSED: &str = "\u{f4dc} ";
+pub(super) const ICON_PR_OPEN: &str = "\u{f407} ";
+
+// Issue state (open; closed reuses ICON_PR_CLOSED glyph)
+pub(super) const ICON_ISSUE_OPEN: &str = "\u{f444} ";
+
+// Review status icons
+pub(super) const ICON_REVIEW_APPROVED: &str = "\u{f012c}";
+pub(super) const ICON_REVIEW_CHANGES: &str = "\u{eb43}";
+pub(super) const ICON_REVIEW_PENDING: &str = "\u{f444}";
+
+// Middle dot — used for "none" / unknown states
+pub(super) const ICON_DOT: &str = "\u{b7}";
+
+// Language icons (trailing space for inline use before repo names)
+pub(super) const LANG_RUST: &str = "\u{e7a8} ";
+pub(super) const LANG_PYTHON: &str = "\u{e73c} ";
+pub(super) const LANG_TYPESCRIPT: &str = "\u{e628} ";
+pub(super) const LANG_JAVASCRIPT: &str = "\u{e74e} ";
+pub(super) const LANG_GO: &str = "\u{e627} ";
+pub(super) const LANG_RUBY: &str = "\u{e739} ";
+pub(super) const LANG_JAVA: &str = "\u{e738} ";
+pub(super) const LANG_KOTLIN: &str = "\u{e634} ";
+pub(super) const LANG_SWIFT: &str = "\u{e755} ";
+pub(super) const LANG_C: &str = "\u{e61e} ";
+pub(super) const LANG_CPP: &str = "\u{e61d} ";
+pub(super) const LANG_CSHARP: &str = "\u{f031b} ";
+pub(super) const LANG_DOCKERFILE: &str = "\u{e650} ";
+pub(super) const LANG_SHELL: &str = "\u{f489} ";
+pub(super) const LANG_HTML: &str = "\u{e736} ";
+pub(super) const LANG_CSS: &str = "\u{e749} ";
+pub(super) const LANG_LUA: &str = "\u{e620} ";
+pub(super) const LANG_HASKELL: &str = "\u{e777} ";
+pub(super) const LANG_SCALA: &str = "\u{e737} ";
+pub(super) const LANG_PHP: &str = "\u{e73d} ";
+pub(super) const LANG_ELIXIR: &str = "\u{e62d} ";
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
@@ -159,27 +220,27 @@ pub(super) fn filter_title(base: &str, filter: &str, filter_active: bool, focuse
 #[inline]
 pub(super) fn lang_icon(lang: Option<&str>) -> &'static str {
     match lang {
-        Some("Rust") => "\u{e7a8} ",
-        Some("Python") => "\u{e73c} ",
-        Some("TypeScript") => "\u{e628} ",
-        Some("JavaScript") => "\u{e74e} ",
-        Some("Go") => "\u{e627} ",
-        Some("Ruby") => "\u{e739} ",
-        Some("Java") => "\u{e738} ",
-        Some("Kotlin") => "\u{e634} ",
-        Some("Swift") => "\u{e755} ",
-        Some("C") => "\u{e61e} ",
-        Some("C++") => "\u{e61d} ",
-        Some("C#") => "\u{f031b} ",
-        Some("Dockerfile") => "\u{e650} ",
-        Some("Shell" | "Bash") => "\u{f489} ",
-        Some("HTML") => "\u{e736} ",
-        Some("CSS") => "\u{e749} ",
-        Some("Lua") => "\u{e620} ",
-        Some("Haskell") => "\u{e777} ",
-        Some("Scala") => "\u{e737} ",
-        Some("PHP") => "\u{e73d} ",
-        Some("Elixir") => "\u{e62d} ",
+        Some("Rust") => LANG_RUST,
+        Some("Python") => LANG_PYTHON,
+        Some("TypeScript") => LANG_TYPESCRIPT,
+        Some("JavaScript") => LANG_JAVASCRIPT,
+        Some("Go") => LANG_GO,
+        Some("Ruby") => LANG_RUBY,
+        Some("Java") => LANG_JAVA,
+        Some("Kotlin") => LANG_KOTLIN,
+        Some("Swift") => LANG_SWIFT,
+        Some("C") => LANG_C,
+        Some("C++") => LANG_CPP,
+        Some("C#") => LANG_CSHARP,
+        Some("Dockerfile") => LANG_DOCKERFILE,
+        Some("Shell" | "Bash") => LANG_SHELL,
+        Some("HTML") => LANG_HTML,
+        Some("CSS") => LANG_CSS,
+        Some("Lua") => LANG_LUA,
+        Some("Haskell") => LANG_HASKELL,
+        Some("Scala") => LANG_SCALA,
+        Some("PHP") => LANG_PHP,
+        Some("Elixir") => LANG_ELIXIR,
         _ => ICON_REPO,
     }
 }
@@ -190,10 +251,10 @@ pub(super) const fn review_icon(
 ) -> (&'static str, Color) {
     use crate::types::ReviewStatus;
     match status {
-        Some(ReviewStatus::Approved) => ("\u{f012c}", Color::Green),
-        Some(ReviewStatus::ChangesRequested) => ("\u{eb43}", Color::Red),
-        Some(ReviewStatus::Pending) => ("\u{f444}", Color::DarkGray),
-        Some(ReviewStatus::Unknown) | None => ("·", Color::DarkGray),
+        Some(ReviewStatus::Approved) => (ICON_REVIEW_APPROVED, Color::Green),
+        Some(ReviewStatus::ChangesRequested) => (ICON_REVIEW_CHANGES, Color::Red),
+        Some(ReviewStatus::Pending) => (ICON_REVIEW_PENDING, Color::DarkGray),
+        Some(ReviewStatus::Unknown) | None => (ICON_DOT, Color::DarkGray),
     }
 }
 
@@ -201,11 +262,11 @@ pub(super) const fn review_icon(
 pub(super) fn pr_state_icon(draft: bool, state: crate::types::PrState) -> &'static str {
     use crate::types::PrState;
     if draft {
-        "\u{ebdb} "
+        ICON_PR_DRAFT
     } else if state == PrState::Closed {
-        "\u{f4dc} "
+        ICON_PR_CLOSED
     } else {
-        "\u{f407} "
+        ICON_PR_OPEN
     }
 }
 

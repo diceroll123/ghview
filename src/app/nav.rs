@@ -10,6 +10,36 @@ fn clamp_list_state(state: &mut ListState, len: usize) {
     }
 }
 
+trait SelectChanged {
+    fn select_changed(&mut self, i: Option<usize>) -> bool;
+    fn nav_prev(&mut self, len: usize) -> bool;
+    fn nav_next(&mut self, len: usize) -> bool;
+}
+
+impl SelectChanged for ListState {
+    fn select_changed(&mut self, i: Option<usize>) -> bool {
+        let prev = self.selected();
+        self.select(i);
+        self.selected() != prev
+    }
+
+    fn nav_prev(&mut self, len: usize) -> bool {
+        if len == 0 {
+            return false;
+        }
+        let idx = self.selected().map_or(0, |i| i.saturating_sub(1));
+        self.select_changed(Some(idx))
+    }
+
+    fn nav_next(&mut self, len: usize) -> bool {
+        if len == 0 {
+            return false;
+        }
+        let idx = self.selected().map_or(0, |i| (i + 1).min(len - 1));
+        self.select_changed(Some(idx))
+    }
+}
+
 impl App {
     pub(crate) fn clamp_source_selection(&mut self) {
         let len = self.visible_sources().len();
@@ -21,18 +51,29 @@ impl App {
         clamp_list_state(&mut self.repo_state, len);
     }
 
+    fn on_source_changed(&mut self) {
+        self.repo_filter.clear();
+        self.pr_filter.clear();
+        self.trigger_load_repos();
+    }
+
+    fn on_repo_changed(&mut self) {
+        self.pr_filter.clear();
+        self.trigger_load_prs();
+    }
+
     pub(crate) fn move_up(&mut self) {
         match self.focus {
             Column::Sources => {
                 let len = self.visible_sources().len();
-                if select_prev(&mut self.source_state, len) {
-                    self.trigger_load_repos();
+                if self.source_state.nav_prev(len) {
+                    self.on_source_changed();
                 }
             }
             Column::Repos => {
                 let len = self.visible_repos().len();
-                if select_prev(&mut self.repo_state, len) {
-                    self.trigger_load_prs();
+                if self.repo_state.nav_prev(len) {
+                    self.on_repo_changed();
                 }
             }
             Column::Repo => match self.repo_view {
@@ -40,12 +81,12 @@ impl App {
                     self.repo_frontpage_scroll = self.repo_frontpage_scroll.saturating_sub(1);
                 }
                 RepoView::Prs => {
-                    if select_prev(&mut self.pr_state, self.prs.len()) {
+                    if self.pr_state.nav_prev(self.prs.len()) {
                         self.trigger_load_pr_body();
                     }
                 }
                 RepoView::Issues => {
-                    if select_prev(&mut self.issue_state, self.issues.len()) {
+                    if self.issue_state.nav_prev(self.issues.len()) {
                         self.trigger_load_issue_body();
                     }
                 }
@@ -60,7 +101,7 @@ impl App {
                     }
                     DetailSection::Checks => {
                         let len = self.check_runs.as_ref().map_or(0, Vec::len);
-                        select_prev(&mut self.check_runs_state, len);
+                        self.check_runs_state.nav_prev(len);
                     }
                 },
             },
@@ -71,15 +112,15 @@ impl App {
         match self.focus {
             Column::Sources => {
                 let len = self.visible_sources().len();
-                if select_next(&mut self.source_state, len) {
-                    self.trigger_load_repos();
+                if self.source_state.nav_next(len) {
+                    self.on_source_changed();
                 }
             }
             Column::Repos => {
                 let len = self.visible_repos().len();
                 let at_last = len > 0 && self.repo_state.selected() == Some(len - 1);
-                if select_next(&mut self.repo_state, len) {
-                    self.trigger_load_prs();
+                if self.repo_state.nav_next(len) {
+                    self.on_repo_changed();
                 }
                 if at_last && self.repo_filter.is_empty() {
                     self.trigger_load_more_repos();
@@ -92,7 +133,7 @@ impl App {
                 RepoView::Prs => {
                     let len = self.prs.len();
                     let at_last = len > 0 && self.pr_state.selected() == Some(len - 1);
-                    if select_next(&mut self.pr_state, len) {
+                    if self.pr_state.nav_next(len) {
                         self.trigger_load_pr_body();
                     }
                     if at_last && self.pr_filter.is_empty() {
@@ -102,7 +143,7 @@ impl App {
                 RepoView::Issues => {
                     let len = self.issues.len();
                     let at_last = len > 0 && self.issue_state.selected() == Some(len - 1);
-                    if select_next(&mut self.issue_state, len) {
+                    if self.issue_state.nav_next(len) {
                         self.trigger_load_issue_body();
                     }
                     if at_last {
@@ -120,7 +161,7 @@ impl App {
                     }
                     DetailSection::Checks => {
                         let len = self.check_runs.as_ref().map_or(0, Vec::len);
-                        select_next(&mut self.check_runs_state, len);
+                        self.check_runs_state.nav_next(len);
                     }
                 },
             },
@@ -198,15 +239,13 @@ impl App {
     pub(crate) fn move_top(&mut self) {
         match self.focus {
             Column::Sources => {
-                if !self.visible_sources().is_empty() {
-                    self.source_state.select(Some(0));
-                    self.trigger_load_repos();
+                if !self.visible_sources().is_empty() && self.source_state.select_changed(Some(0)) {
+                    self.on_source_changed();
                 }
             }
             Column::Repos => {
-                if !self.visible_repos().is_empty() {
-                    self.repo_state.select(Some(0));
-                    self.trigger_load_prs();
+                if !self.visible_repos().is_empty() && self.repo_state.select_changed(Some(0)) {
+                    self.on_repo_changed();
                 }
             }
             Column::Repo => match self.repo_view {
@@ -246,16 +285,14 @@ impl App {
         match self.focus {
             Column::Sources => {
                 let len = self.visible_sources().len();
-                if len > 0 {
-                    self.source_state.select(Some(len - 1));
-                    self.trigger_load_repos();
+                if len > 0 && self.source_state.select_changed(Some(len - 1)) {
+                    self.on_source_changed();
                 }
             }
             Column::Repos => {
                 let len = self.visible_repos().len();
-                if len > 0 {
-                    self.repo_state.select(Some(len - 1));
-                    self.trigger_load_prs();
+                if len > 0 && self.repo_state.select_changed(Some(len - 1)) {
+                    self.on_repo_changed();
                 }
             }
             Column::Repo => match self.repo_view {
@@ -293,24 +330,4 @@ impl App {
             },
         }
     }
-}
-
-fn select_next(state: &mut ListState, len: usize) -> bool {
-    if len == 0 {
-        return false;
-    }
-    let next = state.selected().map_or(0, |i| (i + 1).min(len - 1));
-    let changed = state.selected() != Some(next);
-    state.select(Some(next));
-    changed
-}
-
-fn select_prev(state: &mut ListState, len: usize) -> bool {
-    if len == 0 {
-        return false;
-    }
-    let prev = state.selected().map_or(0, |i| i.saturating_sub(1));
-    let changed = state.selected() != Some(prev);
-    state.select(Some(prev));
-    changed
 }

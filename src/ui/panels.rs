@@ -1,7 +1,9 @@
 use super::{
-    ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_ORG, ICON_USER, active_style, filter_title,
-    inactive_style, item_style, lang_icon, panel_focus, pr_state_icon, relative_time,
-    render_list_scrollbar, review_icon, truncate,
+    ICON_ARCHIVE, ICON_BUG, ICON_CHECK_FAIL, ICON_CHECK_PASS, ICON_CHECK_PENDING, ICON_CHECKLIST,
+    ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_COMMENT, ICON_DOT, ICON_FORK, ICON_ISSUE_OPEN, ICON_LOCK,
+    ICON_ORG, ICON_ORG_GLYPH, ICON_PR_CLOSED, ICON_PR_HEADER, ICON_REPO_GLYPH, ICON_STAR,
+    ICON_USER, ICON_USER_GLYPH, active_style, filter_title, inactive_style, item_style, lang_icon,
+    panel_focus, pr_state_icon, relative_time, render_list_scrollbar, review_icon, truncate,
 };
 use crate::{
     app::App,
@@ -291,10 +293,10 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
             }
             let w = col_w(col);
             let sym = match col {
-                RepoColumn::Stars => "\u{f005}",
-                RepoColumn::Forks => "\u{f126}",
-                RepoColumn::Issues => "\u{f41b}",
-                RepoColumn::Visibility => "\u{f023}",
+                RepoColumn::Stars => ICON_STAR,
+                RepoColumn::Forks => ICON_FORK,
+                RepoColumn::Issues => ICON_BUG,
+                RepoColumn::Visibility => ICON_LOCK,
                 RepoColumn::LastPush => ICON_CLOCK,
                 RepoColumn::Created => ICON_CLOCK_UPDATED,
             };
@@ -338,7 +340,7 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
                         let (sym, color) = match repo.visibility {
                             Visibility::Private => ("P", Color::Yellow),
                             Visibility::Internal => ("I", Color::Cyan),
-                            Visibility::Public => ("\u{b7}", Color::DarkGray),
+                            Visibility::Public => (ICON_DOT, Color::DarkGray),
                         };
                         right_spans.push(Span::styled(sym, Style::new().fg(color)));
                     }
@@ -390,7 +392,10 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
                 Span::styled(name_text, name_style),
             ];
             if repo.archived {
-                spans.push(Span::styled(" \u{f187}", Style::new().fg(Color::DarkGray)));
+                spans.push(Span::styled(
+                    format!(" {ICON_ARCHIVE}"),
+                    Style::new().fg(Color::DarkGray),
+                ));
             }
             spans.push(gap_span(gap));
             spans.extend(right_spans);
@@ -539,10 +544,10 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
             }
             if show_check_summary {
                 let (icon, color) = match app.check_summary_cache.get(&pr.number) {
-                    Some(CheckStatus::Passing) => ("\u{f058}", Color::Green),
-                    Some(CheckStatus::Failing) => ("\u{f0159}", Color::Red),
-                    Some(CheckStatus::Pending) => ("\u{e641}", Color::Yellow),
-                    Some(CheckStatus::Unknown) | None => ("\u{00b7}", Color::DarkGray),
+                    Some(CheckStatus::Passing) => (ICON_CHECK_PASS, Color::Green),
+                    Some(CheckStatus::Failing) => (ICON_CHECK_FAIL, Color::Red),
+                    Some(CheckStatus::Pending) => (ICON_CHECK_PENDING, Color::Yellow),
+                    Some(CheckStatus::Unknown) | None => (ICON_DOT, Color::DarkGray),
                 };
                 line1_spans.push(Span::raw("  "));
                 line1_spans.push(Span::styled(icon, Style::new().fg(color)));
@@ -637,14 +642,14 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
     let header_style = Style::new()
         .fg(Color::DarkGray)
         .add_modifier(Modifier::BOLD);
-    let status_header = " \u{f0f6}  ";
+    let status_header = format!(" {ICON_PR_HEADER}  ");
     let comment_header = if show_comments {
-        format!("{:>width$}", "\u{f086}", width = comment_col_w)
+        format!("{:>width$}", ICON_COMMENT, width = comment_col_w)
     } else {
         String::new()
     };
     let check_summary_header = if show_check_summary {
-        "  \u{f046}".to_string()
+        format!("  {ICON_CHECKLIST}")
     } else {
         String::new()
     };
@@ -726,8 +731,8 @@ pub(super) fn draw_sources_strip(f: &mut Frame, app: &App, area: ratatui::layout
         return;
     };
     let (icon, color) = match source {
-        Source::User(_) => ("\u{f007}", Color::Cyan),
-        Source::Org(_) => ("\u{f0af}", Color::Yellow),
+        Source::User(_) => (ICON_USER_GLYPH, Color::Cyan),
+        Source::Org(_) => (ICON_ORG_GLYPH, Color::Yellow),
     };
     let style = Style::new().fg(color).add_modifier(Modifier::BOLD);
     draw_strip_vertical(f, inner, icon, style, &source.display(), style);
@@ -745,7 +750,7 @@ pub(super) fn draw_repos_strip(f: &mut Frame, app: &App, area: ratatui::layout::
     draw_strip_vertical(
         f,
         inner,
-        "\u{e702}",
+        ICON_REPO_GLYPH,
         Style::new().fg(Color::DarkGray),
         name,
         Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
@@ -963,10 +968,10 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
                 .iter()
                 .map(|run| {
                     let (icon, color) = match run.status {
-                        CheckStatus::Passing => ("\u{f058}", Color::Green),
-                        CheckStatus::Failing => ("\u{f0159}", Color::Red),
-                        CheckStatus::Pending => ("\u{e641}", Color::Yellow),
-                        CheckStatus::Unknown => ("·", Color::DarkGray),
+                        CheckStatus::Passing => (ICON_CHECK_PASS, Color::Green),
+                        CheckStatus::Failing => (ICON_CHECK_FAIL, Color::Red),
+                        CheckStatus::Pending => (ICON_CHECK_PENDING, Color::Yellow),
+                        CheckStatus::Unknown => (ICON_DOT, Color::DarkGray),
                     };
                     Line::from(vec![
                         Span::styled(format!("{icon} "), Style::new().fg(color)),
@@ -1189,9 +1194,9 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
             ]);
 
             let (state_icon, state_color) = if issue.state == "closed" {
-                ("\u{f4dc} ", Color::Red)
+                (ICON_PR_CLOSED, Color::Red)
             } else {
-                ("\u{f444} ", Color::Green)
+                (ICON_ISSUE_OPEN, Color::Green)
             };
             let icon_line = Line::from(vec![
                 Span::raw("  "),
