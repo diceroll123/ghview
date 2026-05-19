@@ -257,14 +257,13 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
     } else {
         &[]
     };
-    let col_width: usize = cols_cfg
-        .iter()
-        .map(|c| match c {
-            RepoColumn::Visibility => 2,
-            RepoColumn::LastPush => 3,
-            _ => 5,
-        })
-        .sum::<usize>()
+    // column widths: Stars/Forks/Issues = 4 digits max, Visibility = 1, LastPush/Created = 3
+    let col_w = |c: &RepoColumn| match c {
+        RepoColumn::Stars | RepoColumn::Forks | RepoColumn::Issues => 4usize,
+        RepoColumn::Visibility => 1,
+        RepoColumn::LastPush | RepoColumn::Created => 3,
+    };
+    let col_width: usize = cols_cfg.iter().map(col_w).sum::<usize>()
         + if cols_cfg.is_empty() {
             0
         } else {
@@ -274,17 +273,47 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
     // 4 = 2 borders + 2 highlight symbol
     let inner_width = area.width.saturating_sub(4) as usize;
 
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let [header_area, body_area] =
+        Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(inner);
+
+    // render column header when focused and columns configured
+    if focused && !cols_cfg.is_empty() {
+        let header_style = Style::new()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::BOLD);
+        let mut header_parts = String::new();
+        for (i, col) in cols_cfg.iter().enumerate() {
+            if i > 0 {
+                header_parts.push(' ');
+            }
+            let w = col_w(col);
+            let sym = match col {
+                RepoColumn::Stars => "\u{f005}",
+                RepoColumn::Forks => "\u{f126}",
+                RepoColumn::Issues => "\u{f41b}",
+                RepoColumn::Visibility => "\u{f023}",
+                RepoColumn::LastPush => ICON_CLOCK,
+                RepoColumn::Created => ICON_CLOCK_UPDATED,
+            };
+            header_parts.push_str(&format!("{sym:>w$}"));
+        }
+        let gap = inner_width.saturating_sub(col_width + 2);
+        let header_line = Line::from(vec![
+            Span::raw("  "),
+            gap_span(gap),
+            Span::styled(header_parts, header_style),
+        ]);
+        f.render_widget(Paragraph::new(header_line), header_area);
+    }
+
     let items: Vec<ListItem> = app
         .visible_repos()
         .into_iter()
         .map(|repo| {
-            let icon = lang_icon(repo.language.as_deref());
             let style = item_style(focused);
-            let icon_style = if focused {
-                Style::new().fg(Color::Magenta)
-            } else {
-                Style::new().fg(Color::DarkGray)
-            };
             let dim = Style::new().fg(Color::DarkGray);
 
             let mut right_spans: Vec<Span> = Vec::with_capacity(cols_cfg.len() * 2);
@@ -294,24 +323,24 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
                 }
                 match col {
                     RepoColumn::Stars => right_spans.push(Span::styled(
-                        format!("\u{f005}{}", fmt_count(repo.stars)),
+                        format!("{:>w$}", fmt_count(repo.stars), w = col_w(col)),
                         Style::new().fg(Color::Yellow),
                     )),
                     RepoColumn::Forks => right_spans.push(Span::styled(
-                        format!("\u{f126}{}", fmt_count(repo.forks)),
+                        format!("{:>w$}", fmt_count(repo.forks), w = col_w(col)),
                         dim,
                     )),
                     RepoColumn::Issues => right_spans.push(Span::styled(
-                        format!("\u{f41b}{}", fmt_count(repo.issues)),
+                        format!("{:>w$}", fmt_count(repo.issues), w = col_w(col)),
                         Style::new().fg(Color::Cyan),
                     )),
                     RepoColumn::Visibility => {
                         let (sym, color) = match repo.visibility {
-                            Visibility::Private => ("\u{f023}", Color::Yellow),
-                            Visibility::Internal => ("\u{f0c1}", Color::Cyan),
-                            Visibility::Public => ("\u{f0ac}", Color::DarkGray),
+                            Visibility::Private => ("P", Color::Yellow),
+                            Visibility::Internal => ("I", Color::Cyan),
+                            Visibility::Public => ("\u{b7}", Color::DarkGray),
                         };
-                        right_spans.push(Span::styled(format!("{sym} "), Style::new().fg(color)));
+                        right_spans.push(Span::styled(sym, Style::new().fg(color)));
                     }
                     RepoColumn::LastPush => {
                         let age = repo
@@ -321,10 +350,24 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
                             .unwrap_or_else(|| "—".into());
                         right_spans.push(Span::styled(format!("{:>3}", age), dim));
                     }
+                    RepoColumn::Created => {
+                        let age = repo
+                            .created_at
+                            .as_deref()
+                            .map(super::relative_time)
+                            .unwrap_or_else(|| "—".into());
+                        right_spans.push(Span::styled(format!("{:>3}", age), dim));
+                    }
                 }
             }
 
-            let archive_badge_w = if repo.archived { 2 } else { 0 }; // " "
+            let icon = lang_icon(repo.language.as_deref());
+            let icon_style = if focused {
+                Style::new().fg(Color::Magenta)
+            } else {
+                Style::new().fg(Color::DarkGray)
+            };
+            let archive_badge_w = if repo.archived { 2 } else { 0 };
             let name_budget = inner_width.saturating_sub(
                 icon.width() + archive_badge_w + if col_width > 0 { col_width + 1 } else { 0 },
             );
@@ -357,26 +400,23 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
 
     let total = items.len();
     if total == 0 && !app.repo_filter.is_empty() && app.loading.is_none() {
-        let inner = block.inner(area);
-        f.render_widget(block, area);
         f.render_widget(
             Paragraph::new(format!("no results for \"{}\"", app.repo_filter))
                 .style(Style::new().fg(Color::DarkGray)),
-            inner,
+            body_area,
         );
         return;
     }
     let list = List::new(items)
-        .block(block)
         .highlight_style(list_highlight_style())
         .highlight_symbol("▶ ");
 
-    f.render_stateful_widget(list, area, &mut app.repo_state);
+    f.render_stateful_widget(list, body_area, &mut app.repo_state);
     render_list_scrollbar(
         f,
         area,
         total,
-        area.height.saturating_sub(2),
+        area.height.saturating_sub(3),
         app.repo_state.offset(),
     );
 }

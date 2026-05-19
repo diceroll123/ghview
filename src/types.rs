@@ -246,6 +246,7 @@ pub enum RepoColumn {
     Issues,
     Visibility,
     LastPush,
+    Created,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
