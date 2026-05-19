@@ -195,8 +195,7 @@ impl App {
         let Some(pr) = self.selected_pr() else { return };
         let pr_number = pr.number;
         let sha = pr.head_sha.clone();
-        self.pr_body = None;
-        self.check_runs = None;
+        self.clear_pr_detail();
         let tx = self.tx.clone();
         let o = owner.clone();
         let r = repo.clone();
@@ -222,6 +221,10 @@ impl App {
         let Some((owner, repo)) = self.selected_owner_repo() else {
             return;
         };
+        self.clear_pr_detail();
+        self.mergeable_states.clear();
+        self.repo_frontpage = None;
+        self.repo_frontpage_scroll = 0;
         let key = format!("{owner}/{repo}");
 
         if let Some((fetched_at, cached)) = self.pr_cache.get(&key).cloned() {
@@ -430,6 +433,7 @@ impl App {
             return;
         };
         self.issue_body = None;
+        self.issue_body_scroll = 0;
         let tx = self.tx.clone();
         tokio::spawn(async move {
             if let Ok(body) = fetch_issue_body(&owner, &repo, number).await {

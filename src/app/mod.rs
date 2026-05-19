@@ -506,16 +506,28 @@ impl App {
         self.issues = vec![];
         self.issue_state = ListState::default();
         self.issue_body = None;
+        self.issue_body_scroll = 0;
+    }
+
+    pub(crate) fn clear_pr_detail(&mut self) {
+        self.pr_body = None;
+        self.check_runs = None;
+        self.check_runs_state = ListState::default();
+        self.pr_body_scroll = 0;
+        self.detail_section = DetailSection::default();
+        self.diff_view = None;
     }
 
     pub(crate) fn apply_repos(&mut self, repos: Vec<Repo>) {
         self.repos = repos;
         self.sort_repos_in_place();
         self.clear_pr_state();
+        self.clear_pr_detail();
         self.review_statuses.clear();
         self.mergeable_states.clear();
         self.clear_issue_state();
         self.repo_frontpage = None;
+        self.repo_frontpage_scroll = 0;
         self.clamp_repo_selection();
         if self.repo_state.selected().is_none() && !self.visible_repos().is_empty() {
             self.repo_state.select(Some(0));
