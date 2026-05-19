@@ -84,6 +84,8 @@ pub struct PR {
     pub additions: u32,
     #[serde(default)]
     pub deletions: u32,
+    #[serde(default)]
+    pub comments: u32,
 }
 
 /// A source in the leftmost column — either the current user or an org.
@@ -247,6 +249,8 @@ pub enum PrColumn {
     DiffStats,
     Age,
     UpdatedAt,
+    Comments,
+    CheckSummary,
 }
 
 #[derive(Debug, Clone, Copy)]

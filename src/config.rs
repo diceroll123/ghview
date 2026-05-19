@@ -214,6 +214,8 @@ impl Default for UiConfig {
             checkout_dir: None,
             repo_columns: vec![crate::types::RepoColumn::Stars],
             pr_columns: vec![
+                crate::types::PrColumn::Comments,
+                crate::types::PrColumn::CheckSummary,
                 crate::types::PrColumn::DiffStats,
                 crate::types::PrColumn::UpdatedAt,
                 crate::types::PrColumn::Age,
@@ -342,6 +344,7 @@ mod tests {
             head_sha: "abc123".into(),
             additions: 0,
             deletions: 0,
+            comments: 0,
         }
     }
 

@@ -8,8 +8,8 @@ use crate::{
     config::Config,
     keys::Action,
     types::{
-        CheckRun, Column, DataMsg, DetailSection, DiffView, Issue, LoadingKind, MergeableState, PR,
-        PrAction, Repo, RepoSortKey, RepoView, ReviewStatus, SortKey, Source,
+        CheckRun, CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, LoadingKind,
+        MergeableState, PR, PrAction, Repo, RepoSortKey, RepoView, ReviewStatus, SortKey, Source,
     },
 };
 use crossterm::event::{KeyCode, KeyEvent};
@@ -60,6 +60,7 @@ pub struct App {
     pub review_statuses: HashMap<u64, ReviewStatus>,
     pub mergeable_states: HashMap<u64, MergeableState>,
     pub(crate) review_cache: HashMap<String, HashMap<u64, ReviewStatus>>,
+    pub check_summary_cache: HashMap<u64, CheckStatus>,
 
     pub filter_active: bool,
     pub sort_key: SortKey,
@@ -135,6 +136,7 @@ impl App {
             review_statuses: HashMap::new(),
             mergeable_states: HashMap::new(),
             review_cache: HashMap::new(),
+            check_summary_cache: HashMap::new(),
             filter_active: false,
             sort_key: SortKey::Newest,
             repo_sort_key: config.ui.repo_sort,
@@ -395,6 +397,18 @@ impl App {
                 mut runs,
             } => {
                 runs.sort_by_key(|r| r.status != crate::types::CheckStatus::Failing);
+                let summary = if runs.is_empty() {
+                    CheckStatus::Unknown
+                } else if runs.iter().any(|r| r.status == CheckStatus::Failing) {
+                    CheckStatus::Failing
+                } else if runs.iter().any(|r| r.status == CheckStatus::Pending) {
+                    CheckStatus::Pending
+                } else if runs.iter().all(|r| r.status == CheckStatus::Passing) {
+                    CheckStatus::Passing
+                } else {
+                    CheckStatus::Unknown
+                };
+                self.check_summary_cache.insert(pr_number, summary);
                 if self.selected_pr().is_some_and(|pr| pr.number == pr_number) {
                     self.check_runs = Some(runs);
                     if !self.checks_focusable()
@@ -549,6 +563,7 @@ impl App {
         self.clear_pr_detail();
         self.review_statuses.clear();
         self.mergeable_states.clear();
+        self.check_summary_cache.clear();
         self.clear_issue_state();
         self.repo_frontpage = None;
         self.repo_frontpage_scroll = 0;
@@ -792,6 +807,7 @@ mod tests {
             head_sha: "abc".into(),
             additions: 0,
             deletions: 0,
+            comments: 0,
         }
     }
 

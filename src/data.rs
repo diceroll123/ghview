@@ -169,7 +169,7 @@ pub async fn fetch_prs(org: &str, repo: &str, per_page: u32, page: u32) -> Resul
     let endpoint = format!(
         "repos/{org}/{repo}/pulls?state=open&per_page={per_page}&page={page}&sort=created&direction=desc"
     );
-    let jq = r#".[] | {number, title, login: .user.login, draft, state, created_at, updated_at, url: .html_url, requested_reviewers: ([.requested_reviewers[] | .login] + [.requested_teams[] | .slug]), labels: [.labels[].name], head_ref: .head.ref, base_ref: .base.ref, head_sha: .head.sha}"#;
+    let jq = r#".[] | {number, title, login: .user.login, draft, state, created_at, updated_at, url: .html_url, requested_reviewers: ([.requested_reviewers[] | .login] + [.requested_teams[] | .slug]), labels: [.labels[].name], head_ref: .head.ref, base_ref: .base.ref, head_sha: .head.sha, comments: ((.comments // 0) + (.review_comments // 0))}"#;
     let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
     let mut prs = Vec::new();
     let mut first_err: Option<String> = None;
