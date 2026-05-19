@@ -17,7 +17,7 @@ anyhow = "1"
 color-eyre = "0.6"
 futures = "0.3"
 jiff = "0.2"
-toml = "0.8"
+toml = "1.1"
 clap = { version = "4", features = ["derive"] }
 log = "0.4"
 simplelog = "0.12"
