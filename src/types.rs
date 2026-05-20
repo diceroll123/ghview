@@ -93,6 +93,12 @@ pub struct PR {
     pub repo: String,
 }
 
+impl PR {
+    pub fn is_dimmed(&self) -> bool {
+        self.draft || self.state == PrState::Closed
+    }
+}
+
 /// Identifies a GitHub repo by owner and repo name.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RepoId {
@@ -114,6 +120,18 @@ impl RepoId {
 
     pub fn key(&self) -> String {
         format!("{}/{}", self.owner, self.repo)
+    }
+
+    pub fn url(&self) -> String {
+        format!("https://github.com/{}/{}", self.owner, self.repo)
+    }
+
+    pub fn issues_url(&self) -> String {
+        format!("https://github.com/{}/{}/issues", self.owner, self.repo)
+    }
+
+    pub fn api_base(&self) -> String {
+        format!("repos/{}/{}", self.owner, self.repo)
     }
 }
 

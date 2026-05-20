@@ -261,10 +261,9 @@ impl App {
     }
 
     pub(crate) fn trigger_load_pr_body(&mut self) {
-        let Some(rid) = self.selected_owner_repo() else {
+        let Some((rid, pr)) = self.selected_pr_context() else {
             return;
         };
-        let Some(pr) = self.selected_pr() else { return };
         let pr_number = pr.number;
         let known_sha = pr.head_sha.clone();
         self.repo_ctx.pr_body = None;
@@ -591,12 +590,10 @@ impl App {
     }
 
     pub(crate) fn trigger_load_issue_body(&mut self) {
-        let Some(rid) = self.selected_owner_repo() else {
+        let Some((rid, issue)) = self.selected_issue_context() else {
             return;
         };
-        let Some(number) = self.selected_issue().map(|i| i.number) else {
-            return;
-        };
+        let number = issue.number;
         self.repo_ctx.issue_body = None;
         self.repo_ctx.issue_body_scroll = 0;
         let tx = self.tx.clone();
@@ -657,10 +654,7 @@ impl App {
     }
 
     pub(crate) fn trigger_load_diff(&mut self) {
-        let Some(rid) = self.selected_owner_repo() else {
-            return;
-        };
-        let Some(pr) = self.selected_pr().cloned() else {
+        let Some((rid, pr)) = self.selected_pr_context() else {
             return;
         };
         let title = format!("#{} {}", pr.number, pr.title);
@@ -685,13 +679,9 @@ impl App {
     }
 
     pub(crate) fn do_pr_action(&mut self, action: PrAction) {
-        let Some(rid) = self.selected_owner_repo() else {
+        let Some(pr_id) = self.selected_pr_id() else {
             return;
         };
-        let Some(pr) = self.selected_pr() else {
-            return;
-        };
-        let pr_id = rid.pr(pr.number);
 
         let tx = self.tx.clone();
         self.loading = Some(LoadingKind::Action(action.label().into()));
@@ -734,7 +724,7 @@ impl App {
                     let Some(rid) = self.selected_owner_repo() else {
                         return;
                     };
-                    self.spawn_open_url(&format!("https://github.com/{rid}"));
+                    self.spawn_open_url(&rid.url());
                 }
             }
             Column::Repo | Column::Detail => match self.repo_view {
@@ -742,7 +732,7 @@ impl App {
                     let Some(rid) = self.selected_owner_repo() else {
                         return;
                     };
-                    self.spawn_open_url(&format!("https://github.com/{rid}"));
+                    self.spawn_open_url(&rid.url());
                 }
                 RepoView::Issues => {
                     if let Some(issue) = self.selected_issue() {
@@ -763,7 +753,7 @@ impl App {
             let Some(rid) = self.selected_owner_repo() else {
                 return;
             };
-            self.spawn_open_url(&format!("https://github.com/{rid}/issues"));
+            self.spawn_open_url(&rid.issues_url());
         }
     }
 
@@ -780,30 +770,23 @@ impl App {
                 let Some(rid) = self.selected_owner_repo() else {
                     return;
                 };
-                let url = format!("https://github.com/{rid}");
-                copy_to_clipboard(&url);
+                copy_to_clipboard(&rid.url());
             }
             Column::Repo | Column::Detail => match self.repo_view {
                 RepoView::Frontpage => {
                     let Some(rid) = self.selected_owner_repo() else {
                         return;
                     };
-                    self.copy_and_notify(&format!("https://github.com/{rid}"));
+                    self.copy_and_notify(&rid.url());
                 }
                 RepoView::Prs => {
-                    let Some(rid) = self.selected_owner_repo() else {
-                        return;
-                    };
-                    if let Some(number) = self.selected_pr().map(|p| p.number) {
-                        self.copy_and_notify(&format!("https://github.com/{rid}/pull/{number}"));
+                    if let Some((_, pr)) = self.selected_pr_context() {
+                        self.copy_and_notify(&pr.url);
                     }
                 }
                 RepoView::Issues => {
-                    let Some(rid) = self.selected_owner_repo() else {
-                        return;
-                    };
-                    if let Some(number) = self.selected_issue().map(|i| i.number) {
-                        self.copy_and_notify(&format!("https://github.com/{rid}/issues/{number}"));
+                    if let Some((_, issue)) = self.selected_issue_context() {
+                        self.copy_and_notify(&issue.url);
                     }
                 }
             },
@@ -822,13 +805,9 @@ impl App {
     }
 
     pub(crate) fn post_dependabot_comment(&mut self, body: &str) {
-        let Some(rid) = self.selected_owner_repo() else {
+        let Some(pr_id) = self.selected_pr_id() else {
             return;
         };
-        let Some(pr) = self.selected_pr() else {
-            return;
-        };
-        let pr_id = rid.pr(pr.number);
         let body = body.to_string();
         let tx = self.tx.clone();
         self.loading = Some(LoadingKind::Action("comment".into()));
@@ -859,8 +838,7 @@ impl App {
     }
 
     pub fn trigger_keybinding_pr(&mut self, kb: &Keybinding) -> Option<String> {
-        let RepoId { owner, repo } = self.selected_owner_repo()?;
-        let pr = self.selected_pr()?.clone();
+        let (RepoId { owner, repo }, pr) = self.selected_pr_context()?;
         let cmd = kb.expand_command(&PrContext {
             pr: &pr,
             owner: &owner,

@@ -168,12 +168,11 @@ pub async fn fetch_repos(
 }
 
 pub async fn fetch_prs(repo: &RepoId, per_page: u32, page: u32) -> Result<Vec<PR>> {
-    let org = &repo.owner;
-    let repo = &repo.repo;
-    debug!("fetch_prs: {org}/{repo} per_page={per_page} page={page}");
+    debug!("fetch_prs: {repo} per_page={per_page} page={page}");
     let per_page = per_page.clamp(1, 100);
     let endpoint = format!(
-        "repos/{org}/{repo}/pulls?state=open&per_page={per_page}&page={page}&sort=created&direction=desc"
+        "{}/pulls?state=open&per_page={per_page}&page={page}&sort=created&direction=desc",
+        repo.api_base()
     );
     let jq = r".[] | {number, title, author: .user.login, draft, state, created_at, updated_at, url: .html_url, requested_reviewers: ([.requested_reviewers[] | .login] + [.requested_teams[] | .slug]), labels: [.labels[].name], head_ref: .head.ref, base_ref: .base.ref, head_sha: .head.sha, comments: ((.comments // 0) + (.review_comments // 0))}";
     let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
@@ -193,7 +192,7 @@ pub async fn fetch_prs(repo: &RepoId, per_page: u32, page: u32) -> Result<Vec<PR
     {
         bail!("{err}");
     }
-    debug!("fetch_prs: {org}/{repo} page={page} -> {} prs", prs.len());
+    debug!("fetch_prs: {repo} page={page} -> {} prs", prs.len());
     Ok(prs)
 }
 
@@ -236,10 +235,8 @@ pub async fn fetch_source_prs(
 }
 
 pub async fn fetch_review_status(repo: &RepoId, pr_number: u64) -> ReviewStatus {
-    let owner = &repo.owner;
-    let repo = &repo.repo;
-    debug!("fetch_review_status: {owner}/{repo}#{pr_number}");
-    let endpoint = format!("repos/{owner}/{repo}/pulls/{pr_number}/reviews?per_page=100");
+    debug!("fetch_review_status: {repo}#{pr_number}");
+    let endpoint = format!("{}/pulls/{pr_number}/reviews?per_page=100", repo.api_base());
     let Ok(out) = Command::new("gh")
         .args(["api", &endpoint, "--jq", ".[] | .state"])
         .output()
@@ -275,14 +272,13 @@ pub async fn fetch_review_status(repo: &RepoId, pr_number: u64) -> ReviewStatus 
 }
 
 pub async fn fetch_check_runs(repo: &RepoId, sha: &str) -> Vec<CheckRun> {
-    let owner = &repo.owner;
-    let repo = &repo.repo;
     if sha.is_empty() {
         return Vec::new();
     }
-    let runs_endpoint = format!("repos/{owner}/{repo}/commits/{sha}/check-runs");
+    let base = repo.api_base();
+    let runs_endpoint = format!("{base}/commits/{sha}/check-runs");
     let runs_jq = r#"[.check_runs[] | {id: .id, name: .name, url: .html_url, suite_id: .check_suite.id, s: (if .conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required" then "failing" elif .status == "in_progress" or .status == "queued" then "pending" elif .conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped" then "passing" else "unknown" end)}]"#;
-    let workflows_endpoint = format!("repos/{owner}/{repo}/actions/runs?head_sha={sha}");
+    let workflows_endpoint = format!("{base}/actions/runs?head_sha={sha}");
     let workflows_jq = r"[.workflow_runs[] | {name, event, suite_id: .check_suite_id}]";
 
     let (runs_out, wf_out) = tokio::join!(
@@ -362,9 +358,7 @@ pub async fn fetch_check_runs(repo: &RepoId, sha: &str) -> Vec<CheckRun> {
 }
 
 pub async fn rerun_check(repo: &RepoId, check_run_id: u64) -> Result<()> {
-    let owner = &repo.owner;
-    let repo = &repo.repo;
-    let endpoint = format!("repos/{owner}/{repo}/check-runs/{check_run_id}/rerequest");
+    let endpoint = format!("{}/check-runs/{check_run_id}/rerequest", repo.api_base());
     gh_run(&["api", "-X", "POST", &endpoint]).await?;
     Ok(())
 }
@@ -387,16 +381,8 @@ pub async fn fetch_rate_limit() -> Result<(u32, u32)> {
 }
 
 pub async fn fetch_diff(repo: &RepoId, pr: u64) -> Result<String> {
-    let org = &repo.owner;
-    let repo = &repo.repo;
     let out = Command::new("gh")
-        .args([
-            "pr",
-            "diff",
-            &pr.to_string(),
-            "-R",
-            &format!("{org}/{repo}"),
-        ])
+        .args(["pr", "diff", &pr.to_string(), "-R", &repo.to_string()])
         .env("GH_PAGER", "")
         .env("NO_COLOR", "1")
         .output()
@@ -409,15 +395,13 @@ pub async fn fetch_diff(repo: &RepoId, pr: u64) -> Result<String> {
 }
 
 pub async fn fetch_repo_frontpage(repo: &RepoId) -> Result<(String, String)> {
-    let owner = &repo.owner;
-    let repo = &repo.repo;
-    let desc_endpoint = format!("repos/{owner}/{repo}");
-    let description = gh_run(&["api", &desc_endpoint, "--jq", ".description // \"\""])
+    let base = repo.api_base();
+    let description = gh_run(&["api", &base, "--jq", ".description // \"\""])
         .await
         .map(|s| s.trim().to_string())
         .unwrap_or_default();
 
-    let readme_endpoint = format!("repos/{owner}/{repo}/readme");
+    let readme_endpoint = format!("{base}/readme");
     let readme = gh_run(&[
         "api",
         &readme_endpoint,
@@ -443,12 +427,12 @@ pub async fn fetch_issues(repo: &RepoId, per_page: u32, page: u32) -> Result<(Ve
         is_pr: bool,
     }
 
-    let owner = &repo.owner;
-    let repo = &repo.repo;
-    debug!("fetch_issues: {owner}/{repo} per_page={per_page} page={page}");
+    debug!("fetch_issues: {repo} per_page={per_page} page={page}");
     let per_page = per_page.clamp(1, 100);
-    let endpoint =
-        format!("repos/{owner}/{repo}/issues?state=open&per_page={per_page}&page={page}");
+    let endpoint = format!(
+        "{}/issues?state=open&per_page={per_page}&page={page}",
+        repo.api_base()
+    );
     // Include is_pr so we can compute has_more from the raw count before filtering
     let jq = r".[] | {number, title, author: .user.login, state, created_at, labels: [.labels[].name], url: .html_url, is_pr: (.pull_request != null)}";
     let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
@@ -475,9 +459,7 @@ pub async fn fetch_issues(repo: &RepoId, per_page: u32, page: u32) -> Result<(Ve
 }
 
 pub async fn fetch_issue_body(repo: &RepoId, number: u64) -> Result<String> {
-    let owner = &repo.owner;
-    let repo = &repo.repo;
-    let endpoint = format!("repos/{owner}/{repo}/issues/{number}");
+    let endpoint = format!("{}/issues/{number}", repo.api_base());
     let text = gh_run(&["api", &endpoint, "--jq", r#".body // """#]).await?;
     Ok(text.trim().to_string())
 }
@@ -495,10 +477,8 @@ pub async fn fetch_pr_body(
         head_sha: String,
     }
 
-    let owner = &repo.owner;
-    let repo = &repo.repo;
-    debug!("fetch_pr_body: {owner}/{repo}#{pr_number}");
-    let endpoint = format!("repos/{owner}/{repo}/pulls/{pr_number}");
+    debug!("fetch_pr_body: {repo}#{pr_number}");
+    let endpoint = format!("{}/pulls/{pr_number}", repo.api_base());
     let raw = gh_run(&["api", &endpoint, "--jq", r#"{body: (.body // ""), mergeable_state: (.mergeable_state // "unknown"), additions: (.additions // 0), deletions: (.deletions // 0), head_sha: .head.sha}"#]).await?;
     let resp: Resp = serde_json::from_str(&raw).context("parse pr body response")?;
     Ok((
@@ -511,9 +491,7 @@ pub async fn fetch_pr_body(
 }
 
 pub async fn fetch_viewer_permission(repo: &RepoId) -> bool {
-    let owner = &repo.owner;
-    let repo = &repo.repo;
-    let endpoint = format!("repos/{owner}/{repo}");
+    let endpoint = repo.api_base();
     let Ok(out) = Command::new("gh")
         .args([
             "api",

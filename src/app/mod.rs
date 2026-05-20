@@ -275,6 +275,18 @@ impl App {
         Some((rid, pr))
     }
 
+    pub(crate) fn selected_pr_id(&self) -> Option<PrId> {
+        let rid = self.selected_owner_repo()?;
+        let number = self.selected_pr()?.number;
+        Some(rid.pr(number))
+    }
+
+    pub(crate) fn selected_issue_context(&self) -> Option<(RepoId, Issue)> {
+        let rid = self.selected_owner_repo()?;
+        let issue = self.selected_issue()?.clone();
+        Some((rid, issue))
+    }
+
     pub fn selected_issue(&self) -> Option<&Issue> {
         self.repo_ctx
             .issue_state

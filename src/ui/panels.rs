@@ -446,12 +446,7 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
 
     let sort_label = app.sort_key.label();
     let owner_repo = app.selected_owner_repo();
-    let prs_owner: String = owner_repo
-        .as_ref()
-        .map_or_else(String::new, |rid| rid.owner.clone());
-    let prs_repo_name: String = owner_repo
-        .as_ref()
-        .map_or_else(String::new, |rid| rid.repo.clone());
+    let prs_rid = owner_repo.clone().unwrap_or_else(|| RepoId::new("", ""));
     let pr_count_suffix = if app.filter_active || !app.pr_filter.is_empty() {
         format!(
             "  {}/{}",
@@ -511,7 +506,8 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
         .prs
         .iter()
         .map(|pr| {
-            let dimmed = pr.draft || pr.state == PrState::Closed;
+            let dimmed = pr.is_dimmed();
+            let pr_id = prs_rid.clone().pr(pr.number);
             let base_style = if dimmed {
                 Style::new().fg(Color::DarkGray)
             } else {
@@ -521,9 +517,7 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
 
             let (rv_sym, rv_col) = review_icon(
                 app.repo_ctx.review_statuses.get(&pr.number),
-                app.repo_ctx
-                    .mergeable_states
-                    .get(&RepoId::new(prs_owner.clone(), prs_repo_name.clone()).pr(pr.number)),
+                app.repo_ctx.mergeable_states.get(&pr_id),
             );
 
             let number_str = format!("#{} ", pr.number);
@@ -570,7 +564,7 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
                 let (icon, color) = app
                     .repo_ctx
                     .check_summary_cache
-                    .get(&RepoId::new(prs_owner.clone(), prs_repo_name.clone()).pr(pr.number))
+                    .get(&pr_id)
                     .map_or((ICON_DOT, Color::DarkGray), |s| (s.icon(), s.color()));
                 line1_spans.push(Span::raw("  "));
                 line1_spans.push(Span::styled(icon, Style::new().fg(color)));
@@ -581,17 +575,18 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
                 Span::raw("  "),
             ]);
             if show_diff {
-                if pr.additions == 0 && pr.deletions == 0 {
-                    line1_spans.push(Span::raw(format!("{:width$}", "", width = diff_col)));
-                } else {
-                    let add_str = format!("+{}", fmt_stat(pr.additions));
-                    let del_str = format!("-{}", fmt_stat(pr.deletions));
-                    let content_w = add_str.len() + 1 + del_str.len();
-                    let pad = diff_col.saturating_sub(content_w);
-                    line1_spans.push(Span::styled(add_str, Style::new().fg(Color::Green)));
-                    line1_spans.push(Span::raw(" "));
-                    line1_spans.push(Span::styled(del_str, Style::new().fg(Color::Red)));
-                    line1_spans.push(Span::raw(" ".repeat(pad)));
+                match diff_stat_spans(pr) {
+                    None => line1_spans.push(Span::raw(format!("{:width$}", "", width = diff_col))),
+                    Some((add_span, del_span)) => {
+                        let content_w = add_span.width() + 1 + del_span.width();
+                        let pad = diff_col.saturating_sub(content_w);
+                        line1_spans.extend([
+                            add_span,
+                            Span::raw(" "),
+                            del_span,
+                            Span::raw(" ".repeat(pad)),
+                        ]);
+                    }
                 }
             }
             line1_spans.extend([
@@ -602,22 +597,10 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
 
             // line2: "  [state] [merge_warn] [title] [labels]"
             let state_icon = pr_state_icon(pr.draft, pr.state);
-            let state_col = if pr.draft {
-                Color::DarkGray
-            } else if pr.state == PrState::Closed {
-                Color::Red
-            } else {
-                Color::Green
-            };
-            let merge_state_w: usize = match app
-                .repo_ctx
-                .mergeable_states
-                .get(&RepoId::new(prs_owner.clone(), prs_repo_name.clone()).pr(pr.number))
-            {
-                Some(crate::types::MergeableState::Behind) => "⟳ rebase  ".width(),
-                Some(crate::types::MergeableState::Dirty) => "✖ conflicts  ".width(),
-                _ => 0,
-            };
+            let state_col = pr_state_color(pr);
+            let merge_state_w = mergeable_state_span(app.repo_ctx.mergeable_states.get(&pr_id))
+                .as_ref()
+                .map_or(0, Span::width);
             let label_section_w: usize = if pr.labels.is_empty() {
                 0
             } else {
@@ -633,18 +616,8 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
                 Span::styled(state_icon, Style::new().fg(state_col)),
                 Span::raw(" "),
             ];
-            match app
-                .repo_ctx
-                .mergeable_states
-                .get(&RepoId::new(prs_owner.clone(), prs_repo_name.clone()).pr(pr.number))
-            {
-                Some(crate::types::MergeableState::Behind) => {
-                    meta_spans.push(Span::styled("⟳ rebase  ", Style::new().fg(Color::Yellow)));
-                }
-                Some(crate::types::MergeableState::Dirty) => {
-                    meta_spans.push(Span::styled("✖ conflicts  ", Style::new().fg(Color::Red)));
-                }
-                _ => {}
+            if let Some(s) = mergeable_state_span(app.repo_ctx.mergeable_states.get(&pr_id)) {
+                meta_spans.push(s);
             }
             meta_spans.push(Span::styled(title2_text, base_style));
             if !pr.labels.is_empty() {
@@ -881,32 +854,15 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
     ));
     let mut header_lines = vec![title_line];
     let mut meta_line_spans: Vec<Span> = vec![];
-    let add_str = fmt_stat(pr.additions);
-    let del_str = fmt_stat(pr.deletions);
-    if pr.additions > 0 || pr.deletions > 0 {
-        meta_line_spans.push(Span::styled(
-            format!("+{add_str}"),
-            Style::new().fg(Color::Green),
-        ));
-        meta_line_spans.push(Span::raw(" "));
-        meta_line_spans.push(Span::styled(
-            format!("-{del_str}"),
-            Style::new().fg(Color::Red),
-        ));
-        meta_line_spans.push(Span::raw("  "));
+    if let Some((add_span, del_span)) = diff_stat_spans(pr) {
+        meta_line_spans.extend([add_span, Span::raw(" "), del_span, Span::raw("  ")]);
     }
-    match app
-        .repo_ctx
-        .mergeable_states
-        .get(&RepoId::new(detail_owner, detail_repo).pr(pr.number))
-    {
-        Some(crate::types::MergeableState::Behind) => {
-            meta_line_spans.push(Span::styled("⟳ rebase  ", Style::new().fg(Color::Yellow)));
-        }
-        Some(crate::types::MergeableState::Dirty) => {
-            meta_line_spans.push(Span::styled("✖ conflicts  ", Style::new().fg(Color::Red)));
-        }
-        _ => {}
+    if let Some(s) = mergeable_state_span(
+        app.repo_ctx
+            .mergeable_states
+            .get(&RepoId::new(detail_owner, detail_repo).pr(pr.number)),
+    ) {
+        meta_line_spans.push(s);
     }
     if !pr.head_ref.is_empty() {
         if !meta_line_spans.is_empty() {
@@ -1203,7 +1159,8 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
     let items: Vec<ListItem> = visible_prs
         .into_iter()
         .map(|pr| {
-            let dimmed = pr.draft || pr.state == PrState::Closed;
+            let dimmed = pr.is_dimmed();
+            let pr_id = RepoId::new(owner.clone(), pr.repo.clone()).pr(pr.number);
             let base_style = if dimmed {
                 Style::new().fg(Color::DarkGray)
             } else {
@@ -1216,12 +1173,8 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
                 .review_cache
                 .get(&rv_cache_key)
                 .and_then(|m| m.get(&pr.number));
-            let (rv_sym, rv_col) = review_icon(
-                rv_status,
-                app.repo_ctx
-                    .mergeable_states
-                    .get(&RepoId::new(owner.clone(), pr.repo.clone()).pr(pr.number)),
-            );
+            let (rv_sym, rv_col) =
+                review_icon(rv_status, app.repo_ctx.mergeable_states.get(&pr_id));
 
             let updated_str = {
                 let upd = relative_time(&pr.updated_at);
@@ -1247,7 +1200,7 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
             let (chk_icon, chk_col) = app
                 .repo_ctx
                 .check_summary_cache
-                .get(&RepoId::new(owner.clone(), pr.repo.clone()).pr(pr.number))
+                .get(&pr_id)
                 .map_or((super::ICON_DOT, Color::DarkGray), |s| {
                     (s.icon(), s.color())
                 });
@@ -1259,17 +1212,18 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
                 Span::raw("  "),
             ]);
 
-            if pr.additions == 0 && pr.deletions == 0 {
-                line1_spans.push(Span::raw(format!("{:width$}", "", width = diff_col)));
-            } else {
-                let add_str = format!("+{}", fmt_stat(pr.additions));
-                let del_str = format!("-{}", fmt_stat(pr.deletions));
-                let content_w = add_str.len() + 1 + del_str.len();
-                let pad = diff_col.saturating_sub(content_w);
-                line1_spans.push(Span::styled(add_str, Style::new().fg(Color::Green)));
-                line1_spans.push(Span::raw(" "));
-                line1_spans.push(Span::styled(del_str, Style::new().fg(Color::Red)));
-                line1_spans.push(Span::raw(" ".repeat(pad)));
+            match diff_stat_spans(pr) {
+                None => line1_spans.push(Span::raw(format!("{:width$}", "", width = diff_col))),
+                Some((add_span, del_span)) => {
+                    let content_w = add_span.width() + 1 + del_span.width();
+                    let pad = diff_col.saturating_sub(content_w);
+                    line1_spans.extend([
+                        add_span,
+                        Span::raw(" "),
+                        del_span,
+                        Span::raw(" ".repeat(pad)),
+                    ]);
+                }
             }
             line1_spans.push(Span::styled(updated_str, meta_style));
 
@@ -1277,22 +1231,10 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
 
             // Line 2: state icon + merge warning + title + labels
             let state_icon = pr_state_icon(pr.draft, pr.state);
-            let state_col = if pr.draft {
-                Color::DarkGray
-            } else if pr.state == PrState::Closed {
-                Color::Red
-            } else {
-                Color::Green
-            };
-            let merge_state_w: usize = match app
-                .repo_ctx
-                .mergeable_states
-                .get(&RepoId::new(owner.clone(), pr.repo.clone()).pr(pr.number))
-            {
-                Some(crate::types::MergeableState::Behind) => "⟳ rebase  ".width(),
-                Some(crate::types::MergeableState::Dirty) => "✖ conflicts  ".width(),
-                _ => 0,
-            };
+            let state_col = pr_state_color(pr);
+            let merge_state_w = mergeable_state_span(app.repo_ctx.mergeable_states.get(&pr_id))
+                .as_ref()
+                .map_or(0, Span::width);
             let label_section_w: usize = if pr.labels.is_empty() {
                 0
             } else {
@@ -1307,18 +1249,8 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
                 Span::styled(state_icon, Style::new().fg(state_col)),
                 Span::raw(" "),
             ];
-            match app
-                .repo_ctx
-                .mergeable_states
-                .get(&RepoId::new(owner.clone(), pr.repo.clone()).pr(pr.number))
-            {
-                Some(crate::types::MergeableState::Behind) => {
-                    line2_spans.push(Span::styled("⟳ rebase  ", Style::new().fg(Color::Yellow)));
-                }
-                Some(crate::types::MergeableState::Dirty) => {
-                    line2_spans.push(Span::styled("✖ conflicts  ", Style::new().fg(Color::Red)));
-                }
-                _ => {}
+            if let Some(s) = mergeable_state_span(app.repo_ctx.mergeable_states.get(&pr_id)) {
+                line2_spans.push(s);
             }
             line2_spans.push(Span::styled(title2_text, base_style));
             if !pr.labels.is_empty() {
@@ -1602,6 +1534,44 @@ pub(super) fn draw_issue_detail(f: &mut Frame, app: &mut App, area: ratatui::lay
         body_area,
         area,
     );
+}
+
+fn pr_state_color(pr: &crate::types::PR) -> Color {
+    if pr.draft {
+        Color::DarkGray
+    } else if pr.state == PrState::Closed {
+        Color::Red
+    } else {
+        Color::Green
+    }
+}
+
+fn mergeable_state_span(state: Option<&crate::types::MergeableState>) -> Option<Span<'static>> {
+    match state {
+        Some(crate::types::MergeableState::Behind) => {
+            Some(Span::styled("⟳ rebase  ", Style::new().fg(Color::Yellow)))
+        }
+        Some(crate::types::MergeableState::Dirty) => {
+            Some(Span::styled("✖ conflicts  ", Style::new().fg(Color::Red)))
+        }
+        _ => None,
+    }
+}
+
+fn diff_stat_spans(pr: &crate::types::PR) -> Option<(Span<'static>, Span<'static>)> {
+    if pr.additions == 0 && pr.deletions == 0 {
+        return None;
+    }
+    Some((
+        Span::styled(
+            format!("+{}", fmt_stat(pr.additions)),
+            Style::new().fg(Color::Green),
+        ),
+        Span::styled(
+            format!("-{}", fmt_stat(pr.deletions)),
+            Style::new().fg(Color::Red),
+        ),
+    ))
 }
 
 fn fmt_stat(n: u32) -> String {
