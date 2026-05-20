@@ -414,3 +414,108 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nav_prev_from_zero_stays_at_zero() {
+        let mut state = ListState::default();
+        state.select(Some(0));
+        let changed = state.nav_prev(3);
+        assert_eq!(state.selected(), Some(0));
+        assert!(!changed);
+    }
+
+    #[test]
+    fn nav_prev_from_middle_decrements() {
+        let mut state = ListState::default();
+        state.select(Some(2));
+        let changed = state.nav_prev(3);
+        assert_eq!(state.selected(), Some(1));
+        assert!(changed);
+    }
+
+    #[test]
+    fn nav_next_from_last_stays() {
+        let mut state = ListState::default();
+        state.select(Some(2));
+        let changed = state.nav_next(3);
+        assert_eq!(state.selected(), Some(2));
+        assert!(!changed);
+    }
+
+    #[test]
+    fn nav_next_from_middle_increments() {
+        let mut state = ListState::default();
+        state.select(Some(1));
+        let changed = state.nav_next(3);
+        assert_eq!(state.selected(), Some(2));
+        assert!(changed);
+    }
+
+    #[test]
+    fn nav_prev_empty_list_returns_false() {
+        let mut state = ListState::default();
+        state.select(Some(0));
+        let changed = state.nav_prev(0);
+        assert!(!changed);
+    }
+
+    #[test]
+    fn nav_next_empty_list_returns_false() {
+        let mut state = ListState::default();
+        state.select(Some(0));
+        let changed = state.nav_next(0);
+        assert!(!changed);
+    }
+
+    #[test]
+    fn nav_next_no_selection_selects_zero() {
+        let mut state = ListState::default();
+        let changed = state.nav_next(3);
+        assert_eq!(state.selected(), Some(0));
+        assert!(changed);
+    }
+
+    #[test]
+    fn nav_prev_no_selection_selects_zero() {
+        let mut state = ListState::default();
+        let changed = state.nav_prev(3);
+        assert_eq!(state.selected(), Some(0));
+        assert!(changed);
+    }
+
+    #[test]
+    fn select_changed_same_returns_false() {
+        let mut state = ListState::default();
+        state.select(Some(1));
+        let changed = state.select_changed(Some(1));
+        assert!(!changed);
+    }
+
+    #[test]
+    fn select_changed_different_returns_true() {
+        let mut state = ListState::default();
+        state.select(Some(1));
+        let changed = state.select_changed(Some(2));
+        assert!(changed);
+    }
+
+    #[test]
+    fn clamp_list_state_clamps_past_end() {
+        let mut state = ListState::default();
+        state.select(Some(5));
+        clamp_list_state(&mut state, 3);
+        assert_eq!(state.selected(), Some(2));
+    }
+
+    #[test]
+    fn clamp_list_state_empty_clears() {
+        let mut state = ListState::default();
+        state.select(Some(0));
+        clamp_list_state(&mut state, 0);
+        assert_eq!(state.selected(), None);
+    }
+}

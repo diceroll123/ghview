@@ -414,6 +414,103 @@ mod tests {
         assert!(PrAction::Merge.success_msg(42).contains("42"));
         assert!(PrAction::Approve.success_msg(99).contains("99"));
     }
+
+    // RepoId
+    #[test]
+    fn repoid_display_slash_separated() {
+        assert_eq!(RepoId::new("owner", "repo").to_string(), "owner/repo");
+    }
+
+    #[test]
+    fn repoid_key_matches_display() {
+        let rid = RepoId::new("alice", "myrepo");
+        assert_eq!(rid.key(), rid.to_string());
+    }
+
+    #[test]
+    fn repoid_from_tuple() {
+        let rid = RepoId::from(("alice".to_string(), "myrepo".to_string()));
+        assert_eq!(rid.owner, "alice");
+        assert_eq!(rid.repo, "myrepo");
+    }
+
+    #[test]
+    fn repoid_eq_same_values() {
+        assert_eq!(RepoId::new("a", "b"), RepoId::new("a", "b"));
+    }
+
+    #[test]
+    fn repoid_ne_different_owner() {
+        assert_ne!(RepoId::new("a", "b"), RepoId::new("x", "b"));
+    }
+
+    #[test]
+    fn repoid_ne_different_repo() {
+        assert_ne!(RepoId::new("a", "b"), RepoId::new("a", "x"));
+    }
+
+    #[test]
+    fn repoid_hash_consistent_with_eq() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(RepoId::new("a", "b"));
+        assert!(set.contains(&RepoId::new("a", "b")));
+        assert!(!set.contains(&RepoId::new("a", "c")));
+    }
+
+    // PrId
+    #[test]
+    fn prid_display_includes_repo_and_number() {
+        let pr = RepoId::new("owner", "repo").pr(42);
+        assert_eq!(pr.to_string(), "owner/repo#42");
+    }
+
+    #[test]
+    fn prid_from_tuple() {
+        let pr = PrId::from((RepoId::new("a", "b"), 7u64));
+        assert_eq!(pr.number, 7);
+        assert_eq!(pr.repo, RepoId::new("a", "b"));
+    }
+
+    #[test]
+    fn prid_constructor_chain() {
+        let pr = RepoId::new("org", "lib").pr(99);
+        assert_eq!(pr.repo.owner, "org");
+        assert_eq!(pr.repo.repo, "lib");
+        assert_eq!(pr.number, 99);
+    }
+
+    #[test]
+    fn prid_eq_same_values() {
+        assert_eq!(RepoId::new("a", "b").pr(1), RepoId::new("a", "b").pr(1),);
+    }
+
+    #[test]
+    fn prid_ne_different_number() {
+        assert_ne!(RepoId::new("a", "b").pr(1), RepoId::new("a", "b").pr(2));
+    }
+
+    #[test]
+    fn prid_ne_different_repo() {
+        assert_ne!(RepoId::new("a", "b").pr(1), RepoId::new("a", "c").pr(1));
+    }
+
+    #[test]
+    fn prid_hash_usable_as_map_key() {
+        use std::collections::HashMap;
+        let mut map: HashMap<PrId, &str> = HashMap::new();
+        let k = RepoId::new("a", "b").pr(1);
+        map.insert(k.clone(), "val");
+        assert_eq!(map.get(&k), Some(&"val"));
+        assert_eq!(map.get(&RepoId::new("a", "b").pr(2)), None);
+    }
+
+    #[test]
+    fn repoid_new_accepts_string_and_str() {
+        let owned = "owner".to_string();
+        let rid = RepoId::new(owned.clone(), "repo");
+        assert_eq!(rid.owner, owned);
+    }
 }
 
 #[derive(Debug)]

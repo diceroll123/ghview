@@ -220,3 +220,119 @@ pub fn render(src: &str) -> Text<'static> {
 
     Text::from(lines)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::style::{Color, Modifier};
+
+    #[test]
+    fn empty_input_produces_no_lines() {
+        let text = render("");
+        assert!(text.lines.is_empty());
+    }
+
+    #[test]
+    fn plain_text_single_span() {
+        let text = render("hello");
+        let all_spans: Vec<_> = text.lines.iter().flat_map(|l| l.spans.iter()).collect();
+        assert!(
+            all_spans.iter().any(|s| s.content == "hello"),
+            "no span with content 'hello'; spans: {:?}",
+            all_spans
+        );
+    }
+
+    #[test]
+    fn bold_text_has_bold_modifier() {
+        let text = render("**bold**");
+        let all_spans: Vec<_> = text.lines.iter().flat_map(|l| l.spans.iter()).collect();
+        let bold_span = all_spans.iter().find(|s| s.content == "bold");
+        assert!(bold_span.is_some(), "no span with content 'bold'");
+        let style = bold_span.unwrap().style;
+        assert!(
+            style.add_modifier.contains(Modifier::BOLD),
+            "span 'bold' missing BOLD modifier; style: {:?}",
+            style
+        );
+    }
+
+    #[test]
+    fn inline_code_has_backticks_and_green() {
+        let text = render("use `foo`");
+        let all_spans: Vec<_> = text.lines.iter().flat_map(|l| l.spans.iter()).collect();
+        let code_span = all_spans.iter().find(|s| s.content == "`foo`");
+        assert!(code_span.is_some(), "no span with content '`foo`'");
+        assert_eq!(
+            code_span.unwrap().style.fg,
+            Some(Color::Green),
+            "inline code span fg is not Green"
+        );
+    }
+
+    #[test]
+    fn heading_h1_gets_prefix() {
+        let text = render("# Title");
+        let first_span = text.lines.iter().flat_map(|l| l.spans.iter()).next();
+        assert!(first_span.is_some(), "no spans produced");
+        assert_eq!(first_span.unwrap().content, "# ");
+    }
+
+    #[test]
+    fn heading_h1_gets_cyan() {
+        let text = render("# Title");
+        let all_spans: Vec<_> = text.lines.iter().flat_map(|l| l.spans.iter()).collect();
+        let title_span = all_spans.iter().find(|s| s.content == "Title");
+        assert!(title_span.is_some(), "no span with content 'Title'");
+        assert_eq!(
+            title_span.unwrap().style.fg,
+            Some(Color::Cyan),
+            "heading Title span fg is not Cyan"
+        );
+    }
+
+    #[test]
+    fn horizontal_rule_renders_dashes() {
+        let text = render("---\n");
+        let has_rule = text
+            .lines
+            .iter()
+            .any(|l| l.spans.iter().any(|s| s.content.contains('─')));
+        assert!(has_rule, "no line contains '─'");
+    }
+
+    #[test]
+    fn unordered_list_item_has_bullet() {
+        let text = render("- item");
+        let all_spans: Vec<_> = text.lines.iter().flat_map(|l| l.spans.iter()).collect();
+        assert!(
+            all_spans.iter().any(|s| s.content.contains("• ")),
+            "no span contains '• '"
+        );
+    }
+
+    #[test]
+    fn paragraph_followed_by_blank_line() {
+        let text = render("para");
+        assert_eq!(
+            text.lines.len(),
+            2,
+            "expected 2 lines (text + blank separator), got {}",
+            text.lines.len()
+        );
+    }
+
+    #[test]
+    fn link_renders_brackets() {
+        let text = render("[text](url)");
+        let all_spans: Vec<_> = text.lines.iter().flat_map(|l| l.spans.iter()).collect();
+        assert!(
+            all_spans.iter().any(|s| s.content == "["),
+            "no '[' span found"
+        );
+        assert!(
+            all_spans.iter().any(|s| s.content == "]"),
+            "no ']' span found"
+        );
+    }
+}

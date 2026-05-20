@@ -1045,4 +1045,97 @@ mod tests {
         app.rebuild_prs();
         assert_eq!(app.repo_ctx.prs.len(), 2);
     }
+
+    fn setup_selected_repo(app: &mut App) {
+        app.sources = vec![Source::User("owner".into())];
+        app.source_state.select(Some(0));
+        app.source_ctx.repos = vec![Repo {
+            name: "repo".into(),
+            ..Repo::default()
+        }];
+        app.source_ctx.repo_state.select(Some(0));
+    }
+
+    fn make_pr_numbered(number: u64) -> PR {
+        PR {
+            number,
+            title: "test pr".into(),
+            author: "alice".into(),
+            draft: false,
+            state: PrState::Open,
+            created_at: "2024-01-01T00:00:00Z".into(),
+            updated_at: "2024-01-01T00:00:00Z".into(),
+            url: "https://github.com/owner/repo/pull/1".into(),
+            requested_reviewers: vec![],
+            labels: vec![],
+            head_ref: "branch".into(),
+            base_ref: "main".into(),
+            head_sha: "abc".into(),
+            additions: 0,
+            deletions: 0,
+            comments: 0,
+            repo: String::new(),
+        }
+    }
+
+    #[test]
+    fn diff_content_accepted_for_current_pr() {
+        use crate::types::{DataMsg, RepoId};
+        let mut app = make_app();
+        setup_selected_repo(&mut app);
+        app.repo_ctx.prs = vec![make_pr_numbered(42)];
+        app.repo_ctx.pr_state.select(Some(0));
+        app.handle_data(DataMsg::DiffContent {
+            pr: RepoId::new("owner", "repo").pr(42),
+            title: "t".into(),
+            content: "diff\n".into(),
+        });
+        assert!(app.repo_ctx.diff_view.is_some());
+    }
+
+    #[test]
+    fn diff_content_ignored_for_wrong_repo() {
+        use crate::types::{DataMsg, RepoId};
+        let mut app = make_app();
+        setup_selected_repo(&mut app);
+        app.repo_ctx.prs = vec![make_pr_numbered(42)];
+        app.repo_ctx.pr_state.select(Some(0));
+        app.handle_data(DataMsg::DiffContent {
+            pr: RepoId::new("other", "repo").pr(42),
+            title: "t".into(),
+            content: "diff\n".into(),
+        });
+        assert!(app.repo_ctx.diff_view.is_none());
+    }
+
+    #[test]
+    fn diff_content_ignored_for_wrong_pr_number() {
+        use crate::types::{DataMsg, RepoId};
+        let mut app = make_app();
+        setup_selected_repo(&mut app);
+        app.repo_ctx.prs = vec![make_pr_numbered(42)];
+        app.repo_ctx.pr_state.select(Some(0));
+        app.handle_data(DataMsg::DiffContent {
+            pr: RepoId::new("owner", "repo").pr(99),
+            title: "t".into(),
+            content: "diff\n".into(),
+        });
+        assert!(app.repo_ctx.diff_view.is_none());
+    }
+
+    #[test]
+    fn diff_content_splits_into_lines() {
+        use crate::types::{DataMsg, RepoId};
+        let mut app = make_app();
+        setup_selected_repo(&mut app);
+        app.repo_ctx.prs = vec![make_pr_numbered(42)];
+        app.repo_ctx.pr_state.select(Some(0));
+        app.handle_data(DataMsg::DiffContent {
+            pr: RepoId::new("owner", "repo").pr(42),
+            title: "t".into(),
+            content: "line1\nline2\n".into(),
+        });
+        let diff = app.repo_ctx.diff_view.as_ref().expect("diff_view is None");
+        assert_eq!(diff.lines.len(), 2);
+    }
 }
