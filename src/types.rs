@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -90,6 +91,61 @@ pub struct PR {
     /// Populated for source-level PR lists; empty for per-repo lists.
     #[serde(default)]
     pub repo: String,
+}
+
+/// Identifies a GitHub repo by owner and repo name.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RepoId {
+    pub owner: String,
+    pub repo: String,
+}
+
+impl RepoId {
+    pub fn new(owner: impl Into<String>, repo: impl Into<String>) -> Self {
+        Self {
+            owner: owner.into(),
+            repo: repo.into(),
+        }
+    }
+
+    pub fn pr(self, number: u64) -> PrId {
+        PrId { repo: self, number }
+    }
+
+    pub fn key(&self) -> String {
+        format!("{}/{}", self.owner, self.repo)
+    }
+}
+
+impl fmt::Display for RepoId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.owner, self.repo)
+    }
+}
+
+impl From<(String, String)> for RepoId {
+    fn from((owner, repo): (String, String)) -> Self {
+        Self { owner, repo }
+    }
+}
+
+/// Identifies a specific PR within a repo.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PrId {
+    pub repo: RepoId,
+    pub number: u64,
+}
+
+impl fmt::Display for PrId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}#{}", self.repo, self.number)
+    }
+}
+
+impl From<(RepoId, u64)> for PrId {
+    fn from((repo, number): (RepoId, u64)) -> Self {
+        Self { repo, number }
+    }
 }
 
 /// A source in the leftmost column — either the current user or an org.
@@ -377,63 +433,52 @@ pub enum DataMsg {
         has_more: bool,
     },
     Prs {
-        owner: String,
-        repo: String,
+        repo: RepoId,
         prs: Vec<PR>,
         has_more: bool,
     },
     MorePrs {
-        owner: String,
-        repo: String,
+        repo: RepoId,
         prs: Vec<PR>,
         has_more: bool,
     },
     DiffContent {
+        pr: PrId,
         title: String,
         content: String,
     },
     ReviewStatus {
-        owner: String,
-        repo: String,
-        pr_number: u64,
+        pr: PrId,
         status: ReviewStatus,
     },
     CheckRuns {
-        owner: String,
-        repo: String,
-        pr_number: u64,
+        pr: PrId,
         runs: Vec<CheckRun>,
     },
     PrBody {
-        owner: String,
-        repo: String,
-        pr_number: u64,
+        pr: PrId,
         body: String,
         mergeable_state: MergeableState,
         additions: u32,
         deletions: u32,
     },
     RepoFrontpage {
-        owner: String,
-        repo: String,
+        repo: RepoId,
         description: String,
         readme: String,
     },
     Issues {
-        owner: String,
-        repo: String,
+        repo: RepoId,
         issues: Vec<Issue>,
         has_more: bool,
     },
     MoreIssues {
-        owner: String,
-        repo: String,
+        repo: RepoId,
         issues: Vec<Issue>,
         has_more: bool,
     },
     IssueBody {
-        owner: String,
-        repo: String,
+        repo: RepoId,
         number: u64,
         body: String,
     },
@@ -442,8 +487,7 @@ pub enum DataMsg {
         limit: u32,
     },
     ViewerPermission {
-        owner: String,
-        repo: String,
+        repo: RepoId,
         can_push: bool,
     },
     SourcePrs {

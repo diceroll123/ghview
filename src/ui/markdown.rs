@@ -74,8 +74,7 @@ pub fn render(src: &str) -> Text<'static> {
                 in_heading = false;
             }
 
-            Event::Start(Tag::Paragraph) => {}
-            Event::End(TagEnd::Paragraph) => {
+            Event::End(TagEnd::Paragraph | TagEnd::BlockQuote(_)) => {
                 flush(&mut spans, &mut lines);
                 lines.push(Line::raw(""));
             }
@@ -112,8 +111,6 @@ pub fn render(src: &str) -> Text<'static> {
             Event::Start(Tag::Image { .. }) => {
                 spans.push(Span::styled("🖼 ", Style::default().fg(Color::DarkGray)));
             }
-            Event::End(TagEnd::Image) => {}
-
             Event::Code(code) => {
                 spans.push(Span::styled(
                     format!("`{code}`"),
@@ -161,16 +158,12 @@ pub fn render(src: &str) -> Text<'static> {
                     Style::default().fg(Color::DarkGray),
                 ));
             }
-            Event::End(TagEnd::Item) => {
+            Event::End(TagEnd::Item) | Event::HardBreak => {
                 flush(&mut spans, &mut lines);
             }
 
             Event::Start(Tag::BlockQuote(_)) => {
                 spans.push(Span::styled("▌ ", Style::default().fg(Color::DarkGray)));
-            }
-            Event::End(TagEnd::BlockQuote(_)) => {
-                flush(&mut spans, &mut lines);
-                lines.push(Line::raw(""));
             }
 
             Event::Rule => {
@@ -184,9 +177,6 @@ pub fn render(src: &str) -> Text<'static> {
 
             Event::SoftBreak => {
                 spans.push(Span::raw(" "));
-            }
-            Event::HardBreak => {
-                flush(&mut spans, &mut lines);
             }
 
             Event::Text(text) => {
@@ -219,18 +209,6 @@ pub fn render(src: &str) -> Text<'static> {
             Event::Html(_) | Event::InlineHtml(_) => {
                 // strip HTML tags silently
             }
-
-            Event::InlineMath(_) | Event::DisplayMath(_) => {}
-
-            Event::FootnoteReference(_)
-            | Event::Start(Tag::FootnoteDefinition(_))
-            | Event::End(TagEnd::FootnoteDefinition) => {}
-
-            Event::Start(Tag::MetadataBlock(_)) | Event::End(TagEnd::MetadataBlock(_)) => {}
-
-            Event::Start(Tag::Superscript) | Event::End(TagEnd::Superscript) => {}
-
-            Event::Start(Tag::Subscript) | Event::End(TagEnd::Subscript) => {}
 
             _ => {}
         }

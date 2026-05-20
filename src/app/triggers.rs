@@ -7,8 +7,11 @@ use crate::{
         fetch_rate_limit, fetch_repo_frontpage, fetch_repos, fetch_review_status, fetch_source_prs,
         fetch_sources, fetch_viewer_permission, rerun_check,
     },
-    types::{Column, DataMsg, LoadingKind, PR, PrAction, RepoView, Source},
+    types::{
+        Column, DataMsg, DetailSection, LoadingKind, PR, PrAction, PrId, RepoId, RepoView, Source,
+    },
 };
+use ratatui::widgets::ListState;
 
 enum KbOutput {
     Silent,
@@ -19,20 +22,20 @@ impl App {
     fn per_page(&self) -> u32 {
         let cfg = self.config.ui.per_page;
         if cfg == 0 {
-            (self.terminal_height as u32 * 3 / 2).clamp(10, 50)
+            (u32::from(self.terminal_height) * 3 / 2).clamp(10, 50)
         } else {
             cfg.clamp(10, 100)
         }
     }
 
-    pub(crate) fn selected_owner_repo(&self) -> Option<(String, String)> {
+    pub(crate) fn selected_owner_repo(&self) -> Option<RepoId> {
         let owner = self.selected_source_owner()?;
         if self.repos_view == crate::types::ReposView::PrList {
             let pr = self.selected_pr()?;
-            return Some((owner, pr.repo.clone()));
+            return Some(RepoId::new(owner, pr.repo.clone()));
         }
         let repo = self.selected_repo()?.to_string();
-        Some((owner, repo))
+        Some(RepoId::new(owner, repo))
     }
 
     fn spawn_keybinding_cmd(&mut self, name: String, cmd: String, output: KbOutput) {
@@ -258,7 +261,7 @@ impl App {
     }
 
     pub(crate) fn trigger_load_pr_body(&mut self) {
-        let Some((owner, repo)) = self.selected_owner_repo() else {
+        let Some(rid) = self.selected_owner_repo() else {
             return;
         };
         let Some(pr) = self.selected_pr() else { return };
@@ -266,20 +269,19 @@ impl App {
         let known_sha = pr.head_sha.clone();
         self.repo_ctx.pr_body = None;
         self.repo_ctx.check_runs = None;
-        self.repo_ctx.check_runs_state = Default::default();
+        self.repo_ctx.check_runs_state = ListState::default();
         self.repo_ctx.pr_body_scroll = 0;
-        self.repo_ctx.detail_section = Default::default();
+        self.repo_ctx.detail_section = DetailSection::default();
         self.repo_ctx.diff_view = None;
+        let pr_id = rid.pr(pr_number);
         let tx = self.tx.clone();
         tokio::spawn(async move {
             let (body, mergeable_state, additions, deletions, sha) =
-                fetch_pr_body(&owner, &repo, pr_number)
+                fetch_pr_body(&pr_id.repo, pr_number)
                     .await
                     .unwrap_or_default();
             let _ = tx.send(DataMsg::PrBody {
-                owner: owner.clone(),
-                repo: repo.clone(),
-                pr_number,
+                pr: pr_id.clone(),
                 body,
                 mergeable_state,
                 additions,
@@ -289,32 +291,25 @@ impl App {
             // struct (populated for repo-list PRs but empty for source-list PRs).
             let sha = if sha.is_empty() { known_sha } else { sha };
             if !sha.is_empty() {
-                let runs = fetch_check_runs(&owner, &repo, &sha).await;
-                let _ = tx.send(DataMsg::CheckRuns {
-                    owner,
-                    repo,
-                    pr_number,
-                    runs,
-                });
+                let runs = fetch_check_runs(&pr_id.repo, &sha).await;
+                let _ = tx.send(DataMsg::CheckRuns { pr: pr_id, runs });
             }
         });
     }
 
     pub(crate) fn trigger_load_prs(&mut self) {
-        let Some((owner, repo)) = self.selected_owner_repo() else {
+        let Some(rid) = self.selected_owner_repo() else {
             return;
         };
         self.invalidate_repo();
-        let key = format!("{owner}/{repo}");
+        let key = rid.key();
         {
-            let o = owner.clone();
-            let r = repo.clone();
+            let repo_id = rid.clone();
             let tx = self.tx.clone();
             tokio::spawn(async move {
-                let can_push = fetch_viewer_permission(&o, &r).await;
+                let can_push = fetch_viewer_permission(&repo_id).await;
                 let _ = tx.send(DataMsg::ViewerPermission {
-                    owner: o,
-                    repo: r,
+                    repo: repo_id,
                     can_push,
                 });
             });
@@ -329,13 +324,13 @@ impl App {
             self.apply_prs(cached);
             let per_page = self.per_page();
             let tx = self.tx.clone();
+            let rid2 = rid;
             tokio::spawn(async move {
-                match fetch_prs(&owner, &repo, per_page, 1).await {
+                match fetch_prs(&rid2, per_page, 1).await {
                     Ok(prs) => {
                         let has_more = prs.len() == per_page as usize;
                         let _ = tx.send(DataMsg::Prs {
-                            owner,
-                            repo,
+                            repo: rid2,
                             prs,
                             has_more,
                         });
@@ -353,12 +348,11 @@ impl App {
         let per_page = self.per_page();
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            match fetch_prs(&owner, &repo, per_page, 1).await {
+            match fetch_prs(&rid, per_page, 1).await {
                 Ok(prs) => {
                     let has_more = prs.len() == per_page as usize;
                     let _ = tx.send(DataMsg::Prs {
-                        owner,
-                        repo,
+                        repo: rid,
                         prs,
                         has_more,
                     });
@@ -374,7 +368,7 @@ impl App {
         if !self.repo_ctx.prs_pagination.can_load_more() {
             return;
         }
-        let Some((owner, repo)) = self.selected_owner_repo() else {
+        let Some(rid) = self.selected_owner_repo() else {
             return;
         };
         let per_page = self.per_page();
@@ -382,12 +376,11 @@ impl App {
         self.loading = Some(LoadingKind::Prs);
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            match fetch_prs(&owner, &repo, per_page, page).await {
+            match fetch_prs(&rid, per_page, page).await {
                 Ok(prs) => {
                     let has_more = prs.len() == per_page as usize;
                     let _ = tx.send(DataMsg::MorePrs {
-                        owner,
-                        repo,
+                        repo: rid,
                         prs,
                         has_more,
                     });
@@ -404,10 +397,10 @@ impl App {
             self.trigger_source_pr_review_fetches();
             return;
         }
-        let Some((owner, repo)) = self.selected_owner_repo() else {
+        let Some(rid) = self.selected_owner_repo() else {
             return;
         };
-        let key = format!("{owner}/{repo}");
+        let key = rid.key();
         let tx = self.tx.clone();
 
         let existing_reviews = self.review_cache.get(&key).cloned().unwrap_or_default();
@@ -423,20 +416,18 @@ impl App {
             return;
         }
 
+        let RepoId { owner, repo } = rid;
         let owner: std::sync::Arc<str> = owner.into();
         let repo: std::sync::Arc<str> = repo.into();
 
         for pr in prs_to_fetch {
-            let o = owner.clone();
-            let r = repo.clone();
+            let rid = RepoId::new(owner.as_ref(), repo.as_ref());
             let tx2 = tx.clone();
             let num = pr.number;
             tokio::spawn(async move {
-                let status = fetch_review_status(&o, &r, num).await;
+                let status = fetch_review_status(&rid, num).await;
                 let _ = tx2.send(DataMsg::ReviewStatus {
-                    owner: o.to_string(),
-                    repo: r.to_string(),
-                    pr_number: num,
+                    pr: rid.pr(num),
                     status,
                 });
             });
@@ -457,16 +448,13 @@ impl App {
             {
                 continue;
             }
-            let o = owner.clone();
-            let r: std::sync::Arc<str> = pr.repo.clone().into();
+            let rid = RepoId::new(owner.to_string(), pr.repo.clone());
             let num = pr.number;
             let tx = self.tx.clone();
             tokio::spawn(async move {
-                let status = fetch_review_status(&o, &r, num).await;
+                let status = fetch_review_status(&rid, num).await;
                 let _ = tx.send(DataMsg::ReviewStatus {
-                    owner: o.to_string(),
-                    repo: r.to_string(),
-                    pr_number: num,
+                    pr: rid.pr(num),
                     status,
                 });
             });
@@ -477,63 +465,51 @@ impl App {
         if !self.config.ui.prefetch_pr_details {
             return;
         }
-        let prs_to_fetch: Vec<(String, String, u64)> =
-            if self.repos_view == crate::types::ReposView::PrList {
-                let Some(owner) = self.selected_source_owner() else {
-                    return;
-                };
-                self.source_ctx
-                    .source_prs
-                    .iter()
-                    .filter(|pr| {
-                        !self.repo_ctx.mergeable_states.contains_key(&(
-                            owner.clone(),
-                            pr.repo.clone(),
-                            pr.number,
-                        ))
-                    })
-                    .map(|pr| (owner.clone(), pr.repo.clone(), pr.number))
-                    .collect()
-            } else {
-                let Some((owner, repo)) = self.selected_owner_repo() else {
-                    return;
-                };
-                self.repo_ctx
-                    .prs
-                    .iter()
-                    .filter(|pr| {
-                        !self.repo_ctx.mergeable_states.contains_key(&(
-                            owner.clone(),
-                            repo.clone(),
-                            pr.number,
-                        ))
-                    })
-                    .map(|pr| (owner.clone(), repo.clone(), pr.number))
-                    .collect()
+        let prs_to_fetch: Vec<PrId> = if self.repos_view == crate::types::ReposView::PrList {
+            let Some(owner) = self.selected_source_owner() else {
+                return;
             };
+            self.source_ctx
+                .source_prs
+                .iter()
+                .filter_map(|pr| {
+                    let id = RepoId::new(owner.clone(), pr.repo.clone()).pr(pr.number);
+                    (!self.repo_ctx.mergeable_states.contains_key(&id)).then_some(id)
+                })
+                .collect()
+        } else {
+            let Some(rid) = self.selected_owner_repo() else {
+                return;
+            };
+            self.repo_ctx
+                .prs
+                .iter()
+                .filter_map(|pr| {
+                    let id = rid.clone().pr(pr.number);
+                    (!self.repo_ctx.mergeable_states.contains_key(&id)).then_some(id)
+                })
+                .collect()
+        };
 
-        for (owner, repo, pr_number) in prs_to_fetch {
+        for pr_id in prs_to_fetch {
             let tx = self.tx.clone();
-            let o: std::sync::Arc<str> = owner.into();
-            let r: std::sync::Arc<str> = repo.into();
+            let pr_number = pr_id.number;
             tokio::spawn(async move {
                 let (body, mergeable_state, additions, deletions, sha) =
-                    fetch_pr_body(&o, &r, pr_number).await.unwrap_or_default();
+                    fetch_pr_body(&pr_id.repo, pr_number)
+                        .await
+                        .unwrap_or_default();
                 let _ = tx.send(DataMsg::PrBody {
-                    owner: o.to_string(),
-                    repo: r.to_string(),
-                    pr_number,
+                    pr: pr_id.repo.clone().pr(pr_number),
                     body,
                     mergeable_state,
                     additions,
                     deletions,
                 });
                 if !sha.is_empty() {
-                    let runs = fetch_check_runs(&o, &r, &sha).await;
+                    let runs = fetch_check_runs(&pr_id.repo, &sha).await;
                     let _ = tx.send(DataMsg::CheckRuns {
-                        owner: o.to_string(),
-                        repo: r.to_string(),
-                        pr_number,
+                        pr: pr_id.repo.pr(pr_number),
                         runs,
                     });
                 }
@@ -542,17 +518,16 @@ impl App {
     }
 
     pub(crate) fn trigger_load_frontpage(&mut self) {
-        let Some((owner, repo)) = self.selected_owner_repo() else {
+        let Some(rid) = self.selected_owner_repo() else {
             return;
         };
         self.repo_ctx.repo_frontpage = None;
         self.repo_ctx.repo_frontpage_scroll = 0;
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            if let Ok((description, readme)) = fetch_repo_frontpage(&owner, &repo).await {
+            if let Ok((description, readme)) = fetch_repo_frontpage(&rid).await {
                 let _ = tx.send(DataMsg::RepoFrontpage {
-                    owner,
-                    repo,
+                    repo: rid,
                     description,
                     readme,
                 });
@@ -561,11 +536,11 @@ impl App {
     }
 
     pub(crate) fn trigger_load_issues(&mut self) {
-        let Some((owner, repo)) = self.selected_owner_repo() else {
+        let Some(rid) = self.selected_owner_repo() else {
             return;
         };
         self.repo_ctx.issues = vec![];
-        self.repo_ctx.issue_state = Default::default();
+        self.repo_ctx.issue_state = ListState::default();
         self.repo_ctx.issue_body = None;
         self.repo_ctx.issue_body_scroll = 0;
         self.loading = Some(LoadingKind::Issues);
@@ -573,11 +548,10 @@ impl App {
         let per_page = self.per_page();
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            match fetch_issues(&owner, &repo, per_page, 1).await {
+            match fetch_issues(&rid, per_page, 1).await {
                 Ok((issues, has_more)) => {
                     let _ = tx.send(DataMsg::Issues {
-                        owner,
-                        repo,
+                        repo: rid,
                         issues,
                         has_more,
                     });
@@ -593,7 +567,7 @@ impl App {
         if !self.repo_ctx.issues_pagination.can_load_more() {
             return;
         }
-        let Some((owner, repo)) = self.selected_owner_repo() else {
+        let Some(rid) = self.selected_owner_repo() else {
             return;
         };
         let per_page = self.per_page();
@@ -601,11 +575,10 @@ impl App {
         self.loading = Some(LoadingKind::Issues);
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            match fetch_issues(&owner, &repo, per_page, page).await {
+            match fetch_issues(&rid, per_page, page).await {
                 Ok((issues, has_more)) => {
                     let _ = tx.send(DataMsg::MoreIssues {
-                        owner,
-                        repo,
+                        repo: rid,
                         issues,
                         has_more,
                     });
@@ -618,7 +591,7 @@ impl App {
     }
 
     pub(crate) fn trigger_load_issue_body(&mut self) {
-        let Some((owner, repo)) = self.selected_owner_repo() else {
+        let Some(rid) = self.selected_owner_repo() else {
             return;
         };
         let Some(number) = self.selected_issue().map(|i| i.number) else {
@@ -628,10 +601,9 @@ impl App {
         self.repo_ctx.issue_body_scroll = 0;
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            if let Ok(body) = fetch_issue_body(&owner, &repo, number).await {
+            if let Ok(body) = fetch_issue_body(&rid, number).await {
                 let _ = tx.send(DataMsg::IssueBody {
-                    owner,
-                    repo,
+                    repo: rid,
                     number,
                     body,
                 });
@@ -685,7 +657,7 @@ impl App {
     }
 
     pub(crate) fn trigger_load_diff(&mut self) {
-        let Some((owner, repo)) = self.selected_owner_repo() else {
+        let Some(rid) = self.selected_owner_repo() else {
             return;
         };
         let Some(pr) = self.selected_pr().cloned() else {
@@ -695,10 +667,15 @@ impl App {
         self.loading = Some(LoadingKind::Action("diff".into()));
         self.repo_ctx.diff_view = None;
         let tx = self.tx.clone();
+        let pr_number = pr.number;
         tokio::spawn(async move {
-            match fetch_diff(&owner, &repo, pr.number).await {
+            match fetch_diff(&rid, pr_number).await {
                 Ok(content) => {
-                    let _ = tx.send(DataMsg::DiffContent { title, content });
+                    let _ = tx.send(DataMsg::DiffContent {
+                        pr: rid.pr(pr_number),
+                        title,
+                        content,
+                    });
                 }
                 Err(e) => {
                     let _ = tx.send(DataMsg::Error(e.to_string()));
@@ -708,12 +685,13 @@ impl App {
     }
 
     pub(crate) fn do_pr_action(&mut self, action: PrAction) {
-        let Some((owner, repo)) = self.selected_owner_repo() else {
+        let Some(rid) = self.selected_owner_repo() else {
             return;
         };
-        let Some(pr) = self.selected_pr().cloned() else {
+        let Some(pr) = self.selected_pr() else {
             return;
         };
+        let pr_id = rid.pr(pr.number);
 
         let tx = self.tx.clone();
         self.loading = Some(LoadingKind::Action(action.label().into()));
@@ -721,13 +699,13 @@ impl App {
         let merge_method = self.config.ui.merge_method;
         tokio::spawn(async move {
             let result = match action {
-                PrAction::Approve => actions::approve(&owner, &repo, pr.number).await,
-                PrAction::Merge => actions::merge(&owner, &repo, pr.number, merge_method).await,
-                PrAction::Close => actions::close_pr(&owner, &repo, pr.number).await,
-                PrAction::Reopen => actions::reopen_pr(&owner, &repo, pr.number).await,
-                PrAction::MarkReady => actions::mark_ready(&owner, &repo, pr.number).await,
+                PrAction::Approve => actions::approve(&pr_id).await,
+                PrAction::Merge => actions::merge(&pr_id, merge_method).await,
+                PrAction::Close => actions::close_pr(&pr_id).await,
+                PrAction::Reopen => actions::reopen_pr(&pr_id).await,
+                PrAction::MarkReady => actions::mark_ready(&pr_id).await,
             }
-            .map(|()| Some(action.success_msg(pr.number)));
+            .map(|()| Some(action.success_msg(pr_id.number)));
             match result {
                 Ok(msg) => {
                     let _ = tx.send(DataMsg::ActionDone(msg));
@@ -753,18 +731,18 @@ impl App {
                         self.spawn_open_url(&pr.url);
                     }
                 } else {
-                    let Some((owner, repo)) = self.selected_owner_repo() else {
+                    let Some(rid) = self.selected_owner_repo() else {
                         return;
                     };
-                    self.spawn_open_url(&format!("https://github.com/{owner}/{repo}"));
+                    self.spawn_open_url(&format!("https://github.com/{rid}"));
                 }
             }
             Column::Repo | Column::Detail => match self.repo_view {
                 RepoView::Frontpage => {
-                    let Some((owner, repo)) = self.selected_owner_repo() else {
+                    let Some(rid) = self.selected_owner_repo() else {
                         return;
                     };
-                    self.spawn_open_url(&format!("https://github.com/{owner}/{repo}"));
+                    self.spawn_open_url(&format!("https://github.com/{rid}"));
                 }
                 RepoView::Issues => {
                     if let Some(issue) = self.selected_issue() {
@@ -782,10 +760,10 @@ impl App {
 
     pub(crate) fn context_open_issues(&self) {
         if self.focus == Column::Repos {
-            let Some((owner, repo)) = self.selected_owner_repo() else {
+            let Some(rid) = self.selected_owner_repo() else {
                 return;
             };
-            self.spawn_open_url(&format!("https://github.com/{owner}/{repo}/issues"));
+            self.spawn_open_url(&format!("https://github.com/{rid}/issues"));
         }
     }
 
@@ -799,46 +777,42 @@ impl App {
                 copy_to_clipboard(&url);
             }
             Column::Repos => {
-                let Some((owner, repo)) = self.selected_owner_repo() else {
+                let Some(rid) = self.selected_owner_repo() else {
                     return;
                 };
-                let url = format!("https://github.com/{owner}/{repo}");
+                let url = format!("https://github.com/{rid}");
                 copy_to_clipboard(&url);
             }
             Column::Repo | Column::Detail => match self.repo_view {
                 RepoView::Frontpage => {
-                    let Some((owner, repo)) = self.selected_owner_repo() else {
+                    let Some(rid) = self.selected_owner_repo() else {
                         return;
                     };
-                    self.copy_and_notify(format!("https://github.com/{owner}/{repo}"));
+                    self.copy_and_notify(&format!("https://github.com/{rid}"));
                 }
                 RepoView::Prs => {
-                    let Some((owner, repo)) = self.selected_owner_repo() else {
+                    let Some(rid) = self.selected_owner_repo() else {
                         return;
                     };
                     if let Some(number) = self.selected_pr().map(|p| p.number) {
-                        self.copy_and_notify(format!(
-                            "https://github.com/{owner}/{repo}/pull/{number}"
-                        ));
+                        self.copy_and_notify(&format!("https://github.com/{rid}/pull/{number}"));
                     }
                 }
                 RepoView::Issues => {
-                    let Some((owner, repo)) = self.selected_owner_repo() else {
+                    let Some(rid) = self.selected_owner_repo() else {
                         return;
                     };
                     if let Some(number) = self.selected_issue().map(|i| i.number) {
-                        self.copy_and_notify(format!(
-                            "https://github.com/{owner}/{repo}/issues/{number}"
-                        ));
+                        self.copy_and_notify(&format!("https://github.com/{rid}/issues/{number}"));
                     }
                 }
             },
         }
     }
 
-    fn copy_and_notify(&mut self, text: String) {
+    fn copy_and_notify(&mut self, text: &str) {
         self.set_status(format!("Copied: {text}"));
-        copy_to_clipboard(&text);
+        copy_to_clipboard(text);
     }
 
     pub(crate) fn spawn_open_url(&self, url: &str) {
@@ -848,17 +822,18 @@ impl App {
     }
 
     pub(crate) fn post_dependabot_comment(&mut self, body: &str) {
-        let Some((owner, repo)) = self.selected_owner_repo() else {
+        let Some(rid) = self.selected_owner_repo() else {
             return;
         };
-        let Some(pr) = self.selected_pr().cloned() else {
+        let Some(pr) = self.selected_pr() else {
             return;
         };
+        let pr_id = rid.pr(pr.number);
         let body = body.to_string();
         let tx = self.tx.clone();
         self.loading = Some(LoadingKind::Action("comment".into()));
         tokio::spawn(async move {
-            let result = actions::post_comment(&owner, &repo, pr.number, &body).await;
+            let result = actions::post_comment(&pr_id, &body).await;
             match result {
                 Ok(()) => {
                     let _ = tx.send(DataMsg::ActionDone(Some(format!("Sent: {body}"))));
@@ -884,7 +859,7 @@ impl App {
     }
 
     pub fn trigger_keybinding_pr(&mut self, kb: &Keybinding) -> Option<String> {
-        let (owner, repo) = self.selected_owner_repo()?;
+        let RepoId { owner, repo } = self.selected_owner_repo()?;
         let pr = self.selected_pr()?.clone();
         let cmd = kb.expand_command(&PrContext {
             pr: &pr,
@@ -915,13 +890,13 @@ impl App {
         let Some(run) = runs.get(idx) else { return };
         let check_run_id = run.id;
         let name = run.name.clone();
-        let Some((owner, repo)) = self.selected_owner_repo() else {
+        let Some(rid) = self.selected_owner_repo() else {
             return;
         };
         self.set_status(format!("Re-running {name}…"));
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            match rerun_check(&owner, &repo, check_run_id).await {
+            match rerun_check(&rid, check_run_id).await {
                 Ok(()) => {
                     let _ = tx.send(DataMsg::ActionDone(Some(format!("Re-running {name}"))));
                 }

@@ -2,65 +2,62 @@ use anyhow::{Result, bail};
 use std::process::Stdio;
 use tokio::process::Command;
 
-pub async fn approve(org: &str, repo: &str, pr: u64) -> Result<()> {
+use crate::types::PrId;
+
+pub async fn approve(pr: &PrId) -> Result<()> {
     run_silent(&[
         "pr",
         "review",
-        &pr.to_string(),
+        &pr.number.to_string(),
         "--approve",
         "-R",
-        &format!("{org}/{repo}"),
+        &pr.repo.to_string(),
     ])
     .await
 }
 
-pub async fn merge(
-    org: &str,
-    repo: &str,
-    pr: u64,
-    method: crate::config::MergeMethod,
-) -> Result<()> {
+pub async fn merge(pr: &PrId, method: crate::config::MergeMethod) -> Result<()> {
     run_silent(&[
         "pr",
         "merge",
-        &pr.to_string(),
+        &pr.number.to_string(),
         "-R",
-        &format!("{org}/{repo}"),
+        &pr.repo.to_string(),
         "--auto",
         method.flag(),
     ])
     .await
 }
 
-pub async fn close_pr(org: &str, repo: &str, pr: u64) -> Result<()> {
+pub async fn close_pr(pr: &PrId) -> Result<()> {
     run_silent(&[
         "pr",
         "close",
-        &pr.to_string(),
+        &pr.number.to_string(),
         "-R",
-        &format!("{org}/{repo}"),
+        &pr.repo.to_string(),
     ])
     .await
 }
 
-pub async fn reopen_pr(org: &str, repo: &str, pr: u64) -> Result<()> {
+pub async fn reopen_pr(pr: &PrId) -> Result<()> {
     run_silent(&[
         "pr",
         "reopen",
-        &pr.to_string(),
+        &pr.number.to_string(),
         "-R",
-        &format!("{org}/{repo}"),
+        &pr.repo.to_string(),
     ])
     .await
 }
 
-pub async fn mark_ready(org: &str, repo: &str, pr: u64) -> Result<()> {
+pub async fn mark_ready(pr: &PrId) -> Result<()> {
     run_silent(&[
         "pr",
         "ready",
-        &pr.to_string(),
+        &pr.number.to_string(),
         "-R",
-        &format!("{org}/{repo}"),
+        &pr.repo.to_string(),
     ])
     .await
 }
@@ -79,13 +76,13 @@ pub fn open_url(url: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn post_comment(org: &str, repo: &str, pr: u64, body: &str) -> Result<()> {
+pub async fn post_comment(pr: &PrId, body: &str) -> Result<()> {
     run_silent(&[
         "pr",
         "comment",
-        &pr.to_string(),
+        &pr.number.to_string(),
         "-R",
-        &format!("{org}/{repo}"),
+        &pr.repo.to_string(),
         "--body",
         body,
     ])

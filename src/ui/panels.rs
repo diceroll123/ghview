@@ -8,10 +8,11 @@ use super::{
 use crate::{
     app::App,
     types::{
-        CheckStatus, Column, DetailSection, LoadingKind, PrColumn, PrState, RepoColumn, RepoView,
-        ReposView, Source, Visibility,
+        CheckStatus, Column, DetailSection, LoadingKind, PrColumn, PrState, RepoColumn, RepoId,
+        RepoView, ReposView, Source, Visibility,
     },
 };
+use std::fmt::Write as _;
 use unicode_width::UnicodeWidthStr;
 
 const SPACES: &str = match core::str::from_utf8(&[b' '; 256]) {
@@ -309,7 +310,7 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
                 RepoColumn::LastPush => ICON_CLOCK,
                 RepoColumn::Created => ICON_CLOCK_UPDATED,
             };
-            header_parts.push_str(&format!("{sym:>w$}"));
+            let _ = write!(header_parts, "{sym:>w$}");
         }
         let gap = inner_width.saturating_sub(col_width + 2);
         let header_line = Line::from(vec![
@@ -357,17 +358,15 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
                         let age = repo
                             .pushed_at
                             .as_deref()
-                            .map(super::relative_time)
-                            .unwrap_or_else(|| "—".into());
-                        right_spans.push(Span::styled(format!("{:>3}", age), dim));
+                            .map_or_else(|| "—".into(), super::relative_time);
+                        right_spans.push(Span::styled(format!("{age:>3}"), dim));
                     }
                     RepoColumn::Created => {
                         let age = repo
                             .created_at
                             .as_deref()
-                            .map(super::relative_time)
-                            .unwrap_or_else(|| "—".into());
-                        right_spans.push(Span::styled(format!("{:>3}", age), dim));
+                            .map_or_else(|| "—".into(), super::relative_time);
+                        right_spans.push(Span::styled(format!("{age:>3}"), dim));
                     }
                 }
             }
@@ -449,10 +448,10 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
     let owner_repo = app.selected_owner_repo();
     let prs_owner: String = owner_repo
         .as_ref()
-        .map_or_else(String::new, |(o, _)| o.clone());
+        .map_or_else(String::new, |rid| rid.owner.clone());
     let prs_repo_name: String = owner_repo
         .as_ref()
-        .map_or_else(String::new, |(_, r)| r.clone());
+        .map_or_else(String::new, |rid| rid.repo.clone());
     let pr_count_suffix = if app.filter_active || !app.pr_filter.is_empty() {
         format!(
             "  {}/{}",
@@ -462,8 +461,8 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
     } else {
         String::new()
     };
-    let base = if let Some((ref owner, ref repo)) = owner_repo {
-        format!("{owner}/{repo}  {sort_label}{loading_suffix}{pr_count_suffix}")
+    let base = if let Some(ref rid) = owner_repo {
+        format!("{rid}  {sort_label}{loading_suffix}{pr_count_suffix}")
     } else {
         format!("Pull Requests  {sort_label}{loading_suffix}{pr_count_suffix}")
     };
@@ -522,23 +521,21 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
 
             let (rv_sym, rv_col) = review_icon(
                 app.repo_ctx.review_statuses.get(&pr.number),
-                app.repo_ctx.mergeable_states.get(&(
-                    prs_owner.clone(),
-                    prs_repo_name.clone(),
-                    pr.number,
-                )),
+                app.repo_ctx
+                    .mergeable_states
+                    .get(&RepoId::new(prs_owner.clone(), prs_repo_name.clone()).pr(pr.number)),
             );
 
             let number_str = format!("#{} ", pr.number);
             let age_str = if show_age {
                 let age = relative_time(&pr.created_at);
-                format!("  {:>agecol$}", age, agecol = age_col)
+                format!("  {age:>age_col$}")
             } else {
                 String::new()
             };
             let updated_str = if show_updated {
                 let upd = relative_time(&pr.updated_at);
-                format!("  {:>agecol$}", upd, agecol = age_col)
+                format!("  {upd:>age_col$}")
             } else {
                 String::new()
             };
@@ -573,7 +570,7 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
                 let (icon, color) = app
                     .repo_ctx
                     .check_summary_cache
-                    .get(&(prs_owner.clone(), prs_repo_name.clone(), pr.number))
+                    .get(&RepoId::new(prs_owner.clone(), prs_repo_name.clone()).pr(pr.number))
                     .map_or((ICON_DOT, Color::DarkGray), |s| (s.icon(), s.color()));
                 line1_spans.push(Span::raw("  "));
                 line1_spans.push(Span::styled(icon, Style::new().fg(color)));
@@ -612,11 +609,11 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
             } else {
                 Color::Green
             };
-            let merge_state_w: usize = match app.repo_ctx.mergeable_states.get(&(
-                prs_owner.clone(),
-                prs_repo_name.clone(),
-                pr.number,
-            )) {
+            let merge_state_w: usize = match app
+                .repo_ctx
+                .mergeable_states
+                .get(&RepoId::new(prs_owner.clone(), prs_repo_name.clone()).pr(pr.number))
+            {
                 Some(crate::types::MergeableState::Behind) => "⟳ rebase  ".width(),
                 Some(crate::types::MergeableState::Dirty) => "✖ conflicts  ".width(),
                 _ => 0,
@@ -636,16 +633,16 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
                 Span::styled(state_icon, Style::new().fg(state_col)),
                 Span::raw(" "),
             ];
-            match app.repo_ctx.mergeable_states.get(&(
-                prs_owner.clone(),
-                prs_repo_name.clone(),
-                pr.number,
-            )) {
+            match app
+                .repo_ctx
+                .mergeable_states
+                .get(&RepoId::new(prs_owner.clone(), prs_repo_name.clone()).pr(pr.number))
+            {
                 Some(crate::types::MergeableState::Behind) => {
-                    meta_spans.push(Span::styled("⟳ rebase  ", Style::new().fg(Color::Yellow)))
+                    meta_spans.push(Span::styled("⟳ rebase  ", Style::new().fg(Color::Yellow)));
                 }
                 Some(crate::types::MergeableState::Dirty) => {
-                    meta_spans.push(Span::styled("✖ conflicts  ", Style::new().fg(Color::Red)))
+                    meta_spans.push(Span::styled("✖ conflicts  ", Style::new().fg(Color::Red)));
                 }
                 _ => {}
             }
@@ -678,7 +675,7 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
         .add_modifier(Modifier::BOLD);
     let status_header = format!(" {ICON_PR_HEADER}  ");
     let comment_header = if show_comments {
-        format!("{:>width$}", ICON_COMMENT, width = comment_col_w)
+        format!("{ICON_COMMENT:>comment_col_w$}")
     } else {
         String::new()
     };
@@ -693,12 +690,12 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
         String::new()
     };
     let age_header = if show_age {
-        format!("{:>width$}", ICON_CLOCK, width = time_col_w)
+        format!("{ICON_CLOCK:>time_col_w$}")
     } else {
         String::new()
     };
     let updated_header = if show_updated {
-        format!("{:>width$}", ICON_CLOCK_UPDATED, width = time_col_w)
+        format!("{ICON_CLOCK_UPDATED:>time_col_w$}")
     } else {
         String::new()
     };
@@ -800,9 +797,9 @@ pub(super) fn draw_repos_strip(f: &mut Frame, app: &App, area: ratatui::layout::
 pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     let in_detail = app.focus == Column::Detail;
     let pr = app.selected_pr();
-    let (detail_owner, detail_repo) = app
-        .selected_owner_repo()
-        .unwrap_or_else(|| (String::new(), String::new()));
+    let detail_rid = app.selected_owner_repo();
+    let detail_owner = detail_rid.as_ref().map_or("", |r| &r.owner);
+    let detail_repo = detail_rid.as_ref().map_or("", |r| &r.repo);
     let title = pr.map_or_else(|| " Detail ".to_string(), |pr| format!(" #{} ", pr.number));
     let outer_style = if in_detail {
         active_style()
@@ -818,26 +815,22 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    if pr.is_none() {
+    let Some(pr) = pr else {
         f.render_widget(
             Paragraph::new("Select a PR").style(Style::new().fg(Color::DarkGray)),
             inner,
         );
         return;
-    }
-
-    let pr = pr.unwrap();
+    };
     let has_meta = pr.additions > 0
         || pr.deletions > 0
         || !pr.labels.is_empty()
         || !pr.head_ref.is_empty()
         || !pr.requested_reviewers.is_empty()
         || matches!(
-            app.repo_ctx.mergeable_states.get(&(
-                detail_owner.clone(),
-                detail_repo.clone(),
-                pr.number
-            )),
+            app.repo_ctx
+                .mergeable_states
+                .get(&RepoId::new(detail_owner, detail_repo).pr(pr.number)),
             Some(crate::types::MergeableState::Behind | crate::types::MergeableState::Dirty)
         );
     let title_lines = u16::try_from(
@@ -905,13 +898,13 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
     match app
         .repo_ctx
         .mergeable_states
-        .get(&(detail_owner, detail_repo, pr.number))
+        .get(&RepoId::new(detail_owner, detail_repo).pr(pr.number))
     {
         Some(crate::types::MergeableState::Behind) => {
-            meta_line_spans.push(Span::styled("⟳ rebase  ", Style::new().fg(Color::Yellow)))
+            meta_line_spans.push(Span::styled("⟳ rebase  ", Style::new().fg(Color::Yellow)));
         }
         Some(crate::types::MergeableState::Dirty) => {
-            meta_line_spans.push(Span::styled("✖ conflicts  ", Style::new().fg(Color::Red)))
+            meta_line_spans.push(Span::styled("✖ conflicts  ", Style::new().fg(Color::Red)));
         }
         _ => {}
     }
@@ -1070,13 +1063,13 @@ fn view_tab_line(
 
     let pr_label = if pr_count > 0 {
         let suffix = if pr_has_more { "+" } else { "" };
-        format!("·prs ({}{})", pr_count, suffix)
+        format!("·prs ({pr_count}{suffix})")
     } else {
         "·prs".to_string()
     };
     let issue_label = if issue_count > 0 {
         let suffix = if issue_has_more { "+" } else { "" };
-        format!("·issues ({}{})", issue_count, suffix)
+        format!("·issues ({issue_count}{suffix})")
     } else {
         "·issues".to_string()
     };
@@ -1109,8 +1102,8 @@ fn repos_tab_line(current: ReposView, pr_count: usize, pr_has_more: bool) -> Lin
 
     Line::from(vec![
         Span::raw(" "),
-        Span::styled("r", if !active { key_active } else { key_dim }),
-        Span::styled("·repos", if !active { label_active } else { label_dim }),
+        Span::styled("r", if active { key_dim } else { key_active }),
+        Span::styled("·repos", if active { label_dim } else { label_active }),
         Span::raw("  "),
         Span::styled("p", if active { key_active } else { key_dim }),
         Span::styled(pr_label, if active { label_active } else { label_dim }),
@@ -1129,7 +1122,7 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
     };
     let source_name = app
         .selected_source()
-        .map(|s| s.display().to_string())
+        .map(|s| s.display().clone())
         .unwrap_or_default();
     let pr_count_suffix = if app.filter_active || !app.source_ctx.source_pr_filter.is_empty() {
         format!(
@@ -1227,12 +1220,12 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
                 rv_status,
                 app.repo_ctx
                     .mergeable_states
-                    .get(&(owner.clone(), pr.repo.clone(), pr.number)),
+                    .get(&RepoId::new(owner.clone(), pr.repo.clone()).pr(pr.number)),
             );
 
             let updated_str = {
                 let upd = relative_time(&pr.updated_at);
-                format!("  {:>age_col$}", upd, age_col = age_col)
+                format!("  {upd:>age_col$}")
             };
 
             let repo_num = format!("{} #{}", pr.repo, pr.number);
@@ -1254,7 +1247,7 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
             let (chk_icon, chk_col) = app
                 .repo_ctx
                 .check_summary_cache
-                .get(&(owner.clone(), pr.repo.clone(), pr.number))
+                .get(&RepoId::new(owner.clone(), pr.repo.clone()).pr(pr.number))
                 .map_or((super::ICON_DOT, Color::DarkGray), |s| {
                     (s.icon(), s.color())
                 });
@@ -1291,11 +1284,11 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
             } else {
                 Color::Green
             };
-            let merge_state_w: usize = match app.repo_ctx.mergeable_states.get(&(
-                owner.clone(),
-                pr.repo.clone(),
-                pr.number,
-            )) {
+            let merge_state_w: usize = match app
+                .repo_ctx
+                .mergeable_states
+                .get(&RepoId::new(owner.clone(), pr.repo.clone()).pr(pr.number))
+            {
                 Some(crate::types::MergeableState::Behind) => "⟳ rebase  ".width(),
                 Some(crate::types::MergeableState::Dirty) => "✖ conflicts  ".width(),
                 _ => 0,
@@ -1317,7 +1310,7 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
             match app
                 .repo_ctx
                 .mergeable_states
-                .get(&(owner.clone(), pr.repo.clone(), pr.number))
+                .get(&RepoId::new(owner.clone(), pr.repo.clone()).pr(pr.number))
             {
                 Some(crate::types::MergeableState::Behind) => {
                     line2_spans.push(Span::styled("⟳ rebase  ", Style::new().fg(Color::Yellow)));
@@ -1437,8 +1430,8 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
         ""
     };
     let owner_repo = app.selected_owner_repo();
-    let base = if let Some((ref owner, ref repo)) = owner_repo {
-        format!(" {owner}/{repo}{loading_suffix} ")
+    let base = if let Some(ref rid) = owner_repo {
+        format!(" {rid}{loading_suffix} ")
     } else {
         format!(" Issues{loading_suffix} ")
     };
@@ -1488,7 +1481,7 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
             let num_w = number_str.len();
             let age = relative_time(&issue.created_at);
             let author_str = format!("@{:<acol$}", issue.author, acol = author_col);
-            let age_str = format!("  {ICON_CLOCK} {:>agecol$}", age, agecol = age_col);
+            let age_str = format!("  {ICON_CLOCK} {age:>age_col$}");
             // 2 sep + 1 icon (display) + 1 space + age_col
             let author_age_w = author_str.width() + 2 + 1 + 1 + age_col;
             let title_budget = inner_width.saturating_sub(num_w + author_age_w + 1);

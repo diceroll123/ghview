@@ -39,8 +39,8 @@ use crate::{
     keys::Action,
     types::{
         CheckRun, CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, LoadingKind,
-        MergeableState, PR, PrAction, Repo, RepoSortKey, RepoView, ReposView, ReviewStatus,
-        SortKey, Source,
+        MergeableState, PR, PrAction, PrId, Repo, RepoId, RepoSortKey, RepoView, ReposView,
+        ReviewStatus, SortKey, Source,
     },
 };
 use crossterm::event::{KeyCode, KeyEvent};
@@ -77,8 +77,8 @@ pub struct RepoCtx {
     pub detail_section: DetailSection,
     pub diff_view: Option<DiffView>,
     pub review_statuses: HashMap<u64, ReviewStatus>,
-    pub mergeable_states: HashMap<(String, String, u64), MergeableState>,
-    pub check_summary_cache: HashMap<(String, String, u64), CheckStatus>,
+    pub mergeable_states: HashMap<PrId, MergeableState>,
+    pub check_summary_cache: HashMap<PrId, CheckStatus>,
     pub issues: Vec<Issue>,
     pub issue_state: ListState,
     pub issues_pagination: PaginationState,
@@ -269,10 +269,10 @@ impl App {
             .and_then(|i| self.repo_ctx.prs.get(i))
     }
 
-    pub(crate) fn selected_pr_context(&self) -> Option<(String, String, PR)> {
-        let (owner, repo) = self.selected_owner_repo()?;
+    pub(crate) fn selected_pr_context(&self) -> Option<(RepoId, PR)> {
+        let rid = self.selected_owner_repo()?;
         let pr = self.selected_pr()?.clone();
-        Some((owner, repo, pr))
+        Some((rid, pr))
     }
 
     pub fn selected_issue(&self) -> Option<&Issue> {
@@ -380,12 +380,11 @@ impl App {
                 self.loading = None;
             }
             DataMsg::Prs {
-                owner,
                 repo,
                 prs,
                 has_more,
             } => {
-                let key = format!("{owner}/{repo}");
+                let key = repo.key();
                 let is_current = self.current_repo_key().as_deref() == Some(&key);
                 if is_current {
                     self.repo_ctx.prs_pagination.reset(has_more);
@@ -397,13 +396,11 @@ impl App {
                 }
             }
             DataMsg::MorePrs {
-                owner,
                 repo,
                 prs,
                 has_more,
             } => {
-                let key = format!("{owner}/{repo}");
-                if self.current_repo_key().as_deref() != Some(&key) {
+                if self.current_repo_key().as_deref() != Some(repo.key().as_str()) {
                     return;
                 }
                 self.repo_ctx.prs_pagination.finish(has_more);
@@ -411,34 +408,27 @@ impl App {
                 self.rebuild_prs();
                 self.loading = None;
             }
-            DataMsg::ReviewStatus {
-                owner,
-                repo,
-                pr_number,
-                status,
-            } => {
-                let key = format!("{owner}/{repo}");
+            DataMsg::ReviewStatus { pr, status } => {
+                let key = pr.repo.key();
                 let is_current = self.current_repo_key().as_deref() == Some(&key);
                 self.review_cache
                     .entry(key)
                     .or_default()
-                    .insert(pr_number, status);
+                    .insert(pr.number, status);
                 if is_current {
-                    self.repo_ctx.review_statuses.insert(pr_number, status);
+                    self.repo_ctx.review_statuses.insert(pr.number, status);
                 }
             }
-            DataMsg::CheckRuns {
-                owner,
-                repo,
-                pr_number,
-                mut runs,
-            } => {
-                let key = format!("{owner}/{repo}");
+            DataMsg::CheckRuns { pr, mut runs } => {
                 let passes = if self.repos_view == ReposView::PrList {
-                    self.selected_source_owner().as_deref() == Some(&owner)
-                        && self.source_ctx.source_prs.iter().any(|pr| pr.repo == repo)
+                    self.selected_source_owner().as_deref() == Some(&pr.repo.owner)
+                        && self
+                            .source_ctx
+                            .source_prs
+                            .iter()
+                            .any(|p| p.repo == pr.repo.repo)
                 } else {
-                    self.current_repo_key().as_deref() == Some(&key)
+                    self.current_repo_key().as_deref() == Some(pr.repo.key().as_str())
                 };
                 if !passes {
                     return;
@@ -457,9 +447,9 @@ impl App {
                 };
                 self.repo_ctx
                     .check_summary_cache
-                    .insert((owner.clone(), repo.clone(), pr_number), summary);
-                if self.selected_pr().is_some_and(|pr| {
-                    pr.number == pr_number && (pr.repo.is_empty() || pr.repo == repo)
+                    .insert(pr.clone(), summary);
+                if self.selected_pr().is_some_and(|p| {
+                    p.number == pr.number && (p.repo.is_empty() || p.repo == pr.repo.repo)
                 }) {
                     self.repo_ctx.check_runs = Some(runs);
                     if !self.checks_focusable()
@@ -470,7 +460,13 @@ impl App {
                     }
                 }
             }
-            DataMsg::DiffContent { title, content } => {
+            DataMsg::DiffContent { pr, title, content } => {
+                if self.current_repo_key() != Some(pr.repo.key()) {
+                    return;
+                }
+                if self.selected_pr().is_none_or(|p| p.number != pr.number) {
+                    return;
+                }
                 self.repo_ctx.diff_view = Some(DiffView {
                     title,
                     lines: content
@@ -482,29 +478,30 @@ impl App {
                 self.loading = None;
             }
             DataMsg::PrBody {
-                owner,
-                repo,
-                pr_number,
+                pr,
                 body,
                 mergeable_state,
                 additions,
                 deletions,
             } => {
-                let key = format!("{owner}/{repo}");
                 let passes = if self.repos_view == ReposView::PrList {
-                    self.selected_source_owner().as_deref() == Some(&owner)
-                        && self.source_ctx.source_prs.iter().any(|pr| pr.repo == repo)
+                    self.selected_source_owner().as_deref() == Some(&pr.repo.owner)
+                        && self
+                            .source_ctx
+                            .source_prs
+                            .iter()
+                            .any(|p| p.repo == pr.repo.repo)
                 } else {
-                    self.current_repo_key().as_deref() == Some(&key)
+                    self.current_repo_key().as_deref() == Some(pr.repo.key().as_str())
                 };
                 if !passes {
                     return;
                 }
                 self.repo_ctx
                     .mergeable_states
-                    .insert((owner.clone(), repo.clone(), pr_number), mergeable_state);
-                if self.selected_pr().is_some_and(|pr| {
-                    pr.number == pr_number && (pr.repo.is_empty() || pr.repo == repo)
+                    .insert(pr.clone(), mergeable_state);
+                if self.selected_pr().is_some_and(|p| {
+                    p.number == pr.number && (p.repo.is_empty() || p.repo == pr.repo.repo)
                 }) {
                     self.repo_ctx.pr_body = Some(body);
                     if !self.pr_body_focusable() && self.focus == Column::Detail {
@@ -512,40 +509,36 @@ impl App {
                     }
                 }
                 for list in [&mut self.repo_ctx.prs_raw, &mut self.repo_ctx.prs] {
-                    if let Some(pr) = list.iter_mut().find(|p| p.number == pr_number) {
-                        pr.additions = additions;
-                        pr.deletions = deletions;
+                    if let Some(p) = list.iter_mut().find(|p| p.number == pr.number) {
+                        p.additions = additions;
+                        p.deletions = deletions;
                     }
                 }
                 if let Some(spr) = self
                     .source_ctx
                     .source_prs
                     .iter_mut()
-                    .find(|p| p.repo == repo && p.number == pr_number)
+                    .find(|p| p.repo == pr.repo.repo && p.number == pr.number)
                 {
                     spr.additions = additions;
                     spr.deletions = deletions;
                 }
             }
             DataMsg::RepoFrontpage {
-                owner,
                 repo,
                 description,
                 readme,
             } => {
-                let key = format!("{owner}/{repo}");
-                if self.current_repo_key().as_deref() == Some(&key) {
+                if self.current_repo_key().as_deref() == Some(repo.key().as_str()) {
                     self.repo_ctx.repo_frontpage = Some((description, readme));
                 }
             }
             DataMsg::Issues {
-                owner,
                 repo,
                 issues,
                 has_more,
             } => {
-                let key = format!("{owner}/{repo}");
-                if self.current_repo_key().as_deref() == Some(&key) {
+                if self.current_repo_key().as_deref() == Some(repo.key().as_str()) {
                     self.repo_ctx.issues_pagination.reset(has_more);
                     self.repo_ctx.issues = issues;
                     if !self.repo_ctx.issues.is_empty()
@@ -558,27 +551,19 @@ impl App {
                 }
             }
             DataMsg::MoreIssues {
-                owner,
                 repo,
                 issues,
                 has_more,
             } => {
-                let key = format!("{owner}/{repo}");
-                if self.current_repo_key().as_deref() != Some(&key) {
+                if self.current_repo_key().as_deref() != Some(repo.key().as_str()) {
                     return;
                 }
                 self.repo_ctx.issues_pagination.finish(has_more);
                 self.repo_ctx.issues.extend(issues);
                 self.loading = None;
             }
-            DataMsg::IssueBody {
-                owner,
-                repo,
-                number,
-                body,
-            } => {
-                let key = format!("{owner}/{repo}");
-                if self.current_repo_key().as_deref() != Some(&key) {
+            DataMsg::IssueBody { repo, number, body } => {
+                if self.current_repo_key().as_deref() != Some(repo.key().as_str()) {
                     return;
                 }
                 if self.selected_issue().is_some_and(|i| i.number == number) {
@@ -588,12 +573,8 @@ impl App {
             DataMsg::RateLimit { remaining, limit } => {
                 self.rate_limit = Some((remaining, limit));
             }
-            DataMsg::ViewerPermission {
-                owner,
-                repo,
-                can_push,
-            } => {
-                if self.current_repo_key().as_deref() == Some(&format!("{owner}/{repo}")) {
+            DataMsg::ViewerPermission { repo, can_push } => {
+                if self.current_repo_key().as_deref() == Some(repo.key().as_str()) {
                     self.repo_ctx.viewer_can_push = Some(can_push);
                 }
             }
@@ -637,8 +618,7 @@ impl App {
     }
 
     pub(crate) fn current_repo_key(&self) -> Option<String> {
-        let (owner, repo) = self.selected_owner_repo()?;
-        Some(format!("{owner}/{repo}"))
+        Some(self.selected_owner_repo()?.to_string())
     }
 
     /// Clear all state scoped to a single repo. Call this whenever the active repo changes.
@@ -647,7 +627,7 @@ impl App {
         self.repo_ctx = RepoCtx::default();
     }
 
-    /// Clear all state scoped to a single source. Calls invalidate_repo(), then clears
+    /// Clear all state scoped to a single source. Calls `invalidate_repo()`, then clears
     /// source-level lists. Add new per-source caches here.
     pub(crate) fn invalidate_source(&mut self) {
         self.repo_ctx = RepoCtx::default();
@@ -736,7 +716,7 @@ impl App {
             Some(i) if i >= len => {
                 self.repo_ctx
                     .pr_state
-                    .select(if len > 0 { Some(len - 1) } else { None })
+                    .select(if len > 0 { Some(len - 1) } else { None });
             }
             None if len > 0 => self.repo_ctx.pr_state.select(Some(0)),
             _ => {}
@@ -761,7 +741,7 @@ impl App {
             SortKey::LeastReviewed => {
                 let review_priority = |pr: &PR| -> u8 {
                     match self.repo_ctx.review_statuses.get(&pr.number) {
-                        None | Some(ReviewStatus::Unknown) | Some(ReviewStatus::Pending) => 0,
+                        None | Some(ReviewStatus::Unknown | ReviewStatus::Pending) => 0,
                         Some(ReviewStatus::ChangesRequested) => 1,
                         Some(ReviewStatus::Approved) => 2,
                     }

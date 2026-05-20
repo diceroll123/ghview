@@ -155,6 +155,7 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
         Paragraph::new(Span::styled(hint_text, dim_style)),
         hint_line,
     );
+    #[allow(clippy::cast_possible_truncation)]
     render_list_scrollbar(f, popup_area, total_rows, visible_rows as u16, scroll);
 }
 

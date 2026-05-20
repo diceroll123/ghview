@@ -256,7 +256,7 @@ impl App {
                         self.repo_view = crate::types::RepoView::Prs;
                         self.repo_ctx.detail_section = DetailSection::Body;
                         self.repo_ctx.pr_body_scroll = 0;
-                        self.repo_ctx.check_runs_state = Default::default();
+                        self.repo_ctx.check_runs_state = ListState::default();
                         self.trigger_load_pr_body();
                     }
                 }
@@ -274,7 +274,7 @@ impl App {
                             DetailSection::Body
                         };
                         self.repo_ctx.pr_body_scroll = 0;
-                        self.repo_ctx.check_runs_state = Default::default();
+                        self.repo_ctx.check_runs_state = ListState::default();
                     }
                 }
                 RepoView::Issues => {

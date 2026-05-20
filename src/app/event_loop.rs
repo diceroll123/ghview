@@ -1,7 +1,7 @@
 use super::App;
 use crate::{
     keys::{Action, builtin_to_action, map_key_checks, map_key_prs, map_key_universal},
-    types::{Column, DataMsg, DetailSection, RepoView, ReposView},
+    types::{Column, DataMsg, DetailSection, RepoId, RepoView, ReposView},
     ui::draw,
 };
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
@@ -10,8 +10,7 @@ use tokio::time::interval_at;
 
 pub struct InteractiveCmd {
     pub kind: InteractiveKind,
-    pub owner: String,
-    pub repo: String,
+    pub repo: RepoId,
     pub pr_number: u64,
 }
 
@@ -28,7 +27,7 @@ pub async fn run_event_loop(
 ) -> color_eyre::Result<(Option<InteractiveCmd>, App)> {
     let mut events = EventStream::new();
     let mut tick = tokio::time::interval(app.config.tick_interval());
-    let mut rate_limit_tick = tokio::time::interval(std::time::Duration::from_secs(60));
+    let mut rate_limit_tick = tokio::time::interval(std::time::Duration::from_mins(1));
     let start30 = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
     let mut watch_tick = interval_at(start30, std::time::Duration::from_secs(30));
     app.trigger_fetch_rate_limit();
@@ -126,8 +125,7 @@ pub async fn run_event_loop(
                             let Some(repo) = app.selected_repo().map(std::string::ToString::to_string) else { continue };
                             return Ok((Some(InteractiveCmd {
                                 kind: InteractiveKind::Custom(shell_cmd),
-                                owner,
-                                repo,
+                                repo: RepoId::new(owner, repo),
                                 pr_number: 0,
                             }), app));
                         }
@@ -141,20 +139,19 @@ pub async fn run_event_loop(
                     if let Some(kb) = kb {
                         if let Some(action) = kb.builtin.as_deref().and_then(builtin_to_action) {
                             if matches!(action, Action::Checkout | Action::Comment) {
-                                let Some((owner, repo, pr)) = app.selected_pr_context() else { continue };
+                                let Some((rid, pr)) = app.selected_pr_context() else { continue };
                                 let kind = if action == Action::Checkout { InteractiveKind::Checkout } else { InteractiveKind::Comment };
-                                return Ok((Some(InteractiveCmd { kind, owner, repo, pr_number: pr.number }), app));
+                                return Ok((Some(InteractiveCmd { kind, repo: rid, pr_number: pr.number }), app));
                             }
                             app.handle_action(action);
                             if app.should_quit { return Ok((None, app)); }
                             continue;
                         }
                         if let Some(shell_cmd) = app.trigger_keybinding_pr(&kb) {
-                            let Some((owner, repo, pr)) = app.selected_pr_context() else { continue };
+                            let Some((rid, pr)) = app.selected_pr_context() else { continue };
                             return Ok((Some(InteractiveCmd {
                                 kind: InteractiveKind::Custom(shell_cmd),
-                                owner,
-                                repo,
+                                repo: rid,
                                 pr_number: pr.number,
                             }), app));
                         }
@@ -174,11 +171,10 @@ pub async fn run_event_loop(
                             continue;
                         }
                         if let Some(shell_cmd) = app.trigger_keybinding_check(&kb) {
-                            let Some((owner, repo, pr)) = app.selected_pr_context() else { continue };
+                            let Some((rid, pr)) = app.selected_pr_context() else { continue };
                             return Ok((Some(InteractiveCmd {
                                 kind: InteractiveKind::Custom(shell_cmd),
-                                owner,
-                                repo,
+                                repo: rid,
                                 pr_number: pr.number,
                             }), app));
                         }
@@ -204,9 +200,9 @@ pub async fn run_event_loop(
                     && app.repo_view == crate::types::RepoView::Prs
                     && let Some(action) = map_key_prs(key) {
                         if matches!(action, Action::Checkout | Action::Comment) {
-                            let Some((owner, repo, pr)) = app.selected_pr_context() else { continue };
+                            let Some((rid, pr)) = app.selected_pr_context() else { continue };
                             let kind = if action == Action::Checkout { InteractiveKind::Checkout } else { InteractiveKind::Comment };
-                            return Ok((Some(InteractiveCmd { kind, owner, repo, pr_number: pr.number }), app));
+                            return Ok((Some(InteractiveCmd { kind, repo: rid, pr_number: pr.number }), app));
                         }
                         app.handle_action(action);
                         if app.should_quit { return Ok((None, app)); }
@@ -239,12 +235,11 @@ pub async fn run_event_loop(
                     let pr_number = pr.number;
                     let sha = pr.head_sha.clone();
                     let tx = app.tx.clone();
+                    let rid = crate::types::RepoId::new(owner, repo);
                     tokio::spawn(async move {
-                        let runs = crate::data::fetch_check_runs(&owner, &repo, &sha).await;
+                        let runs = crate::data::fetch_check_runs(&rid, &sha).await;
                         let _ = tx.send(DataMsg::CheckRuns {
-                            owner,
-                            repo,
-                            pr_number,
+                            pr: rid.pr(pr_number),
                             runs,
                         });
                     });

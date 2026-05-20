@@ -70,7 +70,6 @@ async fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Resul
 
         let Some(InteractiveCmd {
             kind,
-            owner,
             repo,
             pr_number,
         }) = cmd
@@ -89,7 +88,7 @@ async fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Resul
                     "checkout",
                     &pr_number.to_string(),
                     "-R",
-                    &format!("{owner}/{repo}"),
+                    &repo.to_string(),
                 ]);
                 if let Some(dir) = returned_app.config.ui.checkout_dir.as_deref() {
                     let expanded = shellexpand::tilde(dir).into_owned();
@@ -102,7 +101,7 @@ async fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Resul
                 "comment",
                 &pr_number.to_string(),
                 "-R",
-                &format!("{owner}/{repo}"),
+                &repo.to_string(),
             ])?,
             InteractiveKind::Custom(cmd) => std::process::Command::new("sh")
                 .arg("-c")

@@ -58,15 +58,15 @@ pub struct UiConfig {
     pub prs_limit: u32,
     /// Directory to cd into before running `gh pr checkout`. Supports ~.
     pub checkout_dir: Option<String>,
-    /// Extra columns shown in the repos list. Supported: "stars", "forks", "issues", "visibility", "last_push", "created".
+    /// Extra columns shown in the repos list. Supported: "stars", "forks", "issues", "visibility", "`last_push`", "created".
     pub repo_columns: Vec<crate::types::RepoColumn>,
-    /// Extra columns shown in the PR list. Supported: "diff_stats".
+    /// Extra columns shown in the PR list. Supported: "`diff_stats`".
     pub pr_columns: Vec<crate::types::PrColumn>,
     /// Default view when entering a repo: "frontpage" (default), "prs", or "issues".
     pub default_repo_view: crate::types::RepoView,
     /// Default view for the Browse column: "repos" (default) or "prs".
     pub default_repos_view: crate::types::ReposView,
-    /// Items per page when fetching lists. 0 = dynamic (terminal_height × 1.5). Max 100.
+    /// Items per page when fetching lists. 0 = dynamic (`terminal_height` × 1.5). Max 100.
     pub per_page: u32,
     /// Merge method used by the `m` keybinding: "squash", "merge", or "rebase".
     pub merge_method: MergeMethod,
