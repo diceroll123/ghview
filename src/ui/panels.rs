@@ -156,6 +156,25 @@ fn label_text_color(r: u8, g: u8, b: u8) -> Color {
     }
 }
 
+fn label_ends_wide(name: &str) -> bool {
+    use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+    let chars: Vec<char> = name.chars().collect();
+    let Some(base) = (0..chars.len())
+        .rev()
+        .find(|&i| UnicodeWidthChar::width(chars[i]).unwrap_or(0) > 0)
+    else {
+        return false;
+    };
+    let cluster: String = chars[base..].iter().collect();
+    cluster.width() > 1
+}
+
+fn label_pill_w(label: &crate::types::Label) -> usize {
+    use unicode_width::UnicodeWidthStr;
+    // left-cap(1) + space(1) + name + trailing-space(0 or 1) + right-cap(1)
+    3 + label.name.width() + usize::from(!label_ends_wide(&label.name))
+}
+
 fn label_pill_spans(label: &crate::types::Label) -> [Span<'static>; 3] {
     let bg = hex_to_rgb(&label.color);
     let (r, g, b) = match bg {
@@ -163,11 +182,29 @@ fn label_pill_spans(label: &crate::types::Label) -> [Span<'static>; 3] {
         _ => (128, 128, 128),
     };
     let fg = label_text_color(r, g, b);
+    let trailing = if label_ends_wide(&label.name) {
+        ""
+    } else {
+        " "
+    };
     [
         Span::styled("\u{e0b6}", Style::new().fg(bg).bg(Color::Reset)),
-        Span::styled(format!(" {} ", label.name), Style::new().fg(fg).bg(bg)),
+        Span::styled(
+            format!(" {}{trailing}", label.name),
+            Style::new().fg(fg).bg(bg),
+        ),
         Span::styled("\u{e0b4}", Style::new().fg(bg).bg(Color::Reset)),
     ]
+}
+
+fn pad_to_width(spans: Vec<Span<'static>>, cur_w: usize, width: usize) -> Line<'static> {
+    let mut spans = spans;
+    let pad = width.saturating_sub(cur_w);
+    if pad > 0 {
+        // Explicit trailing spaces ensure stale colored cells are overwritten.
+        spans.push(Span::raw(" ".repeat(pad)));
+    }
+    Line::from(spans)
 }
 
 fn wrap_label_lines(labels: &[crate::types::Label], width: usize) -> Vec<Line<'static>> {
@@ -178,10 +215,10 @@ fn wrap_label_lines(labels: &[crate::types::Label], width: usize) -> Vec<Line<'s
     let mut cur_spans: Vec<Span<'static>> = vec![];
     let mut cur_w = 0usize;
     for lbl in labels {
-        let pill_w = 2 + 2 + lbl.name.width();
+        let pill_w = label_pill_w(lbl);
         let sep = usize::from(cur_w > 0);
         if cur_w + sep + pill_w > width && cur_w > 0 {
-            lines.push(Line::from(std::mem::take(&mut cur_spans)));
+            lines.push(pad_to_width(std::mem::take(&mut cur_spans), cur_w, width));
             cur_w = 0;
         } else if sep > 0 {
             cur_spans.push(Span::raw(" "));
@@ -191,7 +228,7 @@ fn wrap_label_lines(labels: &[crate::types::Label], width: usize) -> Vec<Line<'s
         cur_spans.extend(label_pill_spans(lbl));
     }
     if !cur_spans.is_empty() {
-        lines.push(Line::from(cur_spans));
+        lines.push(pad_to_width(cur_spans, cur_w, width));
     }
     lines
 }
@@ -818,54 +855,67 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
     .unwrap_or(1)
     .max(1);
 
-    let mut meta_line_spans: Vec<Span> = vec![];
+    // Build non-label meta spans first, then pack label pills onto lines manually.
+    // Manual packing prevents ratatui's paragraph wrapper from splitting a pill's
+    // three spans (left-cap, text, right-cap) across two display lines.
+    let mut meta_prefix: Vec<Span> = vec![];
     if let Some((add_span, del_span)) = diff_stat_spans(pr) {
-        meta_line_spans.extend([add_span, Span::raw(" "), del_span, Span::raw("  ")]);
+        meta_prefix.extend([add_span, Span::raw(" "), del_span, Span::raw("  ")]);
     }
     if let Some(s) = mergeable_state_span(
         app.repo_ctx
             .mergeable_states
             .get(&RepoId::new(detail_owner, detail_repo).pr(pr.number)),
     ) {
-        meta_line_spans.push(s);
+        meta_prefix.push(s);
     }
     if !pr.head_ref.is_empty() {
-        if !meta_line_spans.is_empty() {
-            meta_line_spans.push(Span::raw("  "));
+        if !meta_prefix.is_empty() {
+            meta_prefix.push(Span::raw("  "));
         }
-        meta_line_spans.push(Span::styled(
+        meta_prefix.push(Span::styled(
             format!("{} → {}", pr.head_ref, pr.base_ref),
             Style::new().fg(Color::DarkGray),
         ));
     }
     if !pr.requested_reviewers.is_empty() {
-        if !meta_line_spans.is_empty() {
-            meta_line_spans.push(Span::raw("  "));
+        if !meta_prefix.is_empty() {
+            meta_prefix.push(Span::raw("  "));
         }
-        meta_line_spans.push(Span::styled(
+        meta_prefix.push(Span::styled(
             format!("👁 {}", pr.requested_reviewers.join(", ")),
             Style::new().fg(Color::Magenta),
         ));
     }
-    for (i, lbl) in pr.labels.iter().enumerate() {
-        if i == 0 && !meta_line_spans.is_empty() {
-            meta_line_spans.push(Span::raw("  "));
-        } else if i > 0 {
-            meta_line_spans.push(Span::raw(" "));
+    let width = inner.width as usize;
+    let mut meta_lines: Vec<Line> = vec![];
+    let mut cur_spans: Vec<Span> = meta_prefix;
+    let mut cur_w: usize = cur_spans.iter().map(Span::width).sum();
+    let mut label_started = false;
+    for lbl in &pr.labels {
+        let pill_w = label_pill_w(lbl);
+        let sep_w = if cur_w == 0 {
+            0
+        } else if !label_started {
+            2
+        } else {
+            1
+        };
+        if cur_w > 0 && cur_w + sep_w + pill_w > width {
+            meta_lines.push(pad_to_width(std::mem::take(&mut cur_spans), cur_w, width));
+            cur_w = 0;
+        } else if sep_w > 0 {
+            cur_spans.push(Span::raw(" ".repeat(sep_w)));
+            cur_w += sep_w;
         }
-        meta_line_spans.extend(label_pill_spans(lbl));
+        cur_spans.extend(label_pill_spans(lbl));
+        cur_w += pill_w;
+        label_started = true;
     }
-    let meta_line = Line::from(meta_line_spans);
-    let meta_line_count: u16 = if meta_line.width() == 0 {
-        0
-    } else {
-        u16::try_from(
-            Paragraph::new(meta_line.clone())
-                .wrap(Wrap { trim: false })
-                .line_count(inner.width),
-        )
-        .unwrap_or(1)
-    };
+    if !cur_spans.is_empty() {
+        meta_lines.push(pad_to_width(cur_spans, cur_w, width));
+    }
+    let meta_line_count = u16::try_from(meta_lines.len()).unwrap_or(0);
     let header_height = title_lines + meta_line_count;
 
     let body_focusable = app.pr_body_focusable();
@@ -906,9 +956,7 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
         Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
     ));
     let mut header_lines = vec![title_line];
-    if meta_line.width() > 0 {
-        header_lines.push(meta_line);
-    }
+    header_lines.extend(meta_lines);
     f.render_widget(
         Paragraph::new(Text::from(header_lines)).wrap(Wrap { trim: false }),
         header_area,
