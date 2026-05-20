@@ -1,6 +1,12 @@
 use serde::Deserialize;
 use std::fmt;
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct Label {
+    pub name: String,
+    pub color: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Visibility {
@@ -75,7 +81,7 @@ pub struct PR {
     #[serde(default)]
     pub requested_reviewers: Vec<String>,
     #[serde(default)]
-    pub labels: Vec<String>,
+    pub labels: Vec<Label>,
     #[serde(default)]
     pub head_ref: String,
     #[serde(default)]
@@ -222,7 +228,7 @@ pub struct Issue {
     pub author: String,
     pub state: String,
     pub created_at: String,
-    pub labels: Vec<String>,
+    pub labels: Vec<Label>,
     pub url: String,
 }
 

@@ -136,8 +136,41 @@ fn draw_scrollable_body(
     }
 }
 
-/// Wrap labels into lines that fit within `width`, returning styled `Line`s.
-fn wrap_label_lines(labels: &[String], width: usize, color: Color) -> Vec<Line<'static>> {
+fn hex_to_rgb(hex: &str) -> Color {
+    let hex = hex.trim_start_matches('#');
+    if hex.len() != 6 {
+        return Color::DarkGray;
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(128);
+    let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(128);
+    let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(128);
+    Color::Rgb(r, g, b)
+}
+
+fn label_text_color(r: u8, g: u8, b: u8) -> Color {
+    let brightness = (r as u32 * 299 + g as u32 * 587 + b as u32 * 114) / 1000;
+    if brightness > 128 {
+        Color::Black
+    } else {
+        Color::White
+    }
+}
+
+fn label_pill_spans(label: &crate::types::Label) -> [Span<'static>; 3] {
+    let bg = hex_to_rgb(&label.color);
+    let (r, g, b) = match bg {
+        Color::Rgb(r, g, b) => (r, g, b),
+        _ => (128, 128, 128),
+    };
+    let fg = label_text_color(r, g, b);
+    [
+        Span::styled("\u{e0b6}", Style::new().fg(bg).bg(Color::Reset)),
+        Span::styled(format!(" {} ", label.name), Style::new().fg(fg).bg(bg)),
+        Span::styled("\u{e0b4}", Style::new().fg(bg).bg(Color::Reset)),
+    ]
+}
+
+fn wrap_label_lines(labels: &[crate::types::Label], width: usize) -> Vec<Line<'static>> {
     if labels.is_empty() {
         return vec![];
     }
@@ -145,17 +178,17 @@ fn wrap_label_lines(labels: &[String], width: usize, color: Color) -> Vec<Line<'
     let mut cur_spans: Vec<Span<'static>> = vec![];
     let mut cur_w = 0usize;
     for lbl in labels {
-        let tag = format!("[{lbl}]");
+        let pill_w = 2 + 2 + lbl.name.width();
         let sep = usize::from(cur_w > 0);
-        if cur_w + sep + tag.len() > width && cur_w > 0 {
+        if cur_w + sep + pill_w > width && cur_w > 0 {
             lines.push(Line::from(std::mem::take(&mut cur_spans)));
             cur_w = 0;
         } else if sep > 0 {
             cur_spans.push(Span::raw(" "));
             cur_w += 1;
         }
-        cur_w += tag.len();
-        cur_spans.push(Span::styled(tag, Style::new().fg(color)));
+        cur_w += pill_w;
+        cur_spans.extend(label_pill_spans(lbl));
     }
     if !cur_spans.is_empty() {
         lines.push(Line::from(cur_spans));
@@ -601,14 +634,8 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
             let merge_state_w = mergeable_state_span(app.repo_ctx.mergeable_states.get(&pr_id))
                 .as_ref()
                 .map_or(0, Span::width);
-            let label_section_w: usize = if pr.labels.is_empty() {
-                0
-            } else {
-                2 + pr.labels.iter().map(|l| l.len() + 2).sum::<usize>()
-                    + pr.labels.len().saturating_sub(1)
-            };
             // prefix: "  "(2) + state_icon(2) + " "(1) = 5
-            let title2_budget = inner_width.saturating_sub(5 + merge_state_w + label_section_w);
+            let title2_budget = inner_width.saturating_sub(5 + merge_state_w);
             let title2_text = truncate(&pr.title, title2_budget);
 
             let mut meta_spans: Vec<Span> = vec![
@@ -620,18 +647,6 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
                 meta_spans.push(s);
             }
             meta_spans.push(Span::styled(title2_text, base_style));
-            if !pr.labels.is_empty() {
-                meta_spans.push(Span::raw("  "));
-                for (i, label) in pr.labels.iter().enumerate() {
-                    if i > 0 {
-                        meta_spans.push(Span::raw(" "));
-                    }
-                    meta_spans.push(Span::styled(
-                        format!("[{label}]"),
-                        Style::new().fg(Color::Green),
-                    ));
-                }
-            }
             let line2 = Line::from(meta_spans);
             ListItem::new(Text::from(vec![line1, line2]))
         })
@@ -838,10 +853,7 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
         } else if i > 0 {
             meta_line_spans.push(Span::raw(" "));
         }
-        meta_line_spans.push(Span::styled(
-            format!("[{lbl}]"),
-            Style::new().fg(Color::Cyan),
-        ));
+        meta_line_spans.extend(label_pill_spans(lbl));
     }
     let meta_line = Line::from(meta_line_spans);
     let meta_line_count: u16 = if meta_line.width() == 0 {
@@ -1236,13 +1248,7 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
             let merge_state_w = mergeable_state_span(app.repo_ctx.mergeable_states.get(&pr_id))
                 .as_ref()
                 .map_or(0, Span::width);
-            let label_section_w: usize = if pr.labels.is_empty() {
-                0
-            } else {
-                2 + pr.labels.iter().map(|l| l.len() + 2).sum::<usize>()
-                    + pr.labels.len().saturating_sub(1)
-            };
-            let title2_budget = inner_width.saturating_sub(5 + merge_state_w + label_section_w);
+            let title2_budget = inner_width.saturating_sub(5 + merge_state_w);
             let title2_text = truncate(&pr.title, title2_budget);
 
             let mut line2_spans: Vec<Span> = vec![
@@ -1254,18 +1260,6 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
                 line2_spans.push(s);
             }
             line2_spans.push(Span::styled(title2_text, base_style));
-            if !pr.labels.is_empty() {
-                line2_spans.push(Span::raw("  "));
-                for (i, label) in pr.labels.iter().enumerate() {
-                    if i > 0 {
-                        line2_spans.push(Span::raw(" "));
-                    }
-                    line2_spans.push(Span::styled(
-                        format!("[{label}]"),
-                        Style::new().fg(Color::Green),
-                    ));
-                }
-            }
             let line2 = Line::from(line2_spans);
 
             ListItem::new(Text::from(vec![line1, line2]))
@@ -1445,7 +1439,7 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
                 Span::styled(state_icon, Style::new().fg(state_color)),
             ]);
             let mut text_lines = vec![line1, icon_line];
-            text_lines.extend(wrap_label_lines(&issue.labels, inner_width, Color::Green));
+            text_lines.extend(wrap_label_lines(&issue.labels, inner_width));
             ListItem::new(Text::from(text_lines))
         })
         .collect();
@@ -1512,7 +1506,7 @@ pub(super) fn draw_issue_detail(f: &mut Frame, app: &mut App, area: ratatui::lay
     .unwrap_or(1)
     .max(1);
 
-    let label_lines = wrap_label_lines(&issue_labels, inner.width as usize, Color::Cyan);
+    let label_lines = wrap_label_lines(&issue_labels, inner.width as usize);
     let label_line_count = u16::try_from(label_lines.len()).unwrap_or(0);
     let header_height = title_lines + label_line_count;
     let [header_area, body_area] =

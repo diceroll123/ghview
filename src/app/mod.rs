@@ -716,7 +716,10 @@ impl App {
                     .filter(|pr| {
                         pr.title.to_lowercase().contains(&filter)
                             || pr.author.to_lowercase().contains(&filter)
-                            || pr.labels.iter().any(|l| l.to_lowercase().contains(&filter))
+                            || pr
+                                .labels
+                                .iter()
+                                .any(|l| l.name.to_lowercase().contains(&filter))
                             || pr.head_ref.to_lowercase().contains(&filter)
                     })
                     .cloned(),
