@@ -795,17 +795,6 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
         );
         return;
     };
-    let has_meta = pr.additions > 0
-        || pr.deletions > 0
-        || !pr.labels.is_empty()
-        || !pr.head_ref.is_empty()
-        || !pr.requested_reviewers.is_empty()
-        || matches!(
-            app.repo_ctx
-                .mergeable_states
-                .get(&RepoId::new(detail_owner, detail_repo).pr(pr.number)),
-            Some(crate::types::MergeableState::Behind | crate::types::MergeableState::Dirty)
-        );
     let title_lines = u16::try_from(
         Paragraph::new(pr.title.as_str())
             .wrap(Wrap { trim: false })
@@ -813,46 +802,7 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
     )
     .unwrap_or(1)
     .max(1);
-    let header_height = title_lines + u16::from(has_meta);
 
-    let body_focusable = app.pr_body_focusable();
-    let checks_focusable = app.checks_focusable();
-    let body_constraint = if body_focusable {
-        Constraint::Min(3)
-    } else {
-        Constraint::Length(3)
-    };
-    let checks_constraint = if checks_focusable {
-        let h = if body_focusable {
-            (inner.height * 2 / 5).max(4)
-        } else {
-            0
-        };
-        if body_focusable {
-            Constraint::Length(h)
-        } else {
-            Constraint::Min(4)
-        }
-    } else {
-        Constraint::Length(3)
-    };
-
-    let bar_runs = app.repo_ctx.check_runs.as_deref().unwrap_or(&[]);
-    let has_bar = !bar_runs.is_empty();
-
-    let [header_area, body_area, checks_area] = Layout::vertical([
-        Constraint::Length(header_height),
-        body_constraint,
-        checks_constraint,
-    ])
-    .areas(inner);
-
-    // Title + labels header
-    let title_line = Line::from(Span::styled(
-        pr.title.clone(),
-        Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
-    ));
-    let mut header_lines = vec![title_line];
     let mut meta_line_spans: Vec<Span> = vec![];
     if let Some((add_span, del_span)) = diff_stat_spans(pr) {
         meta_line_spans.extend([add_span, Span::raw(" "), del_span, Span::raw("  ")]);
@@ -893,8 +843,59 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
             Style::new().fg(Color::Cyan),
         ));
     }
-    if !meta_line_spans.is_empty() {
-        header_lines.push(Line::from(meta_line_spans));
+    let meta_line = Line::from(meta_line_spans);
+    let meta_line_count: u16 = if meta_line.width() == 0 {
+        0
+    } else {
+        u16::try_from(
+            Paragraph::new(meta_line.clone())
+                .wrap(Wrap { trim: false })
+                .line_count(inner.width),
+        )
+        .unwrap_or(1)
+    };
+    let header_height = title_lines + meta_line_count;
+
+    let body_focusable = app.pr_body_focusable();
+    let checks_focusable = app.checks_focusable();
+    let body_constraint = if body_focusable {
+        Constraint::Min(3)
+    } else {
+        Constraint::Length(3)
+    };
+    let checks_constraint = if checks_focusable {
+        let h = if body_focusable {
+            (inner.height * 2 / 5).max(4)
+        } else {
+            0
+        };
+        if body_focusable {
+            Constraint::Length(h)
+        } else {
+            Constraint::Min(4)
+        }
+    } else {
+        Constraint::Length(3)
+    };
+
+    let bar_runs = app.repo_ctx.check_runs.as_deref().unwrap_or(&[]);
+    let has_bar = !bar_runs.is_empty();
+
+    let [header_area, body_area, checks_area] = Layout::vertical([
+        Constraint::Length(header_height),
+        body_constraint,
+        checks_constraint,
+    ])
+    .areas(inner);
+
+    // Title + meta header
+    let title_line = Line::from(Span::styled(
+        pr.title.clone(),
+        Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
+    ));
+    let mut header_lines = vec![title_line];
+    if meta_line.width() > 0 {
+        header_lines.push(meta_line);
     }
     f.render_widget(
         Paragraph::new(Text::from(header_lines)).wrap(Wrap { trim: false }),
