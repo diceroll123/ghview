@@ -65,13 +65,25 @@ pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout
 
     if let Some(rl) = rl_text {
         let rl_color = if let Some((rem, _)) = app.rate_limit {
-            if rem < 100 {
-                Color::Red
+            let target: (u8, u8, u8) = if rem < 100 {
+                (180, 30, 30)
             } else if rem < 500 {
-                Color::Yellow
+                (160, 130, 0)
             } else {
-                Color::DarkGray
-            }
+                (85, 85, 85)
+            };
+            let flash = app.config.ui.rate_limit_flash_secs;
+            let t = if flash > 0.0 {
+                app.rate_limit_updated_at
+                    .map(|at| (at.elapsed().as_secs_f32() / flash).min(1.0))
+                    .unwrap_or(1.0)
+            } else {
+                1.0
+            };
+            let r = (255.0 + (target.0 as f32 - 255.0) * t) as u8;
+            let g = (255.0 + (target.1 as f32 - 255.0) * t) as u8;
+            let b = (0.0 + (target.2 as f32) * t) as u8;
+            Color::Rgb(r, g, b)
         } else {
             Color::DarkGray
         };

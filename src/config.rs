@@ -26,6 +26,9 @@ pub const DEFAULT_TICK_MS: u64 = 100;
 pub const DEFAULT_CACHE_SECS: u64 = 600;
 pub const DEFAULT_REPOS_LIMIT: u32 = 50;
 pub const DEFAULT_PRS_LIMIT: u32 = 50;
+pub const DEFAULT_RATE_LIMIT_REFRESH_SECS: u64 = 60;
+pub const MIN_RATE_LIMIT_REFRESH_SECS: u64 = 10;
+pub const DEFAULT_RATE_LIMIT_FLASH_SECS: f32 = 2.0;
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
@@ -72,6 +75,10 @@ pub struct UiConfig {
     pub merge_method: MergeMethod,
     /// Pre-fetch diff stats, check summary, and mergeable state for all PRs on load.
     pub prefetch_pr_details: bool,
+    /// Duration in seconds of the rate-limit flash animation. Set to 0 to disable.
+    pub rate_limit_flash_secs: f32,
+    /// How often to refresh the rate-limit display, in seconds. Minimum 10.
+    pub rate_limit_refresh_secs: u64,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -238,6 +245,8 @@ impl Default for UiConfig {
             per_page: 0,
             merge_method: MergeMethod::default(),
             prefetch_pr_details: true,
+            rate_limit_flash_secs: DEFAULT_RATE_LIMIT_FLASH_SECS,
+            rate_limit_refresh_secs: DEFAULT_RATE_LIMIT_REFRESH_SECS,
         }
     }
 }
@@ -269,6 +278,14 @@ impl Config {
 
     pub const fn tick_interval(&self) -> Duration {
         Duration::from_millis(self.ui.tick_ms)
+    }
+
+    pub fn rate_limit_refresh_interval(&self) -> Duration {
+        Duration::from_secs(
+            self.ui
+                .rate_limit_refresh_secs
+                .max(MIN_RATE_LIMIT_REFRESH_SECS),
+        )
     }
 }
 

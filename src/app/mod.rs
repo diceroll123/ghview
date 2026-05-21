@@ -123,6 +123,7 @@ pub struct App {
     pub repo_sort_key: RepoSortKey,
 
     pub rate_limit: Option<(u32, u32)>,
+    pub rate_limit_updated_at: Option<Instant>,
 
     pub loading: Option<LoadingKind>,
     pub config: Config,
@@ -173,6 +174,7 @@ impl App {
             repo_view: config.ui.default_repo_view,
             repos_view: config.ui.default_repos_view,
             rate_limit: None,
+            rate_limit_updated_at: None,
             loading: None,
             config,
             status_msg: None,
@@ -584,6 +586,7 @@ impl App {
             }
             DataMsg::RateLimit { remaining, limit } => {
                 self.rate_limit = Some((remaining, limit));
+                self.rate_limit_updated_at = Some(Instant::now());
             }
             DataMsg::ViewerPermission { repo, can_push } => {
                 if self.current_repo_key().as_deref() == Some(repo.key().as_str()) {
