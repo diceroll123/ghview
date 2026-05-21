@@ -30,6 +30,8 @@ prs_limit = 50
 # prefetch_pr_details = true
 # Duration in seconds of the rate-limit flash animation. Set to 0 to disable.
 # rate_limit_flash_secs = 2.0
+# How often to refresh the rate-limit display, in seconds. Minimum 10.
+# rate_limit_refresh_secs = 60
 
 [sources]
 # Automatically include the authenticated GitHub user as a source.

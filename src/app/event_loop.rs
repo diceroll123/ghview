@@ -27,7 +27,7 @@ pub async fn run_event_loop(
 ) -> color_eyre::Result<(Option<InteractiveCmd>, App)> {
     let mut events = EventStream::new();
     let mut tick = tokio::time::interval(app.config.tick_interval());
-    let mut rate_limit_tick = tokio::time::interval(std::time::Duration::from_mins(1));
+    let mut rate_limit_tick = tokio::time::interval(app.config.rate_limit_refresh_interval());
     let start30 = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
     let mut watch_tick = interval_at(start30, std::time::Duration::from_secs(30));
     app.trigger_fetch_rate_limit();
