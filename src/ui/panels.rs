@@ -603,18 +603,16 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
                 String::new()
             };
             let num_w = number_str.width();
-            // line1 left: "#N by @author"
-            let by_str = format!("by @{}", pr.author);
-            let left_w = num_w + by_str.width();
-            let gap = inner_width.saturating_sub(left_w + right_col_width);
+            let left_budget = inner_width.saturating_sub(right_col_width);
+            let by_str = truncate(
+                &format!("by @{}", pr.author),
+                left_budget.saturating_sub(num_w),
+            );
+            let gap = left_budget.saturating_sub(num_w + by_str.width());
 
             let mut line1_spans = vec![
                 Span::styled(number_str, Style::new().add_modifier(Modifier::BOLD)),
-                Span::styled("by ", meta_style),
-                Span::styled(
-                    format!("@{}", pr.author),
-                    meta_style.add_modifier(Modifier::BOLD),
-                ),
+                Span::styled(by_str, meta_style),
                 gap_span(gap),
             ];
             if show_comments {
@@ -1252,19 +1250,19 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
                 format!("  {upd:>age_col$}")
             };
 
-            let repo_num = format!("{} #{}", pr.repo, pr.number);
-            let by_str = format!("by @{}", pr.author);
-            let left_w = repo_num.width() + 1 + by_str.width();
-            let gap = inner_width.saturating_sub(left_w + right_col_width);
+            let left_budget = inner_width.saturating_sub(right_col_width);
+            let repo_num = truncate(&format!("{} #{}", pr.repo, pr.number), left_budget);
+            let repo_num_w = repo_num.width() + 1; // +1 for space before by_str
+            let by_str = truncate(
+                &format!("by @{}", pr.author),
+                left_budget.saturating_sub(repo_num_w),
+            );
+            let gap = left_budget.saturating_sub(repo_num_w + by_str.width());
 
             let mut line1_spans = vec![
                 Span::styled(repo_num, base_style.add_modifier(Modifier::BOLD)),
                 Span::raw(" "),
-                Span::styled("by ", meta_style),
-                Span::styled(
-                    format!("@{}", pr.author),
-                    meta_style.add_modifier(Modifier::BOLD),
-                ),
+                Span::styled(by_str, meta_style),
                 gap_span(gap),
             ];
 
