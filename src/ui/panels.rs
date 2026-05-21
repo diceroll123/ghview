@@ -932,13 +932,19 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
     } else {
         Constraint::Length(3)
     };
+    let bar_runs = app.repo_ctx.check_runs.as_deref().unwrap_or(&[]);
+    let has_bar = !bar_runs.is_empty();
+
     let checks_constraint = if checks_focusable {
-        let h = if body_focusable {
-            (inner.height * 2 / 5).max(4)
-        } else {
-            0
-        };
         if body_focusable {
+            let max_h = (inner.height * 2 / 5).max(4);
+            let h = match app.repo_ctx.check_runs.as_deref() {
+                Some(runs) if !runs.is_empty() => {
+                    // 2 borders + 1 bar + list items
+                    (2 + 1 + runs.len() as u16).min(max_h).max(4)
+                }
+                _ => max_h,
+            };
             Constraint::Length(h)
         } else {
             Constraint::Min(4)
@@ -946,9 +952,6 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
     } else {
         Constraint::Length(3)
     };
-
-    let bar_runs = app.repo_ctx.check_runs.as_deref().unwrap_or(&[]);
-    let has_bar = !bar_runs.is_empty();
 
     let [header_area, body_area, checks_area] = Layout::vertical([
         Constraint::Length(header_height),
