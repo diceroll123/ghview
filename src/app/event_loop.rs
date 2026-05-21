@@ -133,8 +133,11 @@ pub async fn run_event_loop(
                     }
                 }
 
-                // 2. Column user keybindings — PRs config before PR defaults.
-                if app.focus == Column::Repo && app.repo_view == crate::types::RepoView::Prs {
+                // 2. Column user keybindings — PRs config before PR defaults (repo list and source list).
+                if (app.focus == Column::Repo && app.repo_view == crate::types::RepoView::Prs)
+                    || (app.focus == Column::Repos
+                        && app.repos_view == ReposView::PrList)
+                {
                     let kb = app.config.keybindings.prs.iter().find(|kb| kb.matches(key)).cloned();
                     if let Some(kb) = kb {
                         if let Some(action) = kb.builtin.as_deref().and_then(builtin_to_action) {
@@ -195,9 +198,9 @@ pub async fn run_event_loop(
                     continue;
                 }
 
-                // 4. PR-column defaults.
-                if app.focus == Column::Repo
-                    && app.repo_view == crate::types::RepoView::Prs
+                // 4. PR-column defaults (repo list and source list).
+                if (app.focus == Column::Repo && app.repo_view == crate::types::RepoView::Prs
+                    || app.focus == Column::Repos && app.repos_view == ReposView::PrList)
                     && let Some(action) = map_key_prs(key) {
                         if matches!(action, Action::Checkout | Action::Comment) {
                             let Some((rid, pr)) = app.selected_pr_context() else { continue };

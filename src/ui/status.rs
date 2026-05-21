@@ -4,7 +4,7 @@ use crate::{
         Action, CHECKS_BAR, DIFF_HINT_TEXT, FRONTPAGE_BAR, ISSUES_BAR, PRS_BAR, REPOS_BAR,
         SOURCES_BAR, find_binding,
     },
-    types::{Column, DetailSection, LoadingKind, RepoView},
+    types::{Column, DetailSection, LoadingKind, RepoView, ReposView},
 };
 use ratatui::{
     Frame,
@@ -118,7 +118,13 @@ pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout
 fn hint_entries(app: &App, width: usize) -> String {
     let bar = match app.focus {
         Column::Sources => SOURCES_BAR,
-        Column::Repos => REPOS_BAR,
+        Column::Repos => {
+            if app.repos_view == ReposView::PrList {
+                PRS_BAR
+            } else {
+                REPOS_BAR
+            }
+        }
         Column::Repo => match app.repo_view {
             RepoView::Frontpage => FRONTPAGE_BAR,
             RepoView::Prs => PRS_BAR,
@@ -144,7 +150,13 @@ fn hint_entries(app: &App, width: usize) -> String {
     let budget = width.saturating_sub(reserved);
 
     let col_kbs: &[crate::config::Keybinding] = match app.focus {
-        Column::Repos => &app.config.keybindings.repos,
+        Column::Repos => {
+            if app.repos_view == ReposView::PrList {
+                &app.config.keybindings.prs
+            } else {
+                &app.config.keybindings.repos
+            }
+        }
         Column::Repo => match app.repo_view {
             RepoView::Prs => &app.config.keybindings.prs,
             _ => &[],
@@ -170,7 +182,9 @@ fn hint_entries(app: &App, width: usize) -> String {
         {
             return None;
         }
-        if matches!(app.focus, Column::Repo | Column::Detail) && !app.action_permitted(action) {
+        let pr_column = matches!(app.focus, Column::Repo | Column::Detail)
+            || (app.focus == Column::Repos && app.repos_view == ReposView::PrList);
+        if pr_column && !app.action_permitted(action) {
             return None;
         }
         find_binding(action).map(|b| format!("{} {}", b.display, b.label))

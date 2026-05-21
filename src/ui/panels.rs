@@ -8,7 +8,7 @@ use super::{
 use crate::{
     app::App,
     types::{
-        CheckStatus, Column, DetailSection, LoadingKind, PrColumn, PrState, RepoColumn, RepoId,
+        CheckStatus, Column, DetailSection, LoadingKind, PR, PrColumn, PrState, RepoColumn, RepoId,
         RepoView, ReposView, Source, Visibility,
     },
 };
@@ -503,6 +503,235 @@ pub(super) fn draw_repos(f: &mut Frame, app: &mut App, area: ratatui::layout::Re
     );
 }
 
+struct PrListCols {
+    show_comments: bool,
+    show_check_summary: bool,
+    show_diff: bool,
+    show_updated: bool,
+    show_age: bool,
+    age_col: usize,
+    diff_col: usize,
+    time_col_w: usize,
+    comment_col_w: usize,
+    right_col_width: usize,
+}
+
+impl PrListCols {
+    fn new(config: &crate::config::Config) -> Self {
+        let age_col: usize = 4;
+        let diff_col: usize = 11;
+        let time_col_w = 2 + age_col;
+        let comment_col_w: usize = 5; // 2 sep + 3 digits
+        let show_comments = config.ui.pr_columns.contains(&PrColumn::Comments);
+        let show_check_summary = config.ui.pr_columns.contains(&PrColumn::CheckSummary);
+        let show_diff = config.ui.pr_columns.contains(&PrColumn::DiffStats);
+        let show_updated = config.ui.pr_columns.contains(&PrColumn::UpdatedAt);
+        let show_age = config.ui.pr_columns.contains(&PrColumn::Age);
+        let right_col_width = if show_comments { comment_col_w } else { 0 }
+            + if show_check_summary { 3 } else { 0 } // 2 sep + 1 icon
+            + if show_diff { diff_col } else { 0 }
+            + 4 // 1sp + rv + 2sp
+            + if show_updated { time_col_w } else { 0 }
+            + if show_age { time_col_w } else { 0 };
+        Self {
+            show_comments,
+            show_check_summary,
+            show_diff,
+            show_updated,
+            show_age,
+            age_col,
+            diff_col,
+            time_col_w,
+            comment_col_w,
+            right_col_width,
+        }
+    }
+}
+
+fn pr_list_header(cols: &PrListCols, inner_width: usize) -> Line<'static> {
+    let header_style = Style::new()
+        .fg(Color::DarkGray)
+        .add_modifier(Modifier::BOLD);
+    let comment_header = if cols.show_comments {
+        format!("{ICON_COMMENT:>width$}", width = cols.comment_col_w)
+    } else {
+        String::new()
+    };
+    let check_header = if cols.show_check_summary {
+        format!("  {ICON_CHECKLIST}")
+    } else {
+        String::new()
+    };
+    let status_header = format!(" {ICON_PR_HEADER}  ");
+    let diff_header = if cols.show_diff {
+        format!("{:<width$}", "±", width = cols.diff_col)
+    } else {
+        String::new()
+    };
+    let updated_header = if cols.show_updated {
+        format!("{ICON_CLOCK_UPDATED:>width$}", width = cols.time_col_w)
+    } else {
+        String::new()
+    };
+    let age_header = if cols.show_age {
+        format!("{ICON_CLOCK:>width$}", width = cols.time_col_w)
+    } else {
+        String::new()
+    };
+    let right = format!(
+        "{comment_header}{check_header}{status_header}{diff_header}{updated_header}{age_header}"
+    );
+    let gap = inner_width.saturating_sub(cols.right_col_width);
+    Line::from(vec![
+        Span::raw("  "),
+        gap_span(gap),
+        Span::styled(right, header_style),
+    ])
+}
+
+/// Build list items shared by both the repo PR list and the source PR list.
+///
+/// `repo_override`: `Some(repo_name)` for the per-repo list (all PRs share the same repo,
+/// prefix shows `#N`); `None` for the source-level list (each PR carries its own `pr.repo`,
+/// prefix shows `repo #N`).
+fn build_pr_list_items(
+    app: &App,
+    prs: &[&PR],
+    owner: &str,
+    repo_override: Option<&str>,
+    inner_width: usize,
+    focused: bool,
+    cols: &PrListCols,
+) -> Vec<ListItem<'static>> {
+    prs.iter()
+        .map(|pr| {
+            let dimmed = pr.is_dimmed();
+            let repo_name = repo_override.unwrap_or(&pr.repo);
+            let pr_id = RepoId::new(owner, repo_name).pr(pr.number);
+            let base_style = if dimmed {
+                Style::new().fg(Color::DarkGray)
+            } else {
+                item_style(focused)
+            };
+            let meta_style = Style::new().fg(Color::DarkGray);
+
+            let rv_status = app
+                .review_cache
+                .get(&pr_id.repo.key())
+                .and_then(|m| m.get(&pr.number));
+            let (rv_sym, rv_col) =
+                review_icon(rv_status, app.repo_ctx.mergeable_states.get(&pr_id));
+
+            let left_budget = inner_width.saturating_sub(cols.right_col_width);
+            let mut line1_spans: Vec<Span> = if repo_override.is_some() {
+                let number_str = format!("#{} ", pr.number);
+                let num_w = number_str.width();
+                let by_str = truncate(
+                    &format!("by @{}", pr.author),
+                    left_budget.saturating_sub(num_w),
+                );
+                let gap = left_budget.saturating_sub(num_w + by_str.width());
+                vec![
+                    Span::styled(number_str, Style::new().add_modifier(Modifier::BOLD)),
+                    Span::styled(by_str, meta_style),
+                    gap_span(gap),
+                ]
+            } else {
+                let repo_num = truncate(&format!("{} #{}", pr.repo, pr.number), left_budget);
+                let repo_num_w = repo_num.width() + 1;
+                let by_str = truncate(
+                    &format!("by @{}", pr.author),
+                    left_budget.saturating_sub(repo_num_w),
+                );
+                let gap = left_budget.saturating_sub(repo_num_w + by_str.width());
+                vec![
+                    Span::styled(repo_num, base_style.add_modifier(Modifier::BOLD)),
+                    Span::raw(" "),
+                    Span::styled(by_str, meta_style),
+                    gap_span(gap),
+                ]
+            };
+
+            if cols.show_comments {
+                let n = pr.comments;
+                let count_str = if n > 999 {
+                    "99+".to_string()
+                } else {
+                    format!("{n:>3}")
+                };
+                line1_spans.push(Span::styled(
+                    format!("  {:>width$}", count_str, width = cols.comment_col_w - 2),
+                    meta_style,
+                ));
+            }
+            if cols.show_check_summary {
+                let (icon, color) = app
+                    .repo_ctx
+                    .check_summary_cache
+                    .get(&pr_id)
+                    .map_or((ICON_DOT, Color::DarkGray), |s| (s.icon(), s.color()));
+                line1_spans.push(Span::raw("  "));
+                line1_spans.push(Span::styled(icon, Style::new().fg(color)));
+            }
+            line1_spans.extend([
+                Span::raw(" "),
+                Span::styled(rv_sym, Style::new().fg(rv_col)),
+                Span::raw("  "),
+            ]);
+            if cols.show_diff {
+                match diff_stat_spans(pr) {
+                    None => {
+                        line1_spans.push(Span::raw(format!("{:width$}", "", width = cols.diff_col)))
+                    }
+                    Some((add_span, del_span)) => {
+                        let content_w = add_span.width() + 1 + del_span.width();
+                        let pad = cols.diff_col.saturating_sub(content_w);
+                        line1_spans.extend([
+                            add_span,
+                            Span::raw(" "),
+                            del_span,
+                            Span::raw(" ".repeat(pad)),
+                        ]);
+                    }
+                }
+            }
+            if cols.show_updated {
+                let upd = relative_time(&pr.updated_at);
+                line1_spans.push(Span::styled(
+                    format!("  {upd:>width$}", width = cols.age_col),
+                    meta_style,
+                ));
+            }
+            if cols.show_age {
+                let age = relative_time(&pr.created_at);
+                line1_spans.push(Span::styled(
+                    format!("  {age:>width$}", width = cols.age_col),
+                    meta_style,
+                ));
+            }
+            let line1 = Line::from(line1_spans);
+
+            let state_icon = pr_state_icon(pr.draft, pr.state);
+            let state_col = pr_state_color(pr);
+            let merge_state_w = mergeable_state_span(app.repo_ctx.mergeable_states.get(&pr_id))
+                .as_ref()
+                .map_or(0, Span::width);
+            let title2_budget = inner_width.saturating_sub(5 + merge_state_w);
+            let title2_text = truncate(&pr.title, title2_budget);
+            let mut line2_spans: Vec<Span> = vec![
+                Span::raw("  "),
+                Span::styled(state_icon, Style::new().fg(state_col)),
+                Span::raw(" "),
+            ];
+            if let Some(s) = mergeable_state_span(app.repo_ctx.mergeable_states.get(&pr_id)) {
+                line2_spans.push(s);
+            }
+            line2_spans.push(Span::styled(title2_text, base_style));
+            ListItem::new(Text::from(vec![line1, Line::from(line2_spans)]))
+        })
+        .collect()
+}
+
 pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     let focused = app.focus == Column::Repo;
     let border_style = panel_focus(focused);
@@ -512,10 +741,8 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
         Some(LoadingKind::Action(a)) => format!(" {a}…"),
         _ => String::new(),
     };
-
     let sort_label = app.sort_key.label();
     let owner_repo = app.selected_owner_repo();
-    let prs_rid = owner_repo.clone().unwrap_or_else(|| RepoId::new("", ""));
     let pr_count_suffix = if app.filter_active || !app.pr_filter.is_empty() {
         format!(
             "  {}/{}",
@@ -531,7 +758,6 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
         format!("Pull Requests  {sort_label}{loading_suffix}{pr_count_suffix}")
     };
     let title = filter_title(&base, &app.pr_filter, app.filter_active, focused);
-
     let block = panel_block(title, border_style).title_bottom(view_tab_line(
         RepoView::Prs,
         app.selected_repo_has_issues(),
@@ -541,196 +767,29 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
         app.repo_ctx.issues_pagination.has_more,
     ));
 
-    // 4 = 2 borders + 2 highlight-symbol ("▶ ")
     let inner_width = area.width.saturating_sub(4) as usize;
-
-    let age_col = 4usize;
-    let status_col = 1 + 1 + 2; // 1sp + rv + 2sp
-    let show_diff = app.config.ui.pr_columns.contains(&PrColumn::DiffStats);
-    let show_age = app.config.ui.pr_columns.contains(&PrColumn::Age);
-    let show_updated = app.config.ui.pr_columns.contains(&PrColumn::UpdatedAt);
-    let show_comments = app.config.ui.pr_columns.contains(&PrColumn::Comments);
-    let show_check_summary = app.config.ui.pr_columns.contains(&PrColumn::CheckSummary);
-    // "+9.9k -9.9k" = 11 chars max; time cols provide trailing separator
-    let diff_col: usize = 11;
-    // each time col: 2 sep + age_col value
-    let time_col_w = 2 + age_col;
-    // comment col: 2 sep + up to 3 digits
-    let comment_col_w = 2 + 3;
-    // check summary col: 2 sep + 1 icon
-    let check_summary_col_w = 2 + 1;
-    let right_col_width = if show_comments { comment_col_w } else { 0 }
-        + if show_check_summary {
-            check_summary_col_w
-        } else {
-            0
-        }
-        + if show_diff { diff_col } else { 0 }
-        + status_col
-        + if show_updated { time_col_w } else { 0 }
-        + if show_age { time_col_w } else { 0 };
-
-    let items: Vec<ListItem> = app
-        .repo_ctx
-        .prs
-        .iter()
-        .map(|pr| {
-            let dimmed = pr.is_dimmed();
-            let pr_id = prs_rid.clone().pr(pr.number);
-            let base_style = if dimmed {
-                Style::new().fg(Color::DarkGray)
-            } else {
-                item_style(focused)
-            };
-            let meta_style = Style::new().fg(Color::DarkGray);
-
-            let (rv_sym, rv_col) = review_icon(
-                app.repo_ctx.review_statuses.get(&pr.number),
-                app.repo_ctx.mergeable_states.get(&pr_id),
-            );
-
-            let number_str = format!("#{} ", pr.number);
-            let age_str = if show_age {
-                let age = relative_time(&pr.created_at);
-                format!("  {age:>age_col$}")
-            } else {
-                String::new()
-            };
-            let updated_str = if show_updated {
-                let upd = relative_time(&pr.updated_at);
-                format!("  {upd:>age_col$}")
-            } else {
-                String::new()
-            };
-            let num_w = number_str.width();
-            let left_budget = inner_width.saturating_sub(right_col_width);
-            let by_str = truncate(
-                &format!("by @{}", pr.author),
-                left_budget.saturating_sub(num_w),
-            );
-            let gap = left_budget.saturating_sub(num_w + by_str.width());
-
-            let mut line1_spans = vec![
-                Span::styled(number_str, Style::new().add_modifier(Modifier::BOLD)),
-                Span::styled(by_str, meta_style),
-                gap_span(gap),
-            ];
-            if show_comments {
-                let n = pr.comments;
-                let count_str = if n > 999 {
-                    "99+".to_string()
-                } else {
-                    format!("{n:>3}")
-                };
-                line1_spans.push(Span::styled(
-                    format!("  {:>width$}", count_str, width = comment_col_w - 2),
-                    meta_style,
-                ));
-            }
-            if show_check_summary {
-                let (icon, color) = app
-                    .repo_ctx
-                    .check_summary_cache
-                    .get(&pr_id)
-                    .map_or((ICON_DOT, Color::DarkGray), |s| (s.icon(), s.color()));
-                line1_spans.push(Span::raw("  "));
-                line1_spans.push(Span::styled(icon, Style::new().fg(color)));
-            }
-            line1_spans.extend([
-                Span::raw(" "),
-                Span::styled(rv_sym, Style::new().fg(rv_col)),
-                Span::raw("  "),
-            ]);
-            if show_diff {
-                match diff_stat_spans(pr) {
-                    None => line1_spans.push(Span::raw(format!("{:width$}", "", width = diff_col))),
-                    Some((add_span, del_span)) => {
-                        let content_w = add_span.width() + 1 + del_span.width();
-                        let pad = diff_col.saturating_sub(content_w);
-                        line1_spans.extend([
-                            add_span,
-                            Span::raw(" "),
-                            del_span,
-                            Span::raw(" ".repeat(pad)),
-                        ]);
-                    }
-                }
-            }
-            line1_spans.extend([
-                Span::styled(updated_str, meta_style),
-                Span::styled(age_str, meta_style),
-            ]);
-            let line1 = Line::from(line1_spans);
-
-            // line2: "  [state] [merge_warn] [title] [labels]"
-            let state_icon = pr_state_icon(pr.draft, pr.state);
-            let state_col = pr_state_color(pr);
-            let merge_state_w = mergeable_state_span(app.repo_ctx.mergeable_states.get(&pr_id))
-                .as_ref()
-                .map_or(0, Span::width);
-            // prefix: "  "(2) + state_icon(2) + " "(1) = 5
-            let title2_budget = inner_width.saturating_sub(5 + merge_state_w);
-            let title2_text = truncate(&pr.title, title2_budget);
-
-            let mut meta_spans: Vec<Span> = vec![
-                Span::raw("  "),
-                Span::styled(state_icon, Style::new().fg(state_col)),
-                Span::raw(" "),
-            ];
-            if let Some(s) = mergeable_state_span(app.repo_ctx.mergeable_states.get(&pr_id)) {
-                meta_spans.push(s);
-            }
-            meta_spans.push(Span::styled(title2_text, base_style));
-            let line2 = Line::from(meta_spans);
-            ListItem::new(Text::from(vec![line1, line2]))
-        })
-        .collect();
+    let cols = PrListCols::new(&app.config);
+    let owner = app.selected_source_owner().unwrap_or_default();
+    let repo = owner_repo.as_ref().map(|r| r.repo.as_str()).unwrap_or("");
+    let prs_ref: Vec<&PR> = app.repo_ctx.prs.iter().collect();
+    let items = build_pr_list_items(
+        app,
+        &prs_ref,
+        &owner,
+        Some(repo),
+        inner_width,
+        focused,
+        &cols,
+    );
 
     let inner = block.inner(area);
     f.render_widget(block, area);
-
     let [header_area, body_area] =
         Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(inner);
-
-    let header_style = Style::new()
-        .fg(Color::DarkGray)
-        .add_modifier(Modifier::BOLD);
-    let status_header = format!(" {ICON_PR_HEADER}  ");
-    let comment_header = if show_comments {
-        format!("{ICON_COMMENT:>comment_col_w$}")
-    } else {
-        String::new()
-    };
-    let check_summary_header = if show_check_summary {
-        format!("  {ICON_CHECKLIST}")
-    } else {
-        String::new()
-    };
-    let diff_header = if show_diff {
-        format!("{:<width$}", "±", width = diff_col)
-    } else {
-        String::new()
-    };
-    let age_header = if show_age {
-        format!("{ICON_CLOCK:>time_col_w$}")
-    } else {
-        String::new()
-    };
-    let updated_header = if show_updated {
-        format!("{ICON_CLOCK_UPDATED:>time_col_w$}")
-    } else {
-        String::new()
-    };
-    let right_header = format!(
-        "{comment_header}{check_summary_header}{status_header}{diff_header}{updated_header}{age_header}"
+    f.render_widget(
+        Paragraph::new(pr_list_header(&cols, inner_width)),
+        header_area,
     );
-    let gap = inner_width.saturating_sub(right_col_width);
-    let header_line = Line::from(vec![
-        Span::raw("  "),
-        gap_span(gap),
-        Span::styled(right_header, header_style),
-    ]);
-    f.render_widget(Paragraph::new(header_line), header_area);
 
     if items.is_empty() && app.loading.is_none() {
         let msg = if !app.pr_filter.is_empty() {
@@ -751,7 +810,6 @@ pub(super) fn draw_prs(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect
     let list = List::new(items)
         .highlight_style(list_highlight_style())
         .highlight_symbol("▶ ");
-
     f.render_stateful_widget(list, body_area, &mut app.repo_ctx.pr_state);
     render_list_scrollbar(
         f,
@@ -1168,52 +1226,26 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
         app.filter_active && app.focus == Column::Repos,
         focused,
     );
-
     let block = panel_block(title, border_style).title_bottom(repos_tab_line(
         ReposView::PrList,
         app.source_ctx.source_prs.len(),
         app.source_ctx.source_prs_pagination.has_more,
     ));
 
-    // 4 = 2 borders + 2 highlight symbol chars
     let inner_width = area.width.saturating_sub(4) as usize;
-
-    let age_col = 4usize;
-    // " " + rv + "  " = 4
-    let status_col = 1 + 1 + 2;
-    let diff_col: usize = 11; // "+9.9k -9.9k"
-    let time_col_w = 2 + age_col;
-    // right block: check(3) + rv(4) + diff(11) + updated(6) = 24
-    let right_col_width = 3 + status_col + diff_col + time_col_w;
+    let cols = PrListCols::new(&app.config);
+    let owner = app.selected_source_owner().unwrap_or_default();
+    let visible_prs = app.visible_source_prs();
+    let items = build_pr_list_items(app, &visible_prs, &owner, None, inner_width, focused, &cols);
 
     let inner = block.inner(area);
     f.render_widget(block, area);
-
     let [header_area, body_area] =
         Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(inner);
-
-    // Header row
-    let header_style = Style::new()
-        .fg(Color::DarkGray)
-        .add_modifier(Modifier::BOLD);
-    let gap = inner_width.saturating_sub(right_col_width);
-    let header_line = Line::from(vec![
-        Span::raw("  "),
-        gap_span(gap),
-        Span::styled(
-            format!(
-                "  {ICON_CHECKLIST} {ICON_PR_HEADER}  {:<diff_col$}{:>time_col_w$}",
-                "±",
-                ICON_CLOCK_UPDATED,
-                diff_col = diff_col,
-                time_col_w = time_col_w,
-            ),
-            header_style,
-        ),
-    ]);
-    f.render_widget(Paragraph::new(header_line), header_area);
-
-    let visible_prs = app.visible_source_prs();
+    f.render_widget(
+        Paragraph::new(pr_list_header(&cols, inner_width)),
+        header_area,
+    );
 
     if visible_prs.is_empty() {
         if app.loading.is_some() {
@@ -1226,110 +1258,10 @@ pub(super) fn draw_source_prs(f: &mut Frame, app: &mut App, area: ratatui::layou
         return;
     }
 
-    let owner = app.selected_source_owner().unwrap_or_default();
-
-    let items: Vec<ListItem> = visible_prs
-        .into_iter()
-        .map(|pr| {
-            let dimmed = pr.is_dimmed();
-            let pr_id = RepoId::new(owner.clone(), pr.repo.clone()).pr(pr.number);
-            let base_style = if dimmed {
-                Style::new().fg(Color::DarkGray)
-            } else {
-                item_style(focused)
-            };
-            let meta_style = Style::new().fg(Color::DarkGray);
-
-            let rv_cache_key = format!("{owner}/{}", pr.repo);
-            let rv_status = app
-                .review_cache
-                .get(&rv_cache_key)
-                .and_then(|m| m.get(&pr.number));
-            let (rv_sym, rv_col) =
-                review_icon(rv_status, app.repo_ctx.mergeable_states.get(&pr_id));
-
-            let updated_str = {
-                let upd = relative_time(&pr.updated_at);
-                format!("  {upd:>age_col$}")
-            };
-
-            let left_budget = inner_width.saturating_sub(right_col_width);
-            let repo_num = truncate(&format!("{} #{}", pr.repo, pr.number), left_budget);
-            let repo_num_w = repo_num.width() + 1; // +1 for space before by_str
-            let by_str = truncate(
-                &format!("by @{}", pr.author),
-                left_budget.saturating_sub(repo_num_w),
-            );
-            let gap = left_budget.saturating_sub(repo_num_w + by_str.width());
-
-            let mut line1_spans = vec![
-                Span::styled(repo_num, base_style.add_modifier(Modifier::BOLD)),
-                Span::raw(" "),
-                Span::styled(by_str, meta_style),
-                gap_span(gap),
-            ];
-
-            let (chk_icon, chk_col) = app
-                .repo_ctx
-                .check_summary_cache
-                .get(&pr_id)
-                .map_or((super::ICON_DOT, Color::DarkGray), |s| {
-                    (s.icon(), s.color())
-                });
-            line1_spans.push(Span::raw("  "));
-            line1_spans.push(Span::styled(chk_icon, Style::new().fg(chk_col)));
-            line1_spans.extend([
-                Span::raw(" "),
-                Span::styled(rv_sym, Style::new().fg(rv_col)),
-                Span::raw("  "),
-            ]);
-
-            match diff_stat_spans(pr) {
-                None => line1_spans.push(Span::raw(format!("{:width$}", "", width = diff_col))),
-                Some((add_span, del_span)) => {
-                    let content_w = add_span.width() + 1 + del_span.width();
-                    let pad = diff_col.saturating_sub(content_w);
-                    line1_spans.extend([
-                        add_span,
-                        Span::raw(" "),
-                        del_span,
-                        Span::raw(" ".repeat(pad)),
-                    ]);
-                }
-            }
-            line1_spans.push(Span::styled(updated_str, meta_style));
-
-            let line1 = Line::from(line1_spans);
-
-            // Line 2: state icon + merge warning + title + labels
-            let state_icon = pr_state_icon(pr.draft, pr.state);
-            let state_col = pr_state_color(pr);
-            let merge_state_w = mergeable_state_span(app.repo_ctx.mergeable_states.get(&pr_id))
-                .as_ref()
-                .map_or(0, Span::width);
-            let title2_budget = inner_width.saturating_sub(5 + merge_state_w);
-            let title2_text = truncate(&pr.title, title2_budget);
-
-            let mut line2_spans: Vec<Span> = vec![
-                Span::raw("  "),
-                Span::styled(state_icon, Style::new().fg(state_col)),
-                Span::raw(" "),
-            ];
-            if let Some(s) = mergeable_state_span(app.repo_ctx.mergeable_states.get(&pr_id)) {
-                line2_spans.push(s);
-            }
-            line2_spans.push(Span::styled(title2_text, base_style));
-            let line2 = Line::from(line2_spans);
-
-            ListItem::new(Text::from(vec![line1, line2]))
-        })
-        .collect();
-
     let total = items.len();
     let list = List::new(items)
         .highlight_style(list_highlight_style())
         .highlight_symbol("▶ ");
-
     f.render_stateful_widget(list, body_area, &mut app.source_ctx.source_pr_state);
     render_list_scrollbar(
         f,
