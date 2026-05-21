@@ -52,8 +52,8 @@ pub static UNIVERSAL_BINDINGS: &[DefaultBinding] = &[
         label: "help",
     },
     DefaultBinding {
-        keys: &[KeyCode::Char('r')],
-        display: "r",
+        keys: &[KeyCode::Char('R')],
+        display: "R",
         action: Action::Refresh,
         label: "refresh",
     },
