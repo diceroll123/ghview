@@ -174,7 +174,7 @@ pub async fn fetch_prs(repo: &RepoId, per_page: u32, page: u32) -> Result<Vec<PR
         "{}/pulls?state=open&per_page={per_page}&page={page}&sort=created&direction=desc",
         repo.api_base()
     );
-    let jq = r#".[] | {number, title, author: .user.login, draft, state, created_at, updated_at, url: .html_url, requested_reviewers: ([.requested_reviewers[] | .login] + [.requested_teams[] | .slug]), labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], head_ref: .head.ref, base_ref: .base.ref, head_sha: .head.sha, comments: ((.comments // 0) + (.review_comments // 0))}"#;
+    let jq = r#".[] | {number, title, author: (.user.login // "ghost"), draft, state, created_at, updated_at, url: .html_url, requested_reviewers: ([.requested_reviewers[] | .login] + [.requested_teams[] | .slug]), labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], head_ref: .head.ref, base_ref: .base.ref, head_sha: .head.sha, comments: ((.comments // 0) + (.review_comments // 0))}"#;
     let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
     let mut prs = Vec::new();
     let mut first_err: Option<String> = None;
@@ -212,7 +212,7 @@ pub async fn fetch_source_prs(
     let endpoint = format!(
         "search/issues?q=is:pr+is:open+{scope}&sort=created&order=desc&per_page={per_page}&page={page}"
     );
-    let jq = r#".items[] | {number, title, author: .user.login, state, created_at, updated_at, url: .html_url, labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], comments: ((.comments // 0)), repo: (.repository_url | split("/") | .[-1])}"#;
+    let jq = r#".items[] | {number, title, author: (.user.login // "ghost"), state, created_at, updated_at, url: .html_url, labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], comments: ((.comments // 0)), repo: (.repository_url | split("/") | .[-1])}"#;
     let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
     let mut prs = Vec::new();
     let mut first_err: Option<String> = None;
@@ -434,7 +434,7 @@ pub async fn fetch_issues(repo: &RepoId, per_page: u32, page: u32) -> Result<(Ve
         repo.api_base()
     );
     // Include is_pr so we can compute has_more from the raw count before filtering
-    let jq = r#".[] | {number, title, author: .user.login, state, created_at, labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], url: .html_url, is_pr: (.pull_request != null)}"#;
+    let jq = r#".[] | {number, title, author: (.user.login // "ghost"), state, created_at, labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], url: .html_url, is_pr: (.pull_request != null)}"#;
     let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
     let rows: Vec<Row> = raw
         .lines()

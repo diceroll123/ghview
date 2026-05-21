@@ -858,14 +858,24 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
     // Manual packing prevents ratatui's paragraph wrapper from splitting a pill's
     // three spans (left-cap, text, right-cap) across two display lines.
     let mut meta_prefix: Vec<Span> = vec![];
+    meta_prefix.push(Span::styled(
+        format!("@{}", pr.author),
+        Style::new().fg(Color::Cyan),
+    ));
     if let Some((add_span, del_span)) = diff_stat_spans(pr) {
-        meta_prefix.extend([add_span, Span::raw(" "), del_span, Span::raw("  ")]);
+        if !meta_prefix.is_empty() {
+            meta_prefix.push(Span::raw("  "));
+        }
+        meta_prefix.extend([add_span, Span::raw(" "), del_span]);
     }
     if let Some(s) = mergeable_state_span(
         app.repo_ctx
             .mergeable_states
             .get(&RepoId::new(detail_owner, detail_repo).pr(pr.number)),
     ) {
+        if !meta_prefix.is_empty() {
+            meta_prefix.push(Span::raw("  "));
+        }
         meta_prefix.push(s);
     }
     if !pr.head_ref.is_empty() {
