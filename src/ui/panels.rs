@@ -26,8 +26,8 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{
-        Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
-        Wrap,
+        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Wrap,
     },
 };
 
@@ -201,7 +201,6 @@ fn pad_to_width(spans: Vec<Span<'static>>, cur_w: usize, width: usize) -> Line<'
     let mut spans = spans;
     let pad = width.saturating_sub(cur_w);
     if pad > 0 {
-        // Explicit trailing spaces ensure stale colored cells are overwritten.
         spans.push(Span::raw(" ".repeat(pad)));
     }
     Line::from(spans)
@@ -957,6 +956,7 @@ pub(super) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: ratatui::layout
     ));
     let mut header_lines = vec![title_line];
     header_lines.extend(meta_lines);
+    f.render_widget(Clear, inner);
     f.render_widget(
         Paragraph::new(Text::from(header_lines)).wrap(Wrap { trim: false }),
         header_area,
@@ -1509,6 +1509,7 @@ pub(super) fn draw_issues(f: &mut Frame, app: &mut App, area: ratatui::layout::R
     let list = List::new(items)
         .highlight_style(list_highlight_style())
         .highlight_symbol("▶ ");
+    f.render_widget(Clear, body_area);
     f.render_stateful_widget(list, body_area, &mut app.repo_ctx.issue_state);
     render_list_scrollbar(
         f,
@@ -1565,6 +1566,7 @@ pub(super) fn draw_issue_detail(f: &mut Frame, app: &mut App, area: ratatui::lay
         Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
     ))];
     header_lines.extend(label_lines);
+    f.render_widget(Clear, inner);
     f.render_widget(
         Paragraph::new(Text::from(header_lines)).wrap(Wrap { trim: false }),
         header_area,

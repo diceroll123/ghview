@@ -1,8 +1,16 @@
 use serde::Deserialize;
 use std::fmt;
 
+fn strip_variation_selectors<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let s = String::deserialize(d)?;
+    Ok(s.chars()
+        .filter(|&c| !('\u{FE00}'..='\u{FE0F}').contains(&c))
+        .collect())
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Label {
+    #[serde(deserialize_with = "strip_variation_selectors")]
     pub name: String,
     pub color: String,
 }
