@@ -108,10 +108,6 @@ duration_secs = 600
 tick_ms = 100
 # Default repo sort: "updated" (most recently pushed) or "alpha".
 repo_sort = "updated"
-# Max repos to fetch per source (1–100, GitHub API cap).
-repos_limit = 50
-# Max open PRs to fetch per repo (1–100, GitHub API cap).
-prs_limit = 50
 # Items per page when fetching lists. 0 = dynamic (~1.5× terminal height, clamped 10–50). Max 100.
 # per_page = 0
 # Merge method used by the m keybinding: "squash" (default), "merge", or "rebase".

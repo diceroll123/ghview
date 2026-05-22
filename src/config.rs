@@ -24,8 +24,6 @@ impl MergeMethod {
 
 pub const DEFAULT_TICK_MS: u64 = 100;
 pub const DEFAULT_CACHE_SECS: u64 = 600;
-pub const DEFAULT_REPOS_LIMIT: u32 = 50;
-pub const DEFAULT_PRS_LIMIT: u32 = 50;
 pub const DEFAULT_RATE_LIMIT_REFRESH_SECS: u64 = 60;
 pub const MIN_RATE_LIMIT_REFRESH_SECS: u64 = 10;
 pub const DEFAULT_RATE_LIMIT_FLASH_SECS: f32 = 2.0;
@@ -55,10 +53,6 @@ pub struct UiConfig {
     pub tick_ms: u64,
     /// Default sort for the Browse column: "`recently_updated`" (default) or "alphabetical".
     pub repo_sort: crate::types::RepoSortKey,
-    /// Max repos to fetch per source (1–100).
-    pub repos_limit: u32,
-    /// Max open PRs to fetch per repo (1–100).
-    pub prs_limit: u32,
     /// Directory to cd into before running `gh pr checkout`. Supports ~.
     pub checkout_dir: Option<String>,
     /// Extra columns shown in the repos list. Supported: "stars", "forks", "issues", "visibility", "`last_push`", "created".
@@ -229,8 +223,6 @@ impl Default for UiConfig {
         Self {
             tick_ms: DEFAULT_TICK_MS,
             repo_sort: crate::types::RepoSortKey::default(),
-            repos_limit: DEFAULT_REPOS_LIMIT,
-            prs_limit: DEFAULT_PRS_LIMIT,
             checkout_dir: None,
             repo_columns: vec![crate::types::RepoColumn::Stars],
             pr_columns: vec![
