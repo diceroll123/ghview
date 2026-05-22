@@ -638,15 +638,18 @@ fn build_pr_list_items(
                 ]
             } else {
                 let repo_num = truncate(&format!("{} #{}", pr.repo, pr.number), left_budget);
-                let repo_num_w = repo_num.width() + 1;
-                let by_str = truncate(
-                    &format!("by @{}", pr.author),
-                    left_budget.saturating_sub(repo_num_w),
+                let remaining = left_budget.saturating_sub(repo_num.width());
+                let by_str = if remaining > 1 {
+                    truncate(&format!("by @{}", pr.author), remaining - 1)
+                } else {
+                    String::new()
+                };
+                let gap = left_budget.saturating_sub(
+                    repo_num.width() + by_str.width() + usize::from(!by_str.is_empty()),
                 );
-                let gap = left_budget.saturating_sub(repo_num_w + by_str.width());
                 vec![
                     Span::styled(repo_num, base_style.add_modifier(Modifier::BOLD)),
-                    Span::raw(" "),
+                    Span::raw(if by_str.is_empty() { "" } else { " " }),
                     Span::styled(by_str, meta_style),
                     gap_span(gap),
                 ]

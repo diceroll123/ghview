@@ -349,6 +349,9 @@ pub(super) fn truncate(s: &str, max: usize) -> String {
     if s.width() <= max {
         return s.to_string();
     }
+    if max == 0 {
+        return String::new();
+    }
     let mut out = String::new();
     let mut w = 0;
     for c in s.chars() {
