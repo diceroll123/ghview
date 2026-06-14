@@ -1,7 +1,7 @@
-use super::App;
+use super::super::App;
 use crate::{
     actions,
-    config::{CheckContext, Keybinding, PrContext, RepoContext, SourcesConfig},
+    config::SourcesConfig,
     data::{
         fetch_check_runs, fetch_diff, fetch_issue_body, fetch_issues, fetch_pr_body, fetch_prs,
         fetch_rate_limit, fetch_repo_frontpage, fetch_repos, fetch_review_status, fetch_source_prs,
@@ -13,74 +13,7 @@ use crate::{
 };
 use ratatui::widgets::ListState;
 
-enum KbOutput {
-    Silent,
-    CaptureStdout,
-}
-
 impl App {
-    fn per_page(&self) -> u32 {
-        let cfg = self.config.ui.per_page;
-        if cfg == 0 {
-            (u32::from(self.terminal_height) * 3 / 2).clamp(10, 50)
-        } else {
-            cfg.clamp(10, 100)
-        }
-    }
-
-    pub(crate) fn selected_owner_repo(&self) -> Option<RepoId> {
-        let owner = self.selected_source_owner()?;
-        if self.repos_view == crate::types::ReposView::PrList {
-            let pr = self.selected_pr()?;
-            return Some(RepoId::new(owner, pr.repo.clone()));
-        }
-        let repo = self.selected_repo()?.to_string();
-        Some(RepoId::new(owner, repo))
-    }
-
-    fn spawn_keybinding_cmd(&mut self, name: String, cmd: String, output: KbOutput) {
-        self.loading = Some(LoadingKind::Action(name));
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            let out = tokio::process::Command::new("sh")
-                .arg("-c")
-                .arg(&cmd)
-                .output()
-                .await;
-            let msg = match output {
-                KbOutput::CaptureStdout => match out {
-                    Ok(o) if o.status.success() => DataMsg::ActionDone(Some(
-                        String::from_utf8_lossy(&o.stdout).trim().to_string(),
-                    )),
-                    Ok(o) => DataMsg::Error(String::from_utf8_lossy(&o.stderr).trim().to_string()),
-                    Err(e) => DataMsg::Error(e.to_string()),
-                },
-                KbOutput::Silent => match out {
-                    Ok(o) if o.status.success() => DataMsg::ActionDone(None),
-                    Ok(o) => DataMsg::ActionDone(Some(
-                        String::from_utf8_lossy(&o.stderr).trim().to_string(),
-                    )),
-                    Err(e) => DataMsg::ActionDone(Some(e.to_string())),
-                },
-            };
-            let _ = tx.send(msg);
-        });
-    }
-
-    fn dispatch_keybinding_cmd(
-        &mut self,
-        kb: &Keybinding,
-        cmd: String,
-        output: KbOutput,
-    ) -> Option<String> {
-        if kb.interactive {
-            return Some(cmd);
-        }
-        let name = kb.name.as_deref().unwrap_or("custom").to_string();
-        self.spawn_keybinding_cmd(name, cmd, output);
-        None
-    }
-
     pub fn trigger_fetch_rate_limit(&self) {
         let tx = self.tx.clone();
         tokio::spawn(async move {
@@ -707,123 +640,6 @@ impl App {
         });
     }
 
-    pub(crate) fn context_open_browser(&self) {
-        match self.focus {
-            Column::Sources => {
-                let Some(owner) = self.selected_source_owner() else {
-                    return;
-                };
-                self.spawn_open_url(&format!("https://github.com/{owner}"));
-            }
-            Column::Repos => {
-                if self.repos_view == crate::types::ReposView::PrList {
-                    if let Some(pr) = self.selected_pr() {
-                        self.spawn_open_url(&pr.url);
-                    }
-                } else {
-                    let Some(rid) = self.selected_owner_repo() else {
-                        return;
-                    };
-                    self.spawn_open_url(&rid.url());
-                }
-            }
-            Column::Repo | Column::Detail => match self.repo_view {
-                RepoView::Frontpage => {
-                    let Some(rid) = self.selected_owner_repo() else {
-                        return;
-                    };
-                    self.spawn_open_url(&rid.url());
-                }
-                RepoView::Issues => {
-                    if let Some(issue) = self.selected_issue() {
-                        self.spawn_open_url(&issue.url);
-                    }
-                }
-                RepoView::Prs => {
-                    if let Some(pr) = self.selected_pr() {
-                        self.spawn_open_url(&pr.url);
-                    }
-                }
-            },
-        }
-    }
-
-    pub(crate) fn context_open_issues(&self) {
-        if self.focus == Column::Repos {
-            let Some(rid) = self.selected_owner_repo() else {
-                return;
-            };
-            self.spawn_open_url(&rid.issues_url());
-        }
-    }
-
-    pub(crate) fn context_copy_url(&mut self) {
-        match self.focus {
-            Column::Sources => {
-                let Some(owner) = self.selected_source_owner() else {
-                    return;
-                };
-                let url = format!("https://github.com/{owner}");
-                copy_to_clipboard(&url);
-            }
-            Column::Repos => {
-                let Some(rid) = self.selected_owner_repo() else {
-                    return;
-                };
-                copy_to_clipboard(&rid.url());
-            }
-            Column::Repo | Column::Detail => match self.repo_view {
-                RepoView::Frontpage => {
-                    let Some(rid) = self.selected_owner_repo() else {
-                        return;
-                    };
-                    self.copy_and_notify(&rid.url());
-                }
-                RepoView::Prs => {
-                    if let Some((_, pr)) = self.selected_pr_context() {
-                        self.copy_and_notify(&pr.url);
-                    }
-                }
-                RepoView::Issues => {
-                    if let Some((_, issue)) = self.selected_issue_context() {
-                        self.copy_and_notify(&issue.url);
-                    }
-                }
-            },
-        }
-    }
-
-    fn copy_and_notify(&mut self, text: &str) {
-        self.set_status(format!("Copied: {text}"));
-        copy_to_clipboard(text);
-    }
-
-    pub(crate) fn spawn_open_url(&self, url: &str) {
-        if let Err(e) = actions::open_url(url) {
-            let _ = self.tx.send(DataMsg::Error(e.to_string()));
-        }
-    }
-
-    pub(crate) fn post_dependabot_comment(&mut self, body: &str) {
-        let Some(pr_id) = self.selected_pr_id() else {
-            return;
-        };
-        let body = body.to_string();
-        let tx = self.tx.clone();
-        self.loading = Some(LoadingKind::Action("comment".into()));
-        tokio::spawn(async move {
-            let result = actions::post_comment(&pr_id, &body).await;
-            match result {
-                Ok(()) => {
-                    let _ = tx.send(DataMsg::ActionDone(Some(format!("Sent: {body}"))));
-                }
-                Err(e) => {
-                    let _ = tx.send(DataMsg::Error(e.to_string()));
-                }
-            }
-        });
-    }
-
     pub(crate) fn diff_scroll(&mut self, n: u16) {
         if let Some(d) = &mut self.repo_ctx.diff_view {
             let max = u16::try_from(d.lines.len().saturating_sub(1)).unwrap_or(u16::MAX);
@@ -835,27 +651,6 @@ impl App {
         if let Some(d) = &mut self.repo_ctx.diff_view {
             d.scroll = d.scroll.saturating_sub(n);
         }
-    }
-
-    pub fn trigger_keybinding_pr(&mut self, kb: &Keybinding) -> Option<String> {
-        let (RepoId { owner, repo }, pr) = self.selected_pr_context()?;
-        let cmd = kb.expand_command(&PrContext {
-            pr: &pr,
-            owner: &owner,
-            repo: &repo,
-        })?;
-        self.dispatch_keybinding_cmd(kb, cmd, KbOutput::Silent)
-    }
-
-    pub(crate) fn open_selected_check(&mut self) {
-        let Some(idx) = self.repo_ctx.check_runs_state.selected() else {
-            return;
-        };
-        let Some(runs) = &self.repo_ctx.check_runs else {
-            return;
-        };
-        let Some(run) = runs.get(idx) else { return };
-        self.spawn_open_url(&run.url);
     }
 
     pub(crate) fn rerun_selected_check(&mut self) {
@@ -871,7 +666,7 @@ impl App {
         let Some(rid) = self.selected_owner_repo() else {
             return;
         };
-        self.set_status(format!("Re-running {name}…"));
+        self.set_status(format!("Re-running {name}\u{2026}"));
         let tx = self.tx.clone();
         tokio::spawn(async move {
             match rerun_check(&rid, check_run_id).await {
@@ -884,56 +679,4 @@ impl App {
             }
         });
     }
-
-    pub fn trigger_keybinding_check(&mut self, kb: &Keybinding) -> Option<String> {
-        let idx = self.repo_ctx.check_runs_state.selected()?;
-        let runs = self.repo_ctx.check_runs.as_ref()?;
-        let run = runs.get(idx)?;
-        let pr = self.selected_pr()?;
-        let pr_number = pr.number;
-        let owner = self.selected_source_owner()?;
-        let repo = self.selected_repo()?.to_string();
-        let cmd = kb.expand_command(&CheckContext {
-            run,
-            pr_number,
-            owner: &owner,
-            repo: &repo,
-        })?;
-        self.dispatch_keybinding_cmd(kb, cmd, KbOutput::CaptureStdout)
-    }
-
-    pub fn trigger_keybinding_repo(&mut self, kb: &Keybinding) -> Option<String> {
-        let owner = self.selected_source_owner()?;
-        let repo = self.selected_repo()?.to_string();
-        let lang = self
-            .source_ctx
-            .repos
-            .iter()
-            .find(|r| r.name == repo)
-            .and_then(|r| r.language.as_deref());
-        let cmd = kb.expand_command(&RepoContext {
-            owner: &owner,
-            repo: &repo,
-            language: lang,
-        })?;
-        self.dispatch_keybinding_cmd(kb, cmd, KbOutput::Silent)
-    }
-}
-
-fn copy_to_clipboard(text: &str) {
-    let cmd = if cfg!(target_os = "macos") {
-        "pbcopy"
-    } else {
-        "xclip"
-    };
-    let _ = std::process::Command::new(cmd)
-        .stdin(std::process::Stdio::piped())
-        .spawn()
-        .and_then(|mut c| {
-            use std::io::Write;
-            if let Some(stdin) = c.stdin.as_mut() {
-                let _ = stdin.write_all(text.as_bytes());
-            }
-            c.wait()
-        });
 }
