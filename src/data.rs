@@ -207,7 +207,7 @@ pub async fn fetch_source_prs(
     let scope = if is_org {
         format!("org:{owner}")
     } else {
-        format!("user:{owner}")
+        format!("author:{owner}")
     };
     let endpoint = format!(
         "search/issues?q=is:pr+is:open+{scope}&sort=created&order=desc&per_page={per_page}&page={page}"
