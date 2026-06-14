@@ -7,7 +7,9 @@ mod sources;
 
 pub(super) use detail::draw_pr_detail;
 pub(super) use prs::{draw_prs, draw_source_prs};
-pub(super) use repos::{draw_issue_detail, draw_issues, draw_repo_frontpage, draw_repos, draw_repos_strip};
+pub(super) use repos::{
+    draw_issue_detail, draw_issues, draw_repo_frontpage, draw_repos, draw_repos_strip,
+};
 pub(super) use sources::{draw_sources, draw_sources_strip};
 
 // Re-export ui/mod.rs items for sub-modules.
@@ -243,7 +245,11 @@ pub(crate) fn view_tab_line(
     Line::from(spans)
 }
 
-pub(crate) fn repos_tab_line(current: ReposView, pr_count: usize, pr_has_more: bool) -> Line<'static> {
+pub(crate) fn repos_tab_line(
+    current: ReposView,
+    pr_count: usize,
+    pr_has_more: bool,
+) -> Line<'static> {
     let key_active = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
     let key_dim = Style::new().fg(Color::DarkGray);
     let label_active = Style::new().fg(Color::White).add_modifier(Modifier::BOLD);

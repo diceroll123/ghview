@@ -1,9 +1,9 @@
 use super::{
     ICON_CHECKLIST, ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_COMMENT, ICON_DOT, ICON_PR_HEADER,
-    StatusLike, diff_stat_spans, filter_title, gap_span, item_style, list_highlight_style,
-    loading_placeholder, mergeable_state_span, panel_block, panel_focus, pr_state_icon,
-    relative_time, render_list_scrollbar, repos_tab_line, review_icon, truncate, view_tab_line,
-    dim_italic,
+    StatusLike, diff_stat_spans, dim_italic, filter_title, gap_span, item_style,
+    list_highlight_style, loading_placeholder, mergeable_state_span, panel_block, panel_focus,
+    pr_state_icon, relative_time, render_list_scrollbar, repos_tab_line, review_icon, truncate,
+    view_tab_line,
 };
 use crate::{
     app::App,

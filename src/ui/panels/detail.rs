@@ -1,7 +1,7 @@
 use super::{
     StatusLike, active_style, diff_stat_spans, dim_italic, draw_scrollable_body, inactive_style,
-    label_pill_spans, label_pill_w, list_highlight_style, loading_placeholder, mergeable_state_span,
-    pad_to_width,
+    label_pill_spans, label_pill_w, list_highlight_style, loading_placeholder,
+    mergeable_state_span, pad_to_width,
 };
 use crate::{
     app::App,
@@ -12,7 +12,10 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
+    widgets::{
+        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Wrap,
+    },
 };
 
 /// Proportional bar spans filling `width` columns, colored by check status counts.

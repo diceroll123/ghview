@@ -1,7 +1,7 @@
 use super::{App, RepoCtx, SourceCtx};
 use crate::types::{
-    CheckStatus, Column, DataMsg, DetailSection, DiffView, Repo, RepoSortKey, ReposView,
-    ReviewStatus, SortKey, PR,
+    CheckStatus, Column, DataMsg, DetailSection, DiffView, PR, Repo, RepoSortKey, ReposView,
+    ReviewStatus, SortKey,
 };
 
 impl App {
@@ -68,8 +68,7 @@ impl App {
                     self.apply_prs(prs);
                     self.loading = None;
                 } else {
-                    self.pr_cache
-                        .insert(key, (std::time::Instant::now(), prs));
+                    self.pr_cache.insert(key, (std::time::Instant::now(), prs));
                 }
             }
             DataMsg::MorePrs {

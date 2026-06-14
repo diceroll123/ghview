@@ -3,7 +3,7 @@ use super::{
     ICON_LOCK, ICON_PR_CLOSED, ICON_REPO_GLYPH, ICON_STAR, active_style, dim_italic,
     draw_scrollable_body, draw_strip_vertical, filter_title, gap_span, inactive_style, item_style,
     lang_icon, list_highlight_style, loading_placeholder, panel_block, panel_focus, relative_time,
-    render_markdown, render_list_scrollbar, repos_tab_line, truncate, view_tab_line,
+    render_list_scrollbar, render_markdown, repos_tab_line, truncate, view_tab_line,
     wrap_label_lines,
 };
 use crate::{
@@ -15,7 +15,10 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
+    widgets::{
+        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Wrap,
+    },
 };
 use std::fmt::Write as _;
 use unicode_width::UnicodeWidthStr;
