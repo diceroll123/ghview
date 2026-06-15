@@ -62,6 +62,8 @@ impl App {
                 self.apply_repos(cached);
                 if self.source_ctx.repo_state.selected().is_some() {
                     self.trigger_load_prs();
+                } else {
+                    self.loading = None;
                 }
                 return;
             }
@@ -141,6 +143,7 @@ impl App {
                 .source_prs_pagination
                 .reset(cached.len() == per_page as usize);
             self.apply_source_prs(cached);
+            self.loading = None;
             return;
         }
 
@@ -250,10 +253,12 @@ impl App {
         if let Some((fetched_at, cached)) = self.pr_cache.get(&key).cloned() {
             if fetched_at.elapsed() < self.config.cache_ttl() {
                 self.apply_prs(cached);
+                self.loading = None;
                 return;
             }
             // Stale cache: show existing data, refresh silently in background.
             self.apply_prs(cached);
+            self.loading = None;
             let per_page = self.per_page();
             let tx = self.tx.clone();
             let rid2 = rid;
