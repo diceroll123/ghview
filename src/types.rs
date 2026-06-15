@@ -105,6 +105,9 @@ pub struct PR {
     /// Populated for source-level PR lists; empty for per-repo lists.
     #[serde(default)]
     pub repo: String,
+    /// Actual repo owner; populated for source-level PR lists, empty for per-repo lists.
+    #[serde(default)]
+    pub repo_owner: String,
 }
 
 impl PR {

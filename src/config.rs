@@ -370,6 +370,7 @@ mod tests {
             deletions: 0,
             comments: 0,
             repo: String::new(),
+            repo_owner: String::new(),
         }
     }
 

@@ -18,7 +18,12 @@ impl App {
         let owner = self.selected_source_owner()?;
         if self.repos_view == ReposView::PrList {
             let pr = self.selected_pr()?;
-            return Some(RepoId::new(owner, pr.repo.clone()));
+            let actual_owner = if pr.repo_owner.is_empty() {
+                owner
+            } else {
+                pr.repo_owner.clone()
+            };
+            return Some(RepoId::new(actual_owner, pr.repo.clone()));
         }
         let repo = self.selected_repo()?.to_string();
         Some(RepoId::new(owner, repo))

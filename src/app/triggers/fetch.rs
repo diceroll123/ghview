@@ -372,12 +372,16 @@ impl App {
     }
 
     fn trigger_source_pr_review_fetches(&self) {
-        let Some(owner) = self.selected_source_owner() else {
+        let Some(source_owner) = self.selected_source_owner() else {
             return;
         };
-        let owner: std::sync::Arc<str> = owner.into();
         for pr in &self.source_ctx.source_prs {
-            let key = format!("{owner}/{}", pr.repo);
+            let actual_owner = if pr.repo_owner.is_empty() {
+                source_owner.clone()
+            } else {
+                pr.repo_owner.clone()
+            };
+            let key = format!("{actual_owner}/{}", pr.repo);
             if self
                 .review_cache
                 .get(&key)
@@ -385,7 +389,7 @@ impl App {
             {
                 continue;
             }
-            let rid = RepoId::new(owner.to_string(), pr.repo.clone());
+            let rid = RepoId::new(actual_owner, pr.repo.clone());
             let num = pr.number;
             let tx = self.tx.clone();
             tokio::spawn(async move {
@@ -403,14 +407,19 @@ impl App {
             return;
         }
         let prs_to_fetch: Vec<PrId> = if self.repos_view == crate::types::ReposView::PrList {
-            let Some(owner) = self.selected_source_owner() else {
+            let Some(source_owner) = self.selected_source_owner() else {
                 return;
             };
             self.source_ctx
                 .source_prs
                 .iter()
                 .filter_map(|pr| {
-                    let id = RepoId::new(owner.clone(), pr.repo.clone()).pr(pr.number);
+                    let actual_owner = if pr.repo_owner.is_empty() {
+                        source_owner.clone()
+                    } else {
+                        pr.repo_owner.clone()
+                    };
+                    let id = RepoId::new(actual_owner, pr.repo.clone()).pr(pr.number);
                     (!self.repo_ctx.mergeable_states.contains_key(&id)).then_some(id)
                 })
                 .collect()
