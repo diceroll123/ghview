@@ -197,6 +197,7 @@ pub(crate) fn wrap_label_lines(labels: &[Label], width: usize) -> Vec<Line<'stat
 
 pub(crate) fn view_tab_line(
     current: RepoView,
+    show_prs: bool,
     show_issues: bool,
     pr_count: usize,
     pr_has_more: bool,
@@ -206,11 +207,22 @@ pub(crate) fn view_tab_line(
     let sep = Span::raw("  ");
     let key_active = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
     let key_dim = Style::new().fg(Color::DarkGray);
+    let key_disabled = Style::new()
+        .fg(Color::DarkGray)
+        .add_modifier(Modifier::CROSSED_OUT);
     let label_active = Style::new().fg(Color::White).add_modifier(Modifier::BOLD);
     let label_dim = Style::new().fg(Color::DarkGray);
+    let label_disabled = Style::new()
+        .fg(Color::DarkGray)
+        .add_modifier(Modifier::CROSSED_OUT);
 
-    let tab = |key: &'static str, label: String, view: RepoView| {
-        if view == current {
+    let tab = |key: &'static str, label: String, view: RepoView, enabled: bool| {
+        if !enabled {
+            vec![
+                Span::styled(key, key_disabled),
+                Span::styled(label, label_disabled),
+            ]
+        } else if view == current {
             vec![
                 Span::styled(key, key_active),
                 Span::styled(label, label_active),
@@ -234,13 +246,11 @@ pub(crate) fn view_tab_line(
     };
 
     let mut spans = vec![Span::raw(" ")];
-    spans.extend(tab("f", "·page".to_string(), RepoView::Frontpage));
+    spans.extend(tab("f", "·page".to_string(), RepoView::Frontpage, true));
     spans.push(sep.clone());
-    spans.extend(tab("p", pr_label, RepoView::Prs));
-    if show_issues {
-        spans.push(sep.clone());
-        spans.extend(tab("i", issue_label, RepoView::Issues));
-    }
+    spans.extend(tab("p", pr_label, RepoView::Prs, show_prs));
+    spans.push(sep.clone());
+    spans.extend(tab("i", issue_label, RepoView::Issues, show_issues));
     spans.push(Span::raw(" "));
     Line::from(spans)
 }

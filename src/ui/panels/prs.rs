@@ -282,6 +282,7 @@ pub(crate) fn draw_prs(f: &mut Frame, app: &mut App, area: Rect) {
     let title = filter_title(&base, &app.pr_filter, app.filter_active, focused);
     let block = panel_block(title, border_style).title_bottom(view_tab_line(
         RepoView::Prs,
+        app.selected_repo_has_prs(),
         app.selected_repo_has_issues(),
         app.repo_ctx.prs_raw.len(),
         app.repo_ctx.prs_pagination.has_more,

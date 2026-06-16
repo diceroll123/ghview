@@ -268,6 +268,7 @@ pub(crate) fn draw_repo_frontpage(f: &mut Frame, app: &mut App, area: Rect) {
 
     let block = panel_block(format!(" {repo_name} "), border_style).title_bottom(view_tab_line(
         RepoView::Frontpage,
+        app.selected_repo_has_prs(),
         app.selected_repo_has_issues(),
         app.repo_ctx.prs_raw.len(),
         app.repo_ctx.prs_pagination.has_more,
@@ -345,6 +346,7 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
 
     let block = panel_block(base, border_style).title_bottom(view_tab_line(
         RepoView::Issues,
+        app.selected_repo_has_prs(),
         true,
         app.repo_ctx.prs_raw.len(),
         app.repo_ctx.prs_pagination.has_more,
