@@ -262,12 +262,14 @@ pub(crate) fn draw_repos_strip(f: &mut Frame, app: &App, area: Rect) {
 }
 
 pub(crate) fn draw_repo_frontpage(f: &mut Frame, app: &mut App, area: Rect) {
+    let focused = app.focus == Column::Repo;
     let repo_name = app.selected_repo().map(str::to_string).unwrap_or_default();
     let scroll = app.repo_ctx.repo_frontpage_scroll;
-    let border_style = active_style();
+    let border_style = panel_focus(focused);
 
     let block = panel_block(format!(" {repo_name} "), border_style).title_bottom(view_tab_line(
         RepoView::Frontpage,
+        focused,
         app.selected_repo_has_prs(),
         app.selected_repo_has_issues(),
         app.repo_ctx.prs_raw.len(),
@@ -346,6 +348,7 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
 
     let block = panel_block(base, border_style).title_bottom(view_tab_line(
         RepoView::Issues,
+        focused,
         app.selected_repo_has_prs(),
         true,
         app.repo_ctx.prs_raw.len(),

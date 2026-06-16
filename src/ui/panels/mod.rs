@@ -195,8 +195,10 @@ pub(crate) fn wrap_label_lines(labels: &[Label], width: usize) -> Vec<Line<'stat
     lines
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn view_tab_line(
     current: RepoView,
+    focused: bool,
     show_prs: bool,
     show_issues: bool,
     pr_count: usize,
@@ -223,10 +225,12 @@ pub(crate) fn view_tab_line(
                 Span::styled(label, label_disabled),
             ]
         } else if view == current {
-            vec![
-                Span::styled(key, key_active),
-                Span::styled(label, label_active),
-            ]
+            let (ks, ls) = if focused {
+                (key_active, label_active)
+            } else {
+                (key_dim, label_dim)
+            };
+            vec![Span::styled(key, ks), Span::styled(label, ls)]
         } else {
             vec![Span::styled(key, key_dim), Span::styled(label, label_dim)]
         }
