@@ -8,6 +8,48 @@ use crate::{
     app::App,
     types::{Column, RepoView, ReposView},
 };
+
+enum DrawMode {
+    DetailPrList,
+    DetailFrontpage,
+    DetailPrs,
+    DetailIssues,
+    PreviewPrList,
+    PreviewRepoList,
+}
+
+impl DrawMode {
+    fn from_app(app: &App) -> Self {
+        match app.focus {
+            Column::Repo | Column::Detail => {
+                if app.repos_view == ReposView::PrList {
+                    Self::DetailPrList
+                } else {
+                    match app.repo_view {
+                        RepoView::Frontpage => Self::DetailFrontpage,
+                        RepoView::Prs => Self::DetailPrs,
+                        RepoView::Issues => Self::DetailIssues,
+                    }
+                }
+            }
+            Column::Sources | Column::Repos => {
+                if app.repos_view == ReposView::PrList {
+                    Self::PreviewPrList
+                } else {
+                    Self::PreviewRepoList
+                }
+            }
+        }
+    }
+}
+
+fn preview_pcts(focus: Column) -> (u16, u16, u16) {
+    match focus {
+        Column::Sources => (30, 30, 40),
+        Column::Repos => (15, 38, 47),
+        _ => unreachable!(),
+    }
+}
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -93,81 +135,81 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let main_area = chunks[0];
     let status_area = chunks[1];
 
-    if matches!(app.focus, Column::Repo | Column::Detail) && app.repos_view == ReposView::PrList {
-        let cols = Layout::horizontal([
-            Constraint::Length(4),
-            Constraint::Fill(4),
-            Constraint::Fill(3),
-        ])
-        .split(main_area);
-        panels::draw_sources_strip(f, app, cols[0]);
-        panels::draw_source_prs(f, app, cols[1]);
-        panels::draw_pr_detail(f, app, cols[2]);
-    } else if matches!(app.focus, Column::Repo | Column::Detail) {
-        match app.repo_view {
-            RepoView::Frontpage => {
-                let cols = Layout::horizontal([
-                    Constraint::Length(4),
-                    Constraint::Length(4),
-                    Constraint::Fill(1),
-                ])
-                .split(main_area);
-                panels::draw_sources_strip(f, app, cols[0]);
-                panels::draw_repos_strip(f, app, cols[1]);
-                panels::draw_repo_frontpage(f, app, cols[2]);
-            }
-            RepoView::Prs => {
-                let cols = Layout::horizontal([
-                    Constraint::Length(4),
-                    Constraint::Length(4),
-                    Constraint::Fill(4),
-                    Constraint::Fill(3),
-                ])
-                .split(main_area);
-                panels::draw_sources_strip(f, app, cols[0]);
-                panels::draw_repos_strip(f, app, cols[1]);
-                panels::draw_prs(f, app, cols[2]);
-                panels::draw_pr_detail(f, app, cols[3]);
-            }
-            RepoView::Issues => {
-                let cols = Layout::horizontal([
-                    Constraint::Length(4),
-                    Constraint::Length(4),
-                    Constraint::Fill(4),
-                    Constraint::Fill(3),
-                ])
-                .split(main_area);
-                panels::draw_sources_strip(f, app, cols[0]);
-                panels::draw_repos_strip(f, app, cols[1]);
-                panels::draw_issues(f, app, cols[2]);
-                panels::draw_issue_detail(f, app, cols[3]);
-            }
+    match DrawMode::from_app(app) {
+        DrawMode::DetailPrList => {
+            let cols = Layout::horizontal([
+                Constraint::Length(4),
+                Constraint::Fill(4),
+                Constraint::Fill(3),
+            ])
+            .split(main_area);
+            panels::draw_sources_strip(f, app, cols[0]);
+            panels::draw_source_prs(f, app, cols[1]);
+            panels::draw_pr_detail(f, app, cols[2]);
         }
-    } else {
-        let (src_pct, repos_pct, prs_pct) = match app.focus {
-            Column::Sources => (30, 30, 40),
-            Column::Repos => (15, 38, 47),
-            Column::Repo | Column::Detail => unreachable!(),
-        };
-        let cols = Layout::horizontal([
-            Constraint::Percentage(src_pct),
-            Constraint::Percentage(repos_pct),
-            Constraint::Percentage(prs_pct),
-        ])
-        .split(main_area);
-        panels::draw_sources(f, app, cols[0]);
-        match app.repos_view {
-            ReposView::RepoList => {
-                panels::draw_repos(f, app, cols[1]);
-                match app.repo_view {
-                    RepoView::Frontpage => panels::draw_repo_frontpage(f, app, cols[2]),
-                    RepoView::Issues => panels::draw_issues(f, app, cols[2]),
-                    RepoView::Prs => panels::draw_prs(f, app, cols[2]),
-                }
-            }
-            ReposView::PrList => {
-                panels::draw_source_prs(f, app, cols[1]);
-                panels::draw_pr_detail(f, app, cols[2]);
+        DrawMode::DetailFrontpage => {
+            let cols = Layout::horizontal([
+                Constraint::Length(4),
+                Constraint::Length(4),
+                Constraint::Fill(1),
+            ])
+            .split(main_area);
+            panels::draw_sources_strip(f, app, cols[0]);
+            panels::draw_repos_strip(f, app, cols[1]);
+            panels::draw_repo_frontpage(f, app, cols[2]);
+        }
+        DrawMode::DetailPrs => {
+            let cols = Layout::horizontal([
+                Constraint::Length(4),
+                Constraint::Length(4),
+                Constraint::Fill(4),
+                Constraint::Fill(3),
+            ])
+            .split(main_area);
+            panels::draw_sources_strip(f, app, cols[0]);
+            panels::draw_repos_strip(f, app, cols[1]);
+            panels::draw_prs(f, app, cols[2]);
+            panels::draw_pr_detail(f, app, cols[3]);
+        }
+        DrawMode::DetailIssues => {
+            let cols = Layout::horizontal([
+                Constraint::Length(4),
+                Constraint::Length(4),
+                Constraint::Fill(4),
+                Constraint::Fill(3),
+            ])
+            .split(main_area);
+            panels::draw_sources_strip(f, app, cols[0]);
+            panels::draw_repos_strip(f, app, cols[1]);
+            panels::draw_issues(f, app, cols[2]);
+            panels::draw_issue_detail(f, app, cols[3]);
+        }
+        DrawMode::PreviewPrList => {
+            let (src, repos, prs) = preview_pcts(app.focus);
+            let cols = Layout::horizontal([
+                Constraint::Percentage(src),
+                Constraint::Percentage(repos),
+                Constraint::Percentage(prs),
+            ])
+            .split(main_area);
+            panels::draw_sources(f, app, cols[0]);
+            panels::draw_source_prs(f, app, cols[1]);
+            panels::draw_pr_detail(f, app, cols[2]);
+        }
+        DrawMode::PreviewRepoList => {
+            let (src, repos, prs) = preview_pcts(app.focus);
+            let cols = Layout::horizontal([
+                Constraint::Percentage(src),
+                Constraint::Percentage(repos),
+                Constraint::Percentage(prs),
+            ])
+            .split(main_area);
+            panels::draw_sources(f, app, cols[0]);
+            panels::draw_repos(f, app, cols[1]);
+            match app.repo_view {
+                RepoView::Frontpage => panels::draw_repo_frontpage(f, app, cols[2]),
+                RepoView::Issues => panels::draw_issues(f, app, cols[2]),
+                RepoView::Prs => panels::draw_prs(f, app, cols[2]),
             }
         }
     }
