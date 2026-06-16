@@ -476,6 +476,30 @@ impl App {
         let Some(rid) = self.selected_owner_repo() else {
             return;
         };
+        let key = rid.key();
+
+        if let Some((fetched_at, cached)) = self.frontpage_cache.get(&key).cloned() {
+            if fetched_at.elapsed() < self.config.cache_ttl() {
+                self.repo_ctx.repo_frontpage = Some(cached);
+                self.loading = None;
+                return;
+            }
+            // Stale: show cached while refreshing silently in background.
+            self.repo_ctx.repo_frontpage = Some(cached);
+            self.loading = None;
+            let tx = self.tx.clone();
+            tokio::spawn(async move {
+                if let Ok((description, readme)) = fetch_repo_frontpage(&rid).await {
+                    let _ = tx.send(DataMsg::RepoFrontpage {
+                        repo: rid,
+                        description,
+                        readme,
+                    });
+                }
+            });
+            return;
+        }
+
         self.repo_ctx.repo_frontpage = None;
         self.repo_ctx.repo_frontpage_scroll = 0;
         self.loading = Some(LoadingKind::Frontpage);
@@ -595,7 +619,12 @@ impl App {
             Column::Sources => self.trigger_load_sources(),
             Column::Repos => self.force_load_repos(),
             Column::Repo | Column::Detail => match self.repo_view {
-                RepoView::Frontpage => self.trigger_load_frontpage(),
+                RepoView::Frontpage => {
+                    if let Some(rid) = self.selected_owner_repo() {
+                        self.frontpage_cache.remove(&rid.key());
+                    }
+                    self.trigger_load_frontpage();
+                }
                 RepoView::Prs => self.force_load_prs(),
                 RepoView::Issues => self.trigger_load_issues(),
             },

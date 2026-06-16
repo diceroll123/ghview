@@ -214,6 +214,13 @@ impl App {
                 description,
                 readme,
             } => {
+                self.frontpage_cache.insert(
+                    repo.key(),
+                    (
+                        std::time::Instant::now(),
+                        (description.clone(), readme.clone()),
+                    ),
+                );
                 if self.current_repo_key().as_deref() == Some(repo.key().as_str()) {
                     self.repo_ctx.repo_frontpage = Some((description, readme));
                     self.loading = None;
