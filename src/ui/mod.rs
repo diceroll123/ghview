@@ -378,8 +378,35 @@ pub(super) fn relative_time(iso: &str) -> String {
         60..=3_599 => format!("{}m", secs / 60),
         3_600..=86_399 => format!("{}h", secs / 3_600),
         86_400..=604_799 => format!("{}d", secs / 86_400),
-        604_800..=2_419_199 => format!("{}w", secs / 604_800),
-        2_419_200..=31_535_999 => format!("{}mo", secs / 2_592_000),
+        604_800..=2_591_999 => format!("{}w", secs / 604_800),
+        2_592_000..=31_535_999 => format!("{}mo", secs / 2_592_000),
         _ => format!("{}y", secs / 31_536_000),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::relative_time;
+    use jiff::Timestamp;
+
+    /// Build a fake ISO-8601 timestamp that is `secs` seconds in the past.
+    fn ago(secs: u64) -> String {
+        let ts = Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_secs(secs as i64))
+            .expect("timestamp arithmetic failed");
+        ts.to_string()
+    }
+
+    #[test]
+    fn relative_time_28_days_is_weeks_not_zero_months() {
+        // 28 days = 2,419,200 secs — previously matched the months arm and
+        // produced "0mo" because 2_419_200 / 2_592_000 == 0 in integer division.
+        assert_eq!(relative_time(&ago(2_419_200)), "4w");
+    }
+
+    #[test]
+    fn relative_time_30_days_is_one_month() {
+        // 30 days = 2,592,000 secs — the first value that should produce "1mo".
+        assert_eq!(relative_time(&ago(2_592_000)), "1mo");
     }
 }
