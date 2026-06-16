@@ -1,7 +1,7 @@
 use super::{App, RepoCtx, SourceCtx};
 use crate::types::{
-    CheckStatus, Column, DataMsg, DetailSection, DiffView, PR, Repo, RepoSortKey, ReposView,
-    ReviewStatus, SortKey,
+    CheckStatus, Column, DataMsg, DetailSection, DiffView, PR, Repo, RepoSortKey, RepoView,
+    ReposView, ReviewStatus, SortKey,
 };
 
 impl App {
@@ -66,7 +66,13 @@ impl App {
                     self.pr_cache
                         .insert(key, (std::time::Instant::now(), prs.clone()));
                     self.apply_prs(prs);
-                    self.loading = None;
+                    // PRs are also fetched in the background when viewing Frontpage/Issues
+                    // to keep the tab count current. Only clear the loading indicator when
+                    // the user is actually on the PR view so we don't clobber an in-flight
+                    // frontpage/issues spinner.
+                    if self.repo_view == RepoView::Prs {
+                        self.loading = None;
+                    }
                 } else {
                     self.pr_cache.insert(key, (std::time::Instant::now(), prs));
                 }
@@ -82,7 +88,10 @@ impl App {
                 self.repo_ctx.prs_pagination.finish(has_more);
                 self.repo_ctx.prs_raw.extend(prs);
                 self.rebuild_prs();
-                self.loading = None;
+                // Same reasoning as DataMsg::Prs above.
+                if self.repo_view == RepoView::Prs {
+                    self.loading = None;
+                }
             }
             DataMsg::ReviewStatus { pr, status } => {
                 let key = pr.repo.key();

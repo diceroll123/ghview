@@ -67,7 +67,9 @@ impl App {
     fn on_repo_changed(&mut self) {
         self.pr_filter.clear();
         self.invalidate_repo();
-        self.trigger_load_prs();
+
+        self.trigger_load_prs(); // keep PRs loaded for PR tab count
+
         match self.repo_view {
             RepoView::Frontpage => self.trigger_load_frontpage(),
             RepoView::Issues => self.trigger_load_issues(),
