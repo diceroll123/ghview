@@ -317,7 +317,11 @@ pub(crate) fn draw_prs(f: &mut Frame, app: &mut App, area: Rect) {
         let msg = if !app.pr_filter.is_empty() {
             format!("no results for \"{}\"", app.pr_filter)
         } else if owner_repo.is_some() {
-            "No open pull requests".to_string()
+            if app.selected_repo_has_prs() {
+                "No open pull requests".to_string()
+            } else {
+                "Pull requests are disabled for this repository".to_string()
+            }
         } else {
             "Select a repo".to_string()
         };

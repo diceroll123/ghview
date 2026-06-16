@@ -257,6 +257,15 @@ impl App {
             .is_none_or(|r| r.has_issues)
     }
 
+    pub fn selected_repo_has_prs(&self) -> bool {
+        let vr = self.visible_repos();
+        self.source_ctx
+            .repo_state
+            .selected()
+            .and_then(|i| vr.get(i))
+            .is_none_or(|r| r.has_pull_requests)
+    }
+
     pub fn selected_pr(&self) -> Option<&PR> {
         if self.repos_view == ReposView::PrList {
             let visible = self.visible_source_prs();

@@ -43,6 +43,8 @@ pub struct Repo {
     pub visibility: Visibility,
     #[serde(default = "bool_true")]
     pub has_issues: bool,
+    #[serde(default = "bool_true")]
+    pub has_pull_requests: bool,
     #[serde(default)]
     pub archived: bool,
 }

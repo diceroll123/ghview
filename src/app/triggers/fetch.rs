@@ -236,6 +236,10 @@ impl App {
         let Some(rid) = self.selected_owner_repo() else {
             return;
         };
+        if !self.selected_repo_has_prs() {
+            self.loading = None;
+            return;
+        }
         self.invalidate_repo();
         let key = rid.key();
         {
@@ -303,6 +307,9 @@ impl App {
 
     pub(crate) fn trigger_load_more_prs(&mut self) {
         if !self.repo_ctx.prs_pagination.can_load_more() {
+            return;
+        }
+        if !self.selected_repo_has_prs() {
             return;
         }
         let Some(rid) = self.selected_owner_repo() else {
