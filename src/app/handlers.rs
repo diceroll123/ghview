@@ -207,6 +207,7 @@ impl App {
             } => {
                 if self.current_repo_key().as_deref() == Some(repo.key().as_str()) {
                     self.repo_ctx.repo_frontpage = Some((description, readme));
+                    self.loading = None;
                 }
             }
             DataMsg::Issues {

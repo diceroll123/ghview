@@ -43,6 +43,7 @@ pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout
             let label = match kind {
                 LoadingKind::Sources => "loading sources",
                 LoadingKind::Repos => "loading repos",
+                LoadingKind::Frontpage => "loading frontpage",
                 LoadingKind::Prs => "loading PRs",
                 LoadingKind::Issues => "loading issues",
                 LoadingKind::Action(name) => name.as_str(),

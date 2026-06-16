@@ -68,6 +68,11 @@ impl App {
         self.pr_filter.clear();
         self.invalidate_repo();
         self.trigger_load_prs();
+        match self.repo_view {
+            RepoView::Frontpage => self.trigger_load_frontpage(),
+            RepoView::Issues => self.trigger_load_issues(),
+            RepoView::Prs => {}
+        }
     }
 
     pub(crate) fn move_up(&mut self) {
@@ -237,7 +242,12 @@ impl App {
                 ReposView::RepoList => {
                     if self.selected_repo().is_some() {
                         self.focus = Column::Repo;
-                        self.repo_view = self.config.ui.default_repo_view;
+                        if (self.repo_view == RepoView::Prs && !self.selected_repo_has_prs())
+                            || (self.repo_view == RepoView::Issues
+                                && !self.selected_repo_has_issues())
+                        {
+                            self.repo_view = RepoView::Frontpage;
+                        }
                         self.repo_ctx.pr_body_scroll = 0;
                         self.repo_ctx.issue_body_scroll = 0;
                         self.repo_ctx.repo_frontpage_scroll = 0;

@@ -284,7 +284,9 @@ impl App {
             return;
         }
 
-        self.loading = Some(LoadingKind::Prs);
+        if self.repo_view == crate::types::RepoView::Prs {
+            self.loading = Some(LoadingKind::Prs);
+        }
         self.repo_ctx.prs_pagination.fetching_more = false;
         let per_page = self.per_page();
         let tx = self.tx.clone();
@@ -476,6 +478,7 @@ impl App {
         };
         self.repo_ctx.repo_frontpage = None;
         self.repo_ctx.repo_frontpage_scroll = 0;
+        self.loading = Some(LoadingKind::Frontpage);
         let tx = self.tx.clone();
         tokio::spawn(async move {
             if let Ok((description, readme)) = fetch_repo_frontpage(&rid).await {

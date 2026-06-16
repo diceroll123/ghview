@@ -159,7 +159,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         match app.repos_view {
             ReposView::RepoList => {
                 panels::draw_repos(f, app, cols[1]);
-                panels::draw_prs(f, app, cols[2]);
+                match app.repo_view {
+                    RepoView::Frontpage => panels::draw_repo_frontpage(f, app, cols[2]),
+                    RepoView::Issues => panels::draw_issues(f, app, cols[2]),
+                    RepoView::Prs => panels::draw_prs(f, app, cols[2]),
+                }
             }
             ReposView::PrList => {
                 panels::draw_source_prs(f, app, cols[1]);

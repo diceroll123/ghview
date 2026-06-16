@@ -264,6 +264,7 @@ pub struct CheckRun {
 pub enum LoadingKind {
     Sources,
     Repos,
+    Frontpage,
     Prs,
     Issues,
     Action(String),
