@@ -336,7 +336,7 @@ impl RepoSortKey {
 
     pub const fn label(self) -> &'static str {
         match self {
-            Self::RecentlyUpdated => "updated",
+            Self::RecentlyUpdated => "pushed",
             Self::Alphabetical => "a-z",
             Self::Created => "created",
         }
