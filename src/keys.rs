@@ -240,6 +240,17 @@ pub const REPOS_BAR: &[Action] = &[
     Action::SortCycle,
 ];
 
+pub const SOURCE_PRS_BAR: &[Action] = &[
+    Action::Approve,
+    Action::Merge,
+    Action::Checkout,
+    Action::Comment,
+    Action::Diff,
+    Action::OpenBrowser,
+    Action::CopyUrl,
+    Action::FilterStart,
+];
+
 pub const PRS_BAR: &[Action] = &[
     Action::Approve,
     Action::Merge,

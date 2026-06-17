@@ -2,7 +2,7 @@ use super::super::App;
 use crate::{
     actions,
     config::{CheckContext, Keybinding, PrContext, RepoContext},
-    types::{DataMsg, RepoId, RepoView},
+    types::{DataMsg, RepoId, RepoView, ReposView},
 };
 
 pub(super) enum KbOutput {
@@ -136,10 +136,16 @@ impl App {
                 copy_to_clipboard(&url);
             }
             Column::Repos => {
-                let Some(rid) = self.selected_owner_repo() else {
-                    return;
-                };
-                copy_to_clipboard(&rid.url());
+                if self.repos_view == ReposView::PrList {
+                    if let Some(url) = self.selected_pr().map(|pr| pr.url.clone()) {
+                        self.copy_and_notify(&url);
+                    }
+                } else {
+                    let Some(rid) = self.selected_owner_repo() else {
+                        return;
+                    };
+                    self.copy_and_notify(&rid.url());
+                }
             }
             Column::Repo | Column::Detail => match self.repo_view {
                 RepoView::Frontpage => {

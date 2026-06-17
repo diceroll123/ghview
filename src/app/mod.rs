@@ -455,13 +455,13 @@ impl App {
             Action::Refresh => self.trigger_refresh(),
             Action::FilterStart => self.filter_active = true,
             Action::SortCycle => {
-                if self.focus == Column::Repos {
+                if self.focus == Column::Repos && self.repos_view == ReposView::RepoList {
                     self.repo_sort_key = self.repo_sort_key.next();
                     self.sort_repos_in_place();
                     if !self.source_ctx.repos.is_empty() {
                         self.source_ctx.repo_state.select(Some(0));
                     }
-                } else {
+                } else if self.repos_view != ReposView::PrList {
                     self.sort_key = self.sort_key.next();
                     self.repo_ctx.pr_state.select(Some(0));
                     self.rebuild_prs();
