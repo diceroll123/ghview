@@ -1,3 +1,4 @@
+use super::ICON_PR_DRAFT;
 use super::{
     StatusLike, active_style, diff_stat_spans, dim_italic, draw_scrollable_body, inactive_style,
     label_pill_spans, label_pill_w, list_highlight_style, loading_placeholder,
@@ -99,6 +100,15 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
     // Manual packing prevents ratatui's paragraph wrapper from splitting a pill's
     // three spans (left-cap, text, right-cap) across two display lines.
     let mut meta_prefix: Vec<Span> = vec![];
+    if pr.draft {
+        meta_prefix.push(Span::styled(
+            format!("{} Draft", ICON_PR_DRAFT.trim_end()),
+            Style::new().fg(Color::DarkGray),
+        ));
+    }
+    if !meta_prefix.is_empty() {
+        meta_prefix.push(Span::raw("  "));
+    }
     meta_prefix.push(Span::styled(
         format!("@{}", pr.author),
         Style::new().fg(Color::Cyan),
