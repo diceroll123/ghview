@@ -1,8 +1,8 @@
 use crate::{
     app::App,
     keys::{
-        Action, CHECKS_BAR, DIFF_HINT_TEXT, FRONTPAGE_BAR, ISSUES_BAR, PRS_BAR, REPOS_BAR,
-        SOURCES_BAR, find_binding,
+        Action, CHECKS_AND_PRS_BAR, CHECKS_BAR, DIFF_HINT_TEXT, FRONTPAGE_BAR, ISSUES_BAR, PRS_BAR,
+        REPOS_BAR, SOURCES_BAR, find_binding,
     },
     types::{Column, DetailSection, LoadingKind, RepoView, ReposView},
 };
@@ -132,7 +132,11 @@ fn hint_entries(app: &App, width: usize) -> String {
             RepoView::Issues => ISSUES_BAR,
         },
         Column::Detail => {
-            if app.repo_ctx.detail_section == DetailSection::Checks {
+            if app.repo_ctx.detail_section == DetailSection::Checks
+                && (app.repo_view == RepoView::Prs || app.repos_view == ReposView::PrList)
+            {
+                CHECKS_AND_PRS_BAR
+            } else if app.repo_ctx.detail_section == DetailSection::Checks {
                 CHECKS_BAR
             } else {
                 PRS_BAR

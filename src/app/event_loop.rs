@@ -1,12 +1,182 @@
 use super::App;
 use crate::{
-    keys::{Action, builtin_to_action, map_key_checks, map_key_prs, map_key_universal},
+    config::Keybinding,
+    keys::{
+        Action, CHECKS_BINDINGS, DefaultBinding, PRS_BINDINGS, UNIVERSAL_BINDINGS,
+        builtin_to_action, map_key_universal,
+    },
     types::{Column, DataMsg, DetailSection, RepoId, RepoView, ReposView},
     ui::draw,
 };
-use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
+use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyEventKind};
 use futures::StreamExt;
 use tokio::time::interval_at;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LayerKind {
+    Checks,
+    Prs,
+    Repos,
+    Universal,
+}
+
+struct KeyLayer<'a> {
+    kind: LayerKind,
+    user: &'a [Keybinding],
+    defaults: &'static [DefaultBinding],
+}
+
+enum InputContext {
+    ChecksDetail, // checks section in detail panel; also inherits PR keys
+    PrContext,    // PR list, source PR list, or PR detail
+    Repos,        // repos column
+    Generic,      // sources, frontpage, issues
+}
+
+impl InputContext {
+    fn from_app(app: &App) -> Self {
+        if app.focus == Column::Detail && app.repo_ctx.detail_section == DetailSection::Checks {
+            Self::ChecksDetail
+        } else if (matches!(app.focus, Column::Repo | Column::Detail)
+            && app.repo_view == RepoView::Prs)
+            || (matches!(app.focus, Column::Repos | Column::Detail)
+                && app.repos_view == ReposView::PrList)
+        {
+            Self::PrContext
+        } else if app.focus == Column::Repos {
+            Self::Repos
+        } else {
+            Self::Generic
+        }
+    }
+}
+
+fn active_layers(app: &App) -> Vec<KeyLayer<'_>> {
+    let universal = KeyLayer {
+        kind: LayerKind::Universal,
+        user: &app.config.keybindings.universal,
+        defaults: UNIVERSAL_BINDINGS,
+    };
+    let prs = KeyLayer {
+        kind: LayerKind::Prs,
+        user: &app.config.keybindings.prs,
+        defaults: PRS_BINDINGS,
+    };
+    match InputContext::from_app(app) {
+        InputContext::ChecksDetail => vec![
+            KeyLayer {
+                kind: LayerKind::Checks,
+                user: &app.config.keybindings.checks,
+                defaults: CHECKS_BINDINGS,
+            },
+            prs,
+            universal,
+        ],
+        InputContext::PrContext => vec![prs, universal],
+        InputContext::Repos => vec![
+            KeyLayer {
+                kind: LayerKind::Repos,
+                user: &app.config.keybindings.repos,
+                defaults: &[],
+            },
+            universal,
+        ],
+        InputContext::Generic => vec![universal],
+    }
+}
+
+enum LayerMatch {
+    Action(Action),
+    Shell(LayerKind, Keybinding),
+    Consumed, // user binding matched but nothing to run; still eats the key
+}
+
+// Separate from dispatch so the shared borrow on app is dropped before mutation.
+fn find_layer_match(key: KeyEvent, app: &App) -> Option<LayerMatch> {
+    for layer in active_layers(app) {
+        if let Some(kb) = layer.user.iter().find(|kb| kb.matches(key)).cloned() {
+            if let Some(action) = kb.builtin.as_deref().and_then(builtin_to_action) {
+                return Some(LayerMatch::Action(action));
+            }
+            return Some(if kb.command.is_some() {
+                LayerMatch::Shell(layer.kind, kb)
+            } else {
+                LayerMatch::Consumed
+            });
+        }
+        if let Some(b) = layer.defaults.iter().find(|b| b.keys.contains(&key.code)) {
+            return Some(LayerMatch::Action(b.action));
+        }
+    }
+    None
+}
+
+enum DispatchResult {
+    Handled,
+    Quit,
+    Interactive(InteractiveCmd),
+}
+
+fn dispatch_action(action: Action, app: &mut App) -> Option<DispatchResult> {
+    match action {
+        Action::Checkout | Action::Comment => {
+            let (rid, pr) = app.selected_pr_context()?;
+            let kind = if action == Action::Checkout {
+                InteractiveKind::Checkout
+            } else {
+                InteractiveKind::Comment
+            };
+            Some(DispatchResult::Interactive(InteractiveCmd {
+                kind,
+                repo: rid,
+                pr_number: pr.number,
+            }))
+        }
+        _ => {
+            app.handle_action(action);
+            Some(if app.should_quit {
+                DispatchResult::Quit
+            } else {
+                DispatchResult::Handled
+            })
+        }
+    }
+}
+
+fn dispatch_key(key: KeyEvent, app: &mut App) -> Option<DispatchResult> {
+    match find_layer_match(key, app)? {
+        LayerMatch::Action(action) => dispatch_action(action, app),
+        LayerMatch::Consumed => Some(DispatchResult::Handled),
+        LayerMatch::Shell(kind, kb) => match kind {
+            LayerKind::Repos => app.trigger_keybinding_repo(&kb).map(|cmd| {
+                let owner = app.selected_source_owner().unwrap_or_default();
+                let repo = app.selected_repo().map(str::to_string).unwrap_or_default();
+                DispatchResult::Interactive(InteractiveCmd {
+                    kind: InteractiveKind::Custom(cmd),
+                    repo: RepoId::new(owner, repo),
+                    pr_number: 0,
+                })
+            }),
+            LayerKind::Checks | LayerKind::Prs => {
+                let cmd = if kind == LayerKind::Checks {
+                    app.trigger_keybinding_check(&kb)
+                } else {
+                    app.trigger_keybinding_pr(&kb)
+                };
+                cmd.and_then(|cmd| {
+                    app.selected_pr_context().map(|(rid, pr)| {
+                        DispatchResult::Interactive(InteractiveCmd {
+                            kind: InteractiveKind::Custom(cmd),
+                            repo: rid,
+                            pr_number: pr.number,
+                        })
+                    })
+                })
+            }
+            LayerKind::Universal => None,
+        },
+    }
+}
 
 pub struct InteractiveCmd {
     pub kind: InteractiveKind,
@@ -100,116 +270,11 @@ pub async fn run_event_loop(
                     }
                 }
 
-                // 1. Universal user keybindings — override all defaults.
-                if let Some(action) = app.config.keybindings.universal.iter()
-                    .find(|kb| kb.matches(key))
-                    .and_then(|kb| kb.builtin.as_deref())
-                    .and_then(builtin_to_action)
-                {
-                    app.handle_action(action);
-                    if app.should_quit { return Ok((None, app)); }
-                    continue;
+                match dispatch_key(key, &mut app) {
+                    Some(DispatchResult::Quit) => return Ok((None, app)),
+                    Some(DispatchResult::Interactive(cmd)) => return Ok((Some(cmd), app)),
+                    Some(DispatchResult::Handled) | None => {}
                 }
-
-                // 2. Column user keybindings — repos config before repo defaults.
-                if app.focus == Column::Repos {
-                    let kb = app.config.keybindings.repos.iter().find(|kb| kb.matches(key)).cloned();
-                    if let Some(kb) = kb {
-                        if let Some(action) = kb.builtin.as_deref().and_then(builtin_to_action) {
-                            app.handle_action(action);
-                            if app.should_quit { return Ok((None, app)); }
-                            continue;
-                        }
-                        if let Some(shell_cmd) = app.trigger_keybinding_repo(&kb) {
-                            let Some(owner) = app.selected_source_owner() else { continue };
-                            let Some(repo) = app.selected_repo().map(std::string::ToString::to_string) else { continue };
-                            return Ok((Some(InteractiveCmd {
-                                kind: InteractiveKind::Custom(shell_cmd),
-                                repo: RepoId::new(owner, repo),
-                                pr_number: 0,
-                            }), app));
-                        }
-                        continue;
-                    }
-                }
-
-                // 2. Column user keybindings — PRs config before PR defaults (repo list and source list).
-                if (app.focus == Column::Repo && app.repo_view == crate::types::RepoView::Prs)
-                    || (app.focus == Column::Repos
-                        && app.repos_view == ReposView::PrList)
-                {
-                    let kb = app.config.keybindings.prs.iter().find(|kb| kb.matches(key)).cloned();
-                    if let Some(kb) = kb {
-                        if let Some(action) = kb.builtin.as_deref().and_then(builtin_to_action) {
-                            if matches!(action, Action::Checkout | Action::Comment) {
-                                let Some((rid, pr)) = app.selected_pr_context() else { continue };
-                                let kind = if action == Action::Checkout { InteractiveKind::Checkout } else { InteractiveKind::Comment };
-                                return Ok((Some(InteractiveCmd { kind, repo: rid, pr_number: pr.number }), app));
-                            }
-                            app.handle_action(action);
-                            if app.should_quit { return Ok((None, app)); }
-                            continue;
-                        }
-                        if let Some(shell_cmd) = app.trigger_keybinding_pr(&kb) {
-                            let Some((rid, pr)) = app.selected_pr_context() else { continue };
-                            return Ok((Some(InteractiveCmd {
-                                kind: InteractiveKind::Custom(shell_cmd),
-                                repo: rid,
-                                pr_number: pr.number,
-                            }), app));
-                        }
-                        continue;
-                    }
-                }
-
-                // 2. Column user keybindings — Checks config before checks defaults.
-                // Also apply checks defaults here (before universal defaults) so that
-                // Enter/l open the selected check rather than triggering the universal Right action.
-                if app.focus == Column::Detail && app.repo_ctx.detail_section == DetailSection::Checks {
-                    let kb = app.config.keybindings.checks.iter().find(|kb| kb.matches(key)).cloned();
-                    if let Some(kb) = kb {
-                        if let Some(action) = kb.builtin.as_deref().and_then(builtin_to_action) {
-                            app.handle_action(action);
-                            if app.should_quit { return Ok((None, app)); }
-                            continue;
-                        }
-                        if let Some(shell_cmd) = app.trigger_keybinding_check(&kb) {
-                            let Some((rid, pr)) = app.selected_pr_context() else { continue };
-                            return Ok((Some(InteractiveCmd {
-                                kind: InteractiveKind::Custom(shell_cmd),
-                                repo: rid,
-                                pr_number: pr.number,
-                            }), app));
-                        }
-                        continue;
-                    }
-                    // Checks-section defaults — run before universal defaults so Enter/l open the check.
-                    if let Some(action) = map_key_checks(key) {
-                        app.handle_action(action);
-                        if app.should_quit { return Ok((None, app)); }
-                        continue;
-                    }
-                }
-
-                // 3. Universal defaults.
-                if let Some(action) = map_key_universal(key) {
-                    app.handle_action(action);
-                    if app.should_quit { return Ok((None, app)); }
-                    continue;
-                }
-
-                // 4. PR-column defaults (repo list and source list).
-                if (app.focus == Column::Repo && app.repo_view == crate::types::RepoView::Prs
-                    || app.focus == Column::Repos && app.repos_view == ReposView::PrList)
-                    && let Some(action) = map_key_prs(key) {
-                        if matches!(action, Action::Checkout | Action::Comment) {
-                            let Some((rid, pr)) = app.selected_pr_context() else { continue };
-                            let kind = if action == Action::Checkout { InteractiveKind::Checkout } else { InteractiveKind::Comment };
-                            return Ok((Some(InteractiveCmd { kind, repo: rid, pr_number: pr.number }), app));
-                        }
-                        app.handle_action(action);
-                        if app.should_quit { return Ok((None, app)); }
-                    }
             }
 
             Some(msg) = rx.recv() => {

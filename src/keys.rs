@@ -205,6 +205,21 @@ pub static CHECKS_BINDINGS: &[DefaultBinding] = &[
 
 pub const CHECKS_BAR: &[Action] = &[Action::CheckOpen, Action::CheckRerun];
 
+// Checks section in a PR context. Checks actions listed first so 'o' = open check
+// rather than open browser. OpenBrowser omitted for the same reason.
+pub const CHECKS_AND_PRS_BAR: &[Action] = &[
+    Action::CheckOpen,
+    Action::CheckRerun,
+    Action::Approve,
+    Action::Merge,
+    Action::Checkout,
+    Action::Comment,
+    Action::Diff,
+    Action::CopyUrl,
+    Action::FilterStart,
+    Action::SortCycle,
+];
+
 /// Look up a binding by action across all tables.
 pub fn find_binding(action: Action) -> Option<&'static DefaultBinding> {
     UNIVERSAL_BINDINGS
@@ -295,20 +310,6 @@ pub fn builtin_to_action(name: &str) -> Option<Action> {
 
 pub fn map_key_universal(key: KeyEvent) -> Option<Action> {
     UNIVERSAL_BINDINGS
-        .iter()
-        .find(|b| b.keys.contains(&key.code))
-        .map(|b| b.action)
-}
-
-pub fn map_key_prs(key: KeyEvent) -> Option<Action> {
-    PRS_BINDINGS
-        .iter()
-        .find(|b| b.keys.contains(&key.code))
-        .map(|b| b.action)
-}
-
-pub fn map_key_checks(key: KeyEvent) -> Option<Action> {
-    CHECKS_BINDINGS
         .iter()
         .find(|b| b.keys.contains(&key.code))
         .map(|b| b.action)
