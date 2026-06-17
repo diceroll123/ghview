@@ -2,7 +2,7 @@ use super::ICON_PR_DRAFT;
 use super::{
     StatusLike, active_style, diff_stat_spans, dim_italic, draw_scrollable_body, inactive_style,
     label_pill_spans, label_pill_w, list_highlight_style, loading_placeholder,
-    mergeable_state_span, pad_to_width,
+    mergeable_state_span, pad_to_width, truncate,
 };
 use crate::{
     app::App,
@@ -96,6 +96,8 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
     .unwrap_or(1)
     .max(1);
 
+    let width = inner.width as usize;
+
     // Build non-label meta spans first, then pack label pills onto lines manually.
     // Manual packing prevents ratatui's paragraph wrapper from splitting a pill's
     // three spans (left-cap, text, right-cap) across two display lines.
@@ -133,10 +135,10 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
         if !meta_prefix.is_empty() {
             meta_prefix.push(Span::raw("  "));
         }
-        meta_prefix.push(Span::styled(
-            format!("{} \u{2192} {}", pr.head_ref, pr.base_ref),
-            Style::new().fg(Color::DarkGray),
-        ));
+        let prefix_w: usize = meta_prefix.iter().map(Span::width).sum();
+        let branch_text = format!("{} \u{2192} {}", pr.head_ref, pr.base_ref);
+        let branch_text = truncate(&branch_text, width.saturating_sub(prefix_w));
+        meta_prefix.push(Span::styled(branch_text, Style::new().fg(Color::DarkGray)));
     }
     if !pr.requested_reviewers.is_empty() {
         if !meta_prefix.is_empty() {
@@ -147,7 +149,6 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
             Style::new().fg(Color::Magenta),
         ));
     }
-    let width = inner.width as usize;
     let mut meta_lines: Vec<Line> = vec![];
     let mut cur_spans: Vec<Span> = meta_prefix;
     let mut cur_w: usize = cur_spans.iter().map(Span::width).sum();
