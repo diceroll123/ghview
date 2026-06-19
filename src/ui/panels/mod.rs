@@ -228,7 +228,12 @@ pub(crate) fn view_tab_line(
             let (ks, ls) = if focused {
                 (key_active, label_active)
             } else {
-                (key_dim, label_dim)
+                (
+                    key_dim,
+                    Style::new()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::BOLD),
+                )
             };
             vec![Span::styled(key, ks), Span::styled(label, ls)]
         } else {
