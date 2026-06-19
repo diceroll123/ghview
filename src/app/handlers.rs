@@ -66,6 +66,7 @@ impl App {
                     self.pr_cache
                         .insert(key, (std::time::Instant::now(), prs.clone()));
                     self.apply_prs(prs);
+                    self.trigger_prefetch_pr_details();
                     // PRs are also fetched in the background when viewing Frontpage/Issues
                     // to keep the tab count current. Only clear the loading indicator when
                     // the user is actually on the PR view so we don't clobber an in-flight
@@ -283,6 +284,7 @@ impl App {
                 self.source_issues_cache
                     .insert(owner, (std::time::Instant::now(), issues.clone()));
                 self.apply_source_issues(issues);
+                self.trigger_load_source_issue_body();
                 self.loading = None;
             }
             DataMsg::MoreSourceIssues {
@@ -318,6 +320,9 @@ impl App {
                 self.source_prs_cache
                     .insert(owner, (std::time::Instant::now(), prs.clone()));
                 self.apply_source_prs(prs);
+                self.trigger_load_pr_body();
+                self.trigger_review_and_check_fetches();
+                self.trigger_prefetch_pr_details();
                 self.loading = None;
             }
             DataMsg::MoreSourcePrs {
@@ -381,35 +386,24 @@ impl App {
                 None => self.repo_ctx.review_statuses.clear(),
             }
         }
-        self.trigger_prefetch_pr_details();
     }
 
     pub(crate) fn apply_source_issues(&mut self, issues: Vec<Issue>) {
-        let was_empty = self.source_ctx.source_issues.is_empty();
         self.source_ctx.source_issues = issues;
         if self.source_ctx.source_issue_state.selected().is_none()
             && !self.source_ctx.source_issues.is_empty()
         {
             self.source_ctx.source_issue_state.select(Some(0));
         }
-        if was_empty && !self.source_ctx.source_issues.is_empty() {
-            self.trigger_load_source_issue_body();
-        }
     }
 
     pub(crate) fn apply_source_prs(&mut self, prs: Vec<PR>) {
-        let was_empty = self.source_ctx.source_prs.is_empty();
         self.source_ctx.source_prs = prs;
         if self.source_ctx.source_pr_state.selected().is_none()
             && !self.source_ctx.source_prs.is_empty()
         {
             self.source_ctx.source_pr_state.select(Some(0));
         }
-        if was_empty && !self.source_ctx.source_prs.is_empty() {
-            self.trigger_load_pr_body();
-        }
-        self.trigger_review_and_check_fetches();
-        self.trigger_prefetch_pr_details();
     }
 
     pub(crate) fn sort_repos_in_place(&mut self) {

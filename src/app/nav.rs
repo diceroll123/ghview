@@ -337,12 +337,15 @@ impl App {
         if self.focus != Column::Detail {
             return;
         }
-        self.repo_ctx.detail_section = match self.repo_ctx.detail_section {
-            DetailSection::Body if self.checks_focusable() => DetailSection::Checks,
-            DetailSection::Body => DetailSection::Body,
-            DetailSection::Checks if self.pr_body_focusable() => DetailSection::Body,
-            DetailSection::Checks => DetailSection::Checks,
-        };
+        match self.repo_ctx.detail_section {
+            DetailSection::Body if self.checks_focusable() => {
+                self.repo_ctx.detail_section = DetailSection::Checks;
+            }
+            DetailSection::Checks if self.pr_body_focusable() => {
+                self.repo_ctx.detail_section = DetailSection::Body;
+            }
+            _ => {}
+        }
     }
 
     pub(crate) fn move_top(&mut self) {

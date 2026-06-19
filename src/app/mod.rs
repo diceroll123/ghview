@@ -510,6 +510,8 @@ impl App {
                     self.repos_view = ReposView::PrList;
                     if self.source_ctx.source_prs.is_empty() {
                         self.trigger_load_source_prs();
+                    } else {
+                        self.trigger_load_pr_body();
                     }
                 }
             }
@@ -518,6 +520,8 @@ impl App {
                     self.repos_view = ReposView::IssueList;
                     if self.source_ctx.source_issues.is_empty() {
                         self.trigger_load_source_issues();
+                    } else {
+                        self.trigger_load_source_issue_body();
                     }
                 }
             }
