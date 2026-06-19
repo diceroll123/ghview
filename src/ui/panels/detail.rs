@@ -66,7 +66,16 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
     let detail_rid = app.selected_owner_repo();
     let detail_owner = detail_rid.as_ref().map_or("", |r| &r.owner);
     let detail_repo = detail_rid.as_ref().map_or("", |r| &r.repo);
-    let title = pr.map_or_else(|| " Detail ".to_string(), |pr| format!(" #{} ", pr.number));
+    let pr_repo = pr.and_then(|pr| {
+        (!pr.repo.is_empty())
+            .then_some(pr.repo.as_str())
+            .or((!detail_repo.is_empty()).then_some(detail_repo))
+    });
+    let title = match (pr.map(|pr| pr.number), pr_repo) {
+        (Some(n), Some(repo)) => format!(" {repo} #{n} "),
+        (Some(n), None) => format!(" PR #{n} "),
+        _ => " Detail ".to_string(),
+    };
     let outer_style = if in_detail {
         active_style()
     } else {
