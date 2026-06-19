@@ -180,8 +180,9 @@ fn hint_entries(app: &App, width: usize) -> String {
     };
     let cap = bar.len() + app.config.keybindings.universal.len() + col_kbs.len();
     let mut candidates: Vec<String> = Vec::with_capacity(cap);
+    let active_view_action = (app.focus == Column::Repos).then(|| app.repos_view.switch_action());
     candidates.extend(bar.iter().filter_map(|&action| {
-        if action == Action::Help {
+        if action == Action::Help || Some(action) == active_view_action {
             return None;
         }
         if app.focus == Column::Repo

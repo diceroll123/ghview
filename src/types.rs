@@ -237,6 +237,16 @@ pub enum ReposView {
     IssueList,
 }
 
+impl ReposView {
+    pub fn switch_action(self) -> crate::keys::Action {
+        match self {
+            Self::RepoList => crate::keys::Action::ViewRepos,
+            Self::PrList => crate::keys::Action::ViewPrs,
+            Self::IssueList => crate::keys::Action::ViewIssues,
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct Issue {
     pub number: u64,
