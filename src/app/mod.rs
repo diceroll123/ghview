@@ -475,6 +475,21 @@ impl App {
             Action::Top => self.move_top(),
             Action::Bottom => self.move_bottom(),
 
+            Action::ViewRepos => {
+                if self.focus == Column::Repos {
+                    self.repos_view = ReposView::RepoList;
+                }
+            }
+            Action::ViewPrs => {
+                if self.focus == Column::Repos {
+                    self.repos_view = ReposView::PrList;
+                    if self.source_ctx.source_prs.is_empty() {
+                        self.trigger_load_source_prs();
+                    }
+                }
+            }
+            Action::ViewIssues => {}
+
             Action::OpenBrowser => self.context_open_browser(),
             Action::OpenIssues => self.context_open_issues(),
             Action::CopyUrl => self.context_copy_url(),

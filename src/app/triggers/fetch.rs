@@ -8,7 +8,8 @@ use crate::{
         fetch_sources, fetch_viewer_permission, rerun_check,
     },
     types::{
-        Column, DataMsg, DetailSection, LoadingKind, PR, PrAction, PrId, RepoId, RepoView, Source,
+        Column, DataMsg, DetailSection, LoadingKind, PR, PrAction, PrId, RepoId, RepoView,
+        ReposView, Source,
     },
 };
 use ratatui::widgets::ListState;
@@ -96,6 +97,13 @@ impl App {
             self.repo_cache.remove(&owner);
         }
         self.trigger_load_repos();
+    }
+
+    pub(crate) fn force_load_source_prs(&mut self) {
+        if let Some(owner) = self.selected_source_owner() {
+            self.source_prs_cache.remove(&owner);
+        }
+        self.trigger_load_source_prs();
     }
 
     pub(crate) fn trigger_load_more_repos(&mut self) {
@@ -617,7 +625,10 @@ impl App {
     pub(crate) fn trigger_refresh(&mut self) {
         match self.focus {
             Column::Sources => self.trigger_load_sources(),
-            Column::Repos => self.force_load_repos(),
+            Column::Repos => match self.repos_view {
+                ReposView::PrList => self.force_load_source_prs(),
+                ReposView::RepoList => self.force_load_repos(),
+            },
             Column::Repo | Column::Detail => match self.repo_view {
                 RepoView::Frontpage => {
                     if let Some(rid) = self.selected_owner_repo() {

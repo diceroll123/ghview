@@ -47,7 +47,7 @@ fn preview_pcts(focus: Column) -> (u16, u16, u16) {
     match focus {
         Column::Sources => (30, 30, 40),
         Column::Repos => (15, 38, 47),
-        _ => unreachable!(),
+        Column::Repo | Column::Detail => unreachable!(),
     }
 }
 use ratatui::{

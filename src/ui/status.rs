@@ -119,29 +119,27 @@ pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout
 fn hint_entries(app: &App, width: usize) -> String {
     let bar = match app.focus {
         Column::Sources => SOURCES_BAR,
-        Column::Repos => {
-            if app.repos_view == ReposView::PrList {
-                SOURCE_PRS_BAR
-            } else {
-                REPOS_BAR
-            }
-        }
+        Column::Repos => match app.repos_view {
+            ReposView::PrList => SOURCE_PRS_BAR,
+            ReposView::RepoList => REPOS_BAR,
+        },
         Column::Repo => match app.repo_view {
             RepoView::Frontpage => FRONTPAGE_BAR,
             RepoView::Prs => PRS_BAR,
             RepoView::Issues => ISSUES_BAR,
         },
-        Column::Detail => {
-            if app.repo_ctx.detail_section == DetailSection::Checks
-                && (app.repo_view == RepoView::Prs || app.repos_view == ReposView::PrList)
-            {
-                CHECKS_AND_PRS_BAR
-            } else if app.repo_ctx.detail_section == DetailSection::Checks {
-                CHECKS_BAR
-            } else {
-                PRS_BAR
-            }
-        }
+        Column::Detail => match app.repo_ctx.detail_section {
+            DetailSection::Checks => match (app.repo_view, app.repos_view) {
+                (RepoView::Prs, _) | (_, ReposView::PrList) => CHECKS_AND_PRS_BAR,
+                (RepoView::Frontpage | RepoView::Issues, ReposView::RepoList) => CHECKS_BAR,
+            },
+            DetailSection::Body => match (app.repo_view, app.repos_view) {
+                (RepoView::Issues, _) => ISSUES_BAR,
+                (RepoView::Frontpage | RepoView::Prs, ReposView::RepoList | ReposView::PrList) => {
+                    PRS_BAR
+                }
+            },
+        },
     };
 
     let help_str = find_binding(Action::Help)
@@ -155,24 +153,23 @@ fn hint_entries(app: &App, width: usize) -> String {
     let budget = width.saturating_sub(reserved);
 
     let col_kbs: &[crate::config::Keybinding] = match app.focus {
-        Column::Repos => {
-            if app.repos_view == ReposView::PrList {
-                &app.config.keybindings.prs
-            } else {
-                &app.config.keybindings.repos
-            }
-        }
+        Column::Repos => match app.repos_view {
+            ReposView::PrList => &app.config.keybindings.prs,
+            ReposView::RepoList => &app.config.keybindings.repos,
+        },
         Column::Repo => match app.repo_view {
             RepoView::Prs => &app.config.keybindings.prs,
-            _ => &[],
+            RepoView::Issues | RepoView::Frontpage => &[],
         },
-        Column::Detail => {
-            if app.repo_ctx.detail_section == DetailSection::Checks {
-                &app.config.keybindings.checks
-            } else {
-                &app.config.keybindings.prs
-            }
-        }
+        Column::Detail => match app.repo_ctx.detail_section {
+            DetailSection::Checks => &app.config.keybindings.checks,
+            DetailSection::Body => match (app.repo_view, app.repos_view) {
+                (RepoView::Issues, _) => &[],
+                (RepoView::Frontpage | RepoView::Prs, ReposView::RepoList | ReposView::PrList) => {
+                    &app.config.keybindings.prs
+                }
+            },
+        },
         Column::Sources => &[],
     };
     let cap = bar.len() + app.config.keybindings.universal.len() + col_kbs.len();
