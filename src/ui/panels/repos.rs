@@ -50,15 +50,12 @@ pub(crate) fn draw_repos(f: &mut Frame, app: &mut App, area: Rect) {
     } else {
         String::new()
     };
-    let base = app.selected_source().map_or_else(
-        || format!("Repo List  {sort_label}{loading_suffix}{repo_count_suffix}"),
-        |s| {
-            format!(
-                "Repo List  {}  {sort_label}{loading_suffix}{repo_count_suffix}",
-                s.display()
-            )
-        },
-    );
+    let base = app.selected_source().map_or_else(String::new, |s| {
+        format!(
+            " {}  {sort_label}{loading_suffix}{repo_count_suffix}",
+            s.display()
+        )
+    });
     let title = filter_title(
         &base,
         &app.source_ctx.repo_filter,
