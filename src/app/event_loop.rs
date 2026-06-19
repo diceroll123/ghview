@@ -296,9 +296,9 @@ pub async fn run_event_loop(
                 // View switching when in repo workspace (f/p/i).
                 if matches!(app.focus, Column::Repo | Column::Detail) {
                     match key.code {
-                        KeyCode::Char('f') => { app.switch_repo_view(RepoView::Frontpage); continue; }
-                        KeyCode::Char('p') if app.selected_repo_has_prs() => { app.switch_repo_view(RepoView::Prs); continue; }
-                        KeyCode::Char('i') if app.selected_repo_has_issues() => { app.switch_repo_view(RepoView::Issues); continue; }
+                        KeyCode::Char('f') => { app.try_switch_repo_view(RepoView::Frontpage); continue; }
+                        KeyCode::Char('p') => { app.try_switch_repo_view(RepoView::Prs); continue; }
+                        KeyCode::Char('i') => { app.try_switch_repo_view(RepoView::Issues); continue; }
                         _ => {}
                     }
                 }

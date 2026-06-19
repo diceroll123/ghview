@@ -723,6 +723,21 @@ impl App {
         self.dispatch_repo_view_trigger();
     }
 
+    pub(crate) fn try_switch_repo_view(&mut self, view: RepoView) {
+        let blocked = match view {
+            RepoView::Prs => (!self.selected_repo_has_prs())
+                .then_some("Pull requests are disabled for this repository"),
+            RepoView::Issues => (!self.selected_repo_has_issues())
+                .then_some("Issues are disabled for this repository"),
+            RepoView::Frontpage => None,
+        };
+        if let Some(msg) = blocked {
+            self.set_status(msg.to_string());
+        } else {
+            self.switch_repo_view(view);
+        }
+    }
+
     pub(crate) fn trigger_refresh(&mut self) {
         match self.focus {
             Column::Sources => self.trigger_load_sources(),
