@@ -186,7 +186,6 @@ pub static PRS_BINDINGS: &[DefaultBinding] = &[
     },
 ];
 
-#[allow(dead_code)]
 pub static ISSUES_BINDINGS: &[DefaultBinding] = &[];
 
 pub static REPOS_BINDINGS: &[DefaultBinding] = &[
@@ -269,6 +268,15 @@ pub const REPOS_BAR: &[Action] = &[
     Action::CopyUrl,
     Action::FilterStart,
     Action::SortCycle,
+];
+
+pub const SOURCE_ISSUES_BAR: &[Action] = &[
+    Action::ViewRepos,
+    Action::ViewPrs,
+    Action::ViewIssues,
+    Action::OpenBrowser,
+    Action::CopyUrl,
+    Action::FilterStart,
 ];
 
 pub const SOURCE_PRS_BAR: &[Action] = &[

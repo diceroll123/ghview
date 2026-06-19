@@ -6,7 +6,7 @@ mod repos;
 mod sources;
 
 pub(super) use detail::draw_pr_detail;
-pub(super) use prs::{draw_prs, draw_source_prs};
+pub(super) use prs::{draw_prs, draw_source_issues, draw_source_prs};
 pub(super) use repos::{
     draw_issue_detail, draw_issues, draw_repo_frontpage, draw_repos, draw_repos_strip,
 };
@@ -263,27 +263,49 @@ pub(crate) fn repos_tab_line(
     current: ReposView,
     pr_count: usize,
     pr_has_more: bool,
+    issue_count: usize,
+    issue_has_more: bool,
 ) -> Line<'static> {
     let key_active = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
     let key_dim = Style::new().fg(Color::DarkGray);
     let label_active = Style::new().fg(Color::White).add_modifier(Modifier::BOLD);
     let label_dim = Style::new().fg(Color::DarkGray);
 
-    let active = current == ReposView::PrList;
+    let tab_style = |view: ReposView| {
+        if view == current {
+            (key_active, label_active)
+        } else {
+            (key_dim, label_dim)
+        }
+    };
+
     let pr_label = if pr_count > 0 {
         let suffix = if pr_has_more { "+" } else { "" };
         format!("·prs ({pr_count}{suffix})")
     } else {
         "·prs".to_string()
     };
+    let issue_label = if issue_count > 0 {
+        let suffix = if issue_has_more { "+" } else { "" };
+        format!("·issues ({issue_count}{suffix})")
+    } else {
+        "·issues".to_string()
+    };
+
+    let (rk, rl) = tab_style(ReposView::RepoList);
+    let (pk, pl) = tab_style(ReposView::PrList);
+    let (ik, il) = tab_style(ReposView::IssueList);
 
     Line::from(vec![
         Span::raw(" "),
-        Span::styled("r", if active { key_dim } else { key_active }),
-        Span::styled("·repos", if active { label_dim } else { label_active }),
+        Span::styled("r", rk),
+        Span::styled("·repos", rl),
         Span::raw("  "),
-        Span::styled("p", if active { key_active } else { key_dim }),
-        Span::styled(pr_label, if active { label_active } else { label_dim }),
+        Span::styled("p", pk),
+        Span::styled(pr_label, pl),
+        Span::raw("  "),
+        Span::styled("i", ik),
+        Span::styled(issue_label, il),
         Span::raw(" "),
     ])
 }

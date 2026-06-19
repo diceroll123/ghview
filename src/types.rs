@@ -225,6 +225,7 @@ pub enum RepoView {
     Issues,
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Default)]
 pub enum ReposView {
     #[default]
@@ -232,6 +233,8 @@ pub enum ReposView {
     RepoList,
     #[serde(rename = "prs")]
     PrList,
+    #[serde(rename = "issues")]
+    IssueList,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -243,6 +246,12 @@ pub struct Issue {
     pub created_at: String,
     pub labels: Vec<Label>,
     pub url: String,
+    /// Repo name; populated for source-level issue lists, empty for per-repo lists.
+    #[serde(default)]
+    pub repo: String,
+    /// Actual repo owner; populated for source-level issue lists, empty for per-repo lists.
+    #[serde(default)]
+    pub repo_owner: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -633,6 +642,16 @@ pub enum DataMsg {
     MoreSourcePrs {
         owner: String,
         prs: Vec<PR>,
+        has_more: bool,
+    },
+    SourceIssues {
+        owner: String,
+        issues: Vec<Issue>,
+        has_more: bool,
+    },
+    MoreSourceIssues {
+        owner: String,
+        issues: Vec<Issue>,
         has_more: bool,
     },
     ActionDone(Option<String>),

@@ -100,6 +100,10 @@ pub struct SourceCtx {
     pub source_pr_state: ListState,
     pub source_pr_filter: String,
     pub source_prs_pagination: PaginationState,
+    pub source_issues: Vec<Issue>,
+    pub source_issue_state: ListState,
+    pub source_issue_filter: String,
+    pub source_issues_pagination: PaginationState,
 }
 
 pub struct App {
@@ -138,6 +142,7 @@ pub struct App {
     pub repos_view: ReposView,
 
     pub source_prs_cache: HashMap<String, (Instant, Vec<PR>)>,
+    pub source_issues_cache: HashMap<String, (Instant, Vec<Issue>)>,
 
     pub terminal_height: u16,
     pub should_quit: bool,
@@ -186,6 +191,7 @@ impl App {
             show_dependabot_menu: false,
             repo_cache: HashMap::new(),
             source_prs_cache: HashMap::new(),
+            source_issues_cache: HashMap::new(),
             frontpage_cache: HashMap::new(),
             terminal_height: 40,
             should_quit: false,
@@ -227,6 +233,18 @@ impl App {
                 pr.title.to_lowercase().contains(f)
                     || pr.author.to_lowercase().contains(f)
                     || pr.repo.to_lowercase().contains(f)
+            },
+        )
+    }
+
+    pub fn visible_source_issues(&self) -> Vec<&Issue> {
+        filter_visible(
+            &self.source_ctx.source_issues,
+            &self.source_ctx.source_issue_filter,
+            |issue, f| {
+                issue.title.to_lowercase().contains(f)
+                    || issue.author.to_lowercase().contains(f)
+                    || issue.repo.to_lowercase().contains(f)
             },
         )
     }
@@ -302,6 +320,14 @@ impl App {
     }
 
     pub fn selected_issue(&self) -> Option<&Issue> {
+        if self.repos_view == ReposView::IssueList {
+            let visible = self.visible_source_issues();
+            return self
+                .source_ctx
+                .source_issue_state
+                .selected()
+                .and_then(|i| visible.get(i).copied());
+        }
         self.repo_ctx
             .issue_state
             .selected()
@@ -364,6 +390,7 @@ impl App {
                 self.clamp_source_selection();
                 self.clamp_repo_selection();
                 self.clamp_source_pr_selection();
+                self.clamp_source_issue_selection();
                 self.rebuild_prs();
             }
             KeyCode::Enter => {
@@ -374,6 +401,7 @@ impl App {
                 self.clamp_source_selection();
                 self.clamp_repo_selection();
                 self.clamp_source_pr_selection();
+                self.clamp_source_issue_selection();
                 self.rebuild_prs();
             }
             KeyCode::Char(c) => {
@@ -381,6 +409,7 @@ impl App {
                 self.clamp_source_selection();
                 self.clamp_repo_selection();
                 self.clamp_source_pr_selection();
+                self.clamp_source_issue_selection();
                 self.rebuild_prs();
             }
             _ => {}
@@ -390,13 +419,11 @@ impl App {
     fn active_filter_mut(&mut self) -> &mut String {
         match self.focus {
             Column::Sources | Column::Detail => &mut self.source_filter,
-            Column::Repos => {
-                if self.repos_view == ReposView::PrList {
-                    &mut self.source_ctx.source_pr_filter
-                } else {
-                    &mut self.source_ctx.repo_filter
-                }
-            }
+            Column::Repos => match self.repos_view {
+                ReposView::PrList => &mut self.source_ctx.source_pr_filter,
+                ReposView::IssueList => &mut self.source_ctx.source_issue_filter,
+                ReposView::RepoList => &mut self.source_ctx.repo_filter,
+            },
             Column::Repo => &mut self.pr_filter,
         }
     }
@@ -404,13 +431,11 @@ impl App {
     pub fn active_filter(&self) -> &str {
         match self.focus {
             Column::Sources | Column::Detail => &self.source_filter,
-            Column::Repos => {
-                if self.repos_view == ReposView::PrList {
-                    &self.source_ctx.source_pr_filter
-                } else {
-                    &self.source_ctx.repo_filter
-                }
-            }
+            Column::Repos => match self.repos_view {
+                ReposView::PrList => &self.source_ctx.source_pr_filter,
+                ReposView::IssueList => &self.source_ctx.source_issue_filter,
+                ReposView::RepoList => &self.source_ctx.repo_filter,
+            },
             Column::Repo => &self.pr_filter,
         }
     }
@@ -461,7 +486,7 @@ impl App {
                     if !self.source_ctx.repos.is_empty() {
                         self.source_ctx.repo_state.select(Some(0));
                     }
-                } else if self.repos_view != ReposView::PrList {
+                } else if !matches!(self.repos_view, ReposView::PrList | ReposView::IssueList) {
                     self.sort_key = self.sort_key.next();
                     self.repo_ctx.pr_state.select(Some(0));
                     self.rebuild_prs();
@@ -488,7 +513,14 @@ impl App {
                     }
                 }
             }
-            Action::ViewIssues => {}
+            Action::ViewIssues => {
+                if self.focus == Column::Repos {
+                    self.repos_view = ReposView::IssueList;
+                    if self.source_ctx.source_issues.is_empty() {
+                        self.trigger_load_source_issues();
+                    }
+                }
+            }
 
             Action::OpenBrowser => self.context_open_browser(),
             Action::OpenIssues => self.context_open_issues(),

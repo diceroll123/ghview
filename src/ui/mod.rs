@@ -11,34 +11,32 @@ use crate::{
 
 enum DrawMode {
     DetailPrList,
+    DetailIssueList,
     DetailFrontpage,
     DetailPrs,
     DetailIssues,
     PreviewPrList,
+    PreviewIssueList,
     PreviewRepoList,
 }
 
 impl DrawMode {
     fn from_app(app: &App) -> Self {
         match app.focus {
-            Column::Repo | Column::Detail => {
-                if app.repos_view == ReposView::PrList {
-                    Self::DetailPrList
-                } else {
-                    match app.repo_view {
-                        RepoView::Frontpage => Self::DetailFrontpage,
-                        RepoView::Prs => Self::DetailPrs,
-                        RepoView::Issues => Self::DetailIssues,
-                    }
-                }
-            }
-            Column::Sources | Column::Repos => {
-                if app.repos_view == ReposView::PrList {
-                    Self::PreviewPrList
-                } else {
-                    Self::PreviewRepoList
-                }
-            }
+            Column::Repo | Column::Detail => match app.repos_view {
+                ReposView::PrList => Self::DetailPrList,
+                ReposView::IssueList => Self::DetailIssueList,
+                ReposView::RepoList => match app.repo_view {
+                    RepoView::Frontpage => Self::DetailFrontpage,
+                    RepoView::Prs => Self::DetailPrs,
+                    RepoView::Issues => Self::DetailIssues,
+                },
+            },
+            Column::Sources | Column::Repos => match app.repos_view {
+                ReposView::PrList => Self::PreviewPrList,
+                ReposView::IssueList => Self::PreviewIssueList,
+                ReposView::RepoList => Self::PreviewRepoList,
+            },
         }
     }
 }
@@ -147,6 +145,17 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             panels::draw_source_prs(f, app, cols[1]);
             panels::draw_pr_detail(f, app, cols[2]);
         }
+        DrawMode::DetailIssueList => {
+            let cols = Layout::horizontal([
+                Constraint::Length(4),
+                Constraint::Fill(4),
+                Constraint::Fill(3),
+            ])
+            .split(main_area);
+            panels::draw_sources_strip(f, app, cols[0]);
+            panels::draw_source_issues(f, app, cols[1]);
+            panels::draw_issue_detail(f, app, cols[2]);
+        }
         DrawMode::DetailFrontpage => {
             let cols = Layout::horizontal([
                 Constraint::Length(4),
@@ -195,6 +204,18 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             panels::draw_sources(f, app, cols[0]);
             panels::draw_source_prs(f, app, cols[1]);
             panels::draw_pr_detail(f, app, cols[2]);
+        }
+        DrawMode::PreviewIssueList => {
+            let (src, repos, issues) = preview_pcts(app.focus);
+            let cols = Layout::horizontal([
+                Constraint::Percentage(src),
+                Constraint::Percentage(repos),
+                Constraint::Percentage(issues),
+            ])
+            .split(main_area);
+            panels::draw_sources(f, app, cols[0]);
+            panels::draw_source_issues(f, app, cols[1]);
+            panels::draw_issue_detail(f, app, cols[2]);
         }
         DrawMode::PreviewRepoList => {
             let (src, repos, prs) = preview_pcts(app.focus);

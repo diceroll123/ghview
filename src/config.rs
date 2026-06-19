@@ -84,6 +84,8 @@ pub struct KeybindingsConfig {
     pub repos: Vec<Keybinding>,
     /// Keybindings active when the PRs column is focused.
     pub prs: Vec<Keybinding>,
+    /// Keybindings active when the Issues column/panel is focused.
+    pub issues: Vec<Keybinding>,
     /// Keybindings active when the Checks section of the detail panel is focused.
     pub checks: Vec<Keybinding>,
 }
@@ -146,6 +148,24 @@ impl CommandContext for RepoContext<'_> {
             .replace("{name}", self.repo)
             .replace("{language}", self.language.unwrap_or(""))
             .replace("{url}", &url)
+    }
+}
+
+pub struct IssueContext<'a> {
+    pub issue: &'a crate::types::Issue,
+    pub owner: &'a str,
+    pub repo: &'a str,
+}
+
+impl CommandContext for IssueContext<'_> {
+    fn expand(&self, cmd: &str) -> String {
+        cmd.replace("{issue_number}", &self.issue.number.to_string())
+            .replace("{owner}", self.owner)
+            .replace("{org}", self.owner)
+            .replace("{repo}", self.repo)
+            .replace("{author}", &self.issue.author)
+            .replace("{url}", &self.issue.url)
+            .replace("{title}", &self.issue.title)
     }
 }
 

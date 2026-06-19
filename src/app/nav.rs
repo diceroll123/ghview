@@ -56,11 +56,18 @@ impl App {
         clamp_list_state(&mut self.source_ctx.source_pr_state, len);
     }
 
+    pub(crate) fn clamp_source_issue_selection(&mut self) {
+        let len = self.visible_source_issues().len();
+        clamp_list_state(&mut self.source_ctx.source_issue_state, len);
+    }
+
     fn on_source_changed(&mut self) {
         self.invalidate_source();
         self.trigger_load_repos();
-        if self.repos_view == ReposView::PrList {
-            self.trigger_load_source_prs();
+        match self.repos_view {
+            ReposView::PrList => self.trigger_load_source_prs(),
+            ReposView::IssueList => self.trigger_load_source_issues(),
+            ReposView::RepoList => {}
         }
     }
 
@@ -96,6 +103,12 @@ impl App {
                     let len = self.visible_source_prs().len();
                     if self.source_ctx.source_pr_state.nav_prev(len) {
                         self.trigger_load_pr_body();
+                    }
+                }
+                ReposView::IssueList => {
+                    let len = self.visible_source_issues().len();
+                    if self.source_ctx.source_issue_state.nav_prev(len) {
+                        self.trigger_load_source_issue_body();
                     }
                 }
             },
@@ -169,6 +182,18 @@ impl App {
                         self.trigger_load_more_source_prs();
                     }
                 }
+                ReposView::IssueList => {
+                    let len = self.visible_source_issues().len();
+                    let at_last = len > 0
+                        && self.source_ctx.source_issue_state.selected() == Some(len - 1)
+                        && self.source_ctx.source_issue_filter.is_empty();
+                    if self.source_ctx.source_issue_state.nav_next(len) {
+                        self.trigger_load_source_issue_body();
+                    }
+                    if at_last {
+                        self.trigger_load_more_source_issues();
+                    }
+                }
             },
             Column::Repo => match self.repo_view {
                 RepoView::Frontpage => {
@@ -220,7 +245,7 @@ impl App {
             Column::Repos => self.focus = Column::Sources,
             Column::Repo => self.focus = Column::Repos,
             Column::Detail => {
-                if self.repos_view == ReposView::PrList {
+                if matches!(self.repos_view, ReposView::PrList | ReposView::IssueList) {
                     self.focus = Column::Repos;
                 } else {
                     self.focus = Column::Repo;
@@ -270,6 +295,14 @@ impl App {
                         self.repo_ctx.pr_body_scroll = 0;
                         self.repo_ctx.check_runs_state = ListState::default();
                         self.trigger_load_pr_body();
+                    }
+                }
+                ReposView::IssueList => {
+                    if self.selected_source_issue().is_some() {
+                        self.focus = Column::Detail;
+                        self.repo_view = RepoView::Issues;
+                        self.repo_ctx.issue_body_scroll = 0;
+                        self.trigger_load_source_issue_body();
                     }
                 }
             },
@@ -330,6 +363,9 @@ impl App {
                 ReposView::PrList => {
                     self.source_ctx.source_pr_state.select(Some(0));
                 }
+                ReposView::IssueList => {
+                    self.source_ctx.source_issue_state.select(Some(0));
+                }
             },
             Column::Repo => match self.repo_view {
                 RepoView::Frontpage => {
@@ -383,6 +419,12 @@ impl App {
                     let len = self.source_ctx.source_prs.len();
                     if len > 0 {
                         self.source_ctx.source_pr_state.select(Some(len - 1));
+                    }
+                }
+                ReposView::IssueList => {
+                    let len = self.source_ctx.source_issues.len();
+                    if len > 0 {
+                        self.source_ctx.source_issue_state.select(Some(len - 1));
                     }
                 }
             },
