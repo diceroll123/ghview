@@ -2,8 +2,8 @@ use super::render_list_scrollbar;
 use crate::{
     app::{App, DEPENDABOT_COMMANDS},
     keys::{
-        Action, CHECKS_BINDINGS, NAV_ACTIONS, PRS_BAR, PRS_BINDINGS, REPOS_BAR, SOURCES_BAR,
-        find_binding,
+        Action, CHECKS_BINDINGS, ISSUES_BAR, NAV_ACTIONS, PRS_BAR, PRS_BINDINGS, REPOS_BAR,
+        SOURCES_BAR, find_binding,
     },
 };
 use ratatui::{
@@ -81,6 +81,7 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
         ("\u{f14e}  Navigation", bar_entries(NAV_ACTIONS)),
         ("\u{f0c0}  Sources", bar_entries(SOURCES_BAR)),
         ("\u{e702}  Browse", bar_entries(REPOS_BAR)),
+        ("\u{f188}  Issues", bar_entries(ISSUES_BAR)),
         ("\u{f407}  PRs", pr_entries),
         ("\u{e641}  Checks", checks_entries),
     ];
@@ -90,6 +91,9 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
     }
     if !kb.repos.is_empty() {
         right_sections.push(("\u{f013}  Browse (custom)", custom_kv(&kb.repos)));
+    }
+    if !kb.issues.is_empty() {
+        right_sections.push(("\u{f013}  Issues (custom)", custom_kv(&kb.issues)));
     }
     if !kb.prs.is_empty() {
         right_sections.push(("\u{f013}  PRs (custom)", custom_kv(&kb.prs)));

@@ -70,6 +70,8 @@ pub(crate) fn draw_repos(f: &mut Frame, app: &mut App, area: Rect) {
         ReposView::RepoList,
         app.source_ctx.source_prs.len(),
         app.source_ctx.source_prs_pagination.has_more,
+        app.source_ctx.source_issues.len(),
+        app.source_ctx.source_issues_pagination.has_more,
     ));
 
     let cols_cfg: &[RepoColumn] = if focused {
@@ -465,7 +467,15 @@ pub(crate) fn draw_issue_detail(f: &mut Frame, app: &mut App, area: Rect) {
         .selected_issue()
         .map(|i| i.labels.clone())
         .unwrap_or_default();
-    let title = issue_number.map_or_else(|| " Issues ".to_string(), |n| format!(" Issue #{n} "));
+    let issue_repo = app
+        .selected_issue()
+        .map(|i| i.repo.clone())
+        .filter(|r| !r.is_empty());
+    let title = match (issue_number, issue_repo) {
+        (Some(n), Some(repo)) => format!(" {repo} #{n} "),
+        (Some(n), None) => format!(" Issue #{n} "),
+        _ => " Issues ".to_string(),
+    };
     let outer_style = if in_detail {
         active_style()
     } else {

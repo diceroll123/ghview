@@ -1,6 +1,6 @@
 use super::{App, RepoCtx, SourceCtx};
 use crate::types::{
-    CheckStatus, Column, DataMsg, DetailSection, DiffView, PR, Repo, RepoSortKey, RepoView,
+    CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, PR, Repo, RepoSortKey, RepoView,
     ReposView, ReviewStatus, SortKey,
 };
 
@@ -256,12 +256,46 @@ impl App {
                 self.loading = None;
             }
             DataMsg::IssueBody { repo, number, body } => {
-                if self.current_repo_key().as_deref() != Some(repo.key().as_str()) {
+                let passes = if self.repos_view == ReposView::IssueList {
+                    self.source_ctx
+                        .source_issues
+                        .iter()
+                        .any(|i| i.repo == repo.repo)
+                } else {
+                    self.current_repo_key().as_deref() == Some(repo.key().as_str())
+                };
+                if !passes {
                     return;
                 }
                 if self.selected_issue().is_some_and(|i| i.number == number) {
                     self.repo_ctx.issue_body = Some(body);
                 }
+            }
+            DataMsg::SourceIssues {
+                owner,
+                issues,
+                has_more,
+            } => {
+                if self.selected_source_owner().as_deref() != Some(&owner) {
+                    return;
+                }
+                self.source_ctx.source_issues_pagination.reset(has_more);
+                self.source_issues_cache
+                    .insert(owner, (std::time::Instant::now(), issues.clone()));
+                self.apply_source_issues(issues);
+                self.loading = None;
+            }
+            DataMsg::MoreSourceIssues {
+                owner,
+                issues,
+                has_more,
+            } => {
+                if self.selected_source_owner().as_deref() != Some(&owner) {
+                    return;
+                }
+                self.source_ctx.source_issues_pagination.finish(has_more);
+                self.source_ctx.source_issues.extend(issues);
+                self.loading = None;
             }
             DataMsg::RateLimit { remaining, limit } => {
                 self.rate_limit = Some((remaining, limit));
@@ -348,6 +382,19 @@ impl App {
             }
         }
         self.trigger_prefetch_pr_details();
+    }
+
+    pub(crate) fn apply_source_issues(&mut self, issues: Vec<Issue>) {
+        let was_empty = self.source_ctx.source_issues.is_empty();
+        self.source_ctx.source_issues = issues;
+        if self.source_ctx.source_issue_state.selected().is_none()
+            && !self.source_ctx.source_issues.is_empty()
+        {
+            self.source_ctx.source_issue_state.select(Some(0));
+        }
+        if was_empty && !self.source_ctx.source_issues.is_empty() {
+            self.trigger_load_source_issue_body();
+        }
     }
 
     pub(crate) fn apply_source_prs(&mut self, prs: Vec<PR>) {

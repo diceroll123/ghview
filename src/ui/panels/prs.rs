@@ -1,9 +1,9 @@
 use super::{
-    ICON_CHECKLIST, ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_COMMENT, ICON_DOT, ICON_PR_HEADER,
-    StatusLike, diff_stat_spans, dim_italic, filter_title, gap_span, item_style,
-    list_highlight_style, loading_placeholder, mergeable_state_span, panel_block, panel_focus,
-    pr_state_icon, relative_time, render_list_scrollbar, repos_tab_line, review_icon, truncate,
-    view_tab_line,
+    ICON_CHECKLIST, ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_COMMENT, ICON_DOT, ICON_ISSUE_OPEN,
+    ICON_PR_CLOSED, ICON_PR_HEADER, StatusLike, diff_stat_spans, dim_italic, filter_title,
+    gap_span, item_style, list_highlight_style, loading_placeholder, mergeable_state_span,
+    panel_block, panel_focus, pr_state_icon, relative_time, render_list_scrollbar, repos_tab_line,
+    review_icon, truncate, view_tab_line, wrap_label_lines,
 };
 use crate::{
     app::App,
@@ -381,6 +381,8 @@ pub(crate) fn draw_source_prs(f: &mut Frame, app: &mut App, area: Rect) {
         ReposView::PrList,
         app.source_ctx.source_prs.len(),
         app.source_ctx.source_prs_pagination.has_more,
+        app.source_ctx.source_issues.len(),
+        app.source_ctx.source_issues_pagination.has_more,
     ));
 
     let inner_width = area.width.saturating_sub(4) as usize;
@@ -420,5 +422,138 @@ pub(crate) fn draw_source_prs(f: &mut Frame, app: &mut App, area: Rect) {
         total * 2,
         body_area.height,
         app.source_ctx.source_pr_state.offset(),
+    );
+}
+
+pub(crate) fn draw_source_issues(f: &mut Frame, app: &mut App, area: Rect) {
+    let focused = app.focus == Column::Repos;
+    let border_style = panel_focus(focused);
+
+    let loading_suffix = match &app.loading {
+        Some(LoadingKind::Issues) => " ⟳".to_string(),
+        Some(LoadingKind::Action(a)) => format!(" {a}…"),
+        _ => String::new(),
+    };
+    let source_name = app
+        .selected_source()
+        .map(|s| s.display())
+        .unwrap_or_default();
+    let issue_count_suffix = if app.filter_active || !app.source_ctx.source_issue_filter.is_empty()
+    {
+        format!(
+            "  {}/{}",
+            app.visible_source_issues().len(),
+            app.source_ctx.source_issues.len()
+        )
+    } else {
+        String::new()
+    };
+    let base = format!(" {source_name}{loading_suffix}{issue_count_suffix} ");
+    let title = filter_title(
+        &base,
+        &app.source_ctx.source_issue_filter,
+        app.filter_active && app.focus == Column::Repos,
+        focused,
+    );
+    let block = panel_block(title, border_style).title_bottom(repos_tab_line(
+        ReposView::IssueList,
+        app.source_ctx.source_prs.len(),
+        app.source_ctx.source_prs_pagination.has_more,
+        app.source_ctx.source_issues.len(),
+        app.source_ctx.source_issues_pagination.has_more,
+    ));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let [header_area, body_area] =
+        Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(inner);
+
+    let inner_width = area.width.saturating_sub(4) as usize;
+    let header_style = Style::new()
+        .fg(Color::DarkGray)
+        .add_modifier(Modifier::BOLD);
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::raw("  "),
+            Span::styled("#    Title", header_style),
+        ])),
+        header_area,
+    );
+
+    let visible_issues = app.visible_source_issues();
+
+    if visible_issues.is_empty() {
+        if app.loading.is_some() {
+            f.render_widget(loading_placeholder(), body_area);
+        } else if !app.source_ctx.source_issue_filter.is_empty() {
+            f.render_widget(dim_italic("no results"), body_area);
+        } else {
+            f.render_widget(dim_italic("(no open issues)"), body_area);
+        }
+        return;
+    }
+
+    let age_col = 4usize;
+    let author_col = visible_issues
+        .iter()
+        .map(|i| i.author.len())
+        .max()
+        .unwrap_or(6)
+        .clamp(6, 20);
+
+    let items: Vec<ListItem> = visible_issues
+        .iter()
+        .map(|issue| {
+            let repo_num = format!("{} #{} ", issue.repo, issue.number);
+            let repo_num_w = repo_num.len();
+            let age = relative_time(&issue.created_at);
+            let author_str = format!("@{:<acol$}", issue.author, acol = author_col);
+            let age_str = format!("  {ICON_CLOCK} {age:>age_col$}");
+            let author_age_w = author_str.width() + 2 + 1 + 1 + age_col;
+            let title_budget = inner_width.saturating_sub(repo_num_w + author_age_w + 1);
+            let title_text = truncate(&issue.title, title_budget);
+            let title_w = title_text.width();
+            let gap = inner_width.saturating_sub(repo_num_w + title_w + author_age_w);
+
+            let line1 = Line::from(vec![
+                Span::styled(repo_num, item_style(focused).add_modifier(Modifier::BOLD)),
+                Span::styled(title_text, item_style(focused)),
+                gap_span(gap),
+                Span::styled(
+                    author_str,
+                    Style::new()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(age_str, Style::new().fg(Color::DarkGray)),
+            ]);
+
+            let (state_icon, state_color) = if issue.state == "closed" {
+                (ICON_PR_CLOSED, Color::Red)
+            } else {
+                (ICON_ISSUE_OPEN, Color::Green)
+            };
+            let icon_line = Line::from(vec![
+                Span::raw("  "),
+                Span::styled(state_icon, Style::new().fg(state_color)),
+            ]);
+            let mut text_lines = vec![line1, icon_line];
+            text_lines.extend(wrap_label_lines(&issue.labels, inner_width));
+            ListItem::new(Text::from(text_lines))
+        })
+        .collect();
+
+    let total = items.len();
+    let list = List::new(items)
+        .highlight_style(list_highlight_style())
+        .highlight_symbol("▶ ");
+    f.render_stateful_widget(list, body_area, &mut app.source_ctx.source_issue_state);
+    render_list_scrollbar(
+        f,
+        area,
+        total * 2,
+        body_area.height,
+        app.source_ctx.source_issue_state.offset(),
     );
 }

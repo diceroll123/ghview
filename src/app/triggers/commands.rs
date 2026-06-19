@@ -1,7 +1,7 @@
 use super::super::App;
 use crate::{
     actions,
-    config::{CheckContext, Keybinding, PrContext, RepoContext},
+    config::{CheckContext, IssueContext, Keybinding, PrContext, RepoContext},
     types::{DataMsg, RepoId, RepoView, ReposView},
 };
 
@@ -82,18 +82,24 @@ impl App {
                 };
                 self.spawn_open_url(&format!("https://github.com/{owner}"));
             }
-            Column::Repos => {
-                if self.repos_view == ReposView::PrList {
+            Column::Repos => match self.repos_view {
+                ReposView::PrList => {
                     if let Some(pr) = self.selected_pr() {
                         self.spawn_open_url(&pr.url);
                     }
-                } else {
+                }
+                ReposView::IssueList => {
+                    if let Some(issue) = self.selected_issue() {
+                        self.spawn_open_url(&issue.url);
+                    }
+                }
+                ReposView::RepoList => {
                     let Some(rid) = self.selected_owner_repo() else {
                         return;
                     };
                     self.spawn_open_url(&rid.url());
                 }
-            }
+            },
             Column::Repo | Column::Detail => match self.repo_view {
                 RepoView::Frontpage => {
                     let Some(rid) = self.selected_owner_repo() else {
@@ -135,18 +141,24 @@ impl App {
                 let url = format!("https://github.com/{owner}");
                 copy_to_clipboard(&url);
             }
-            Column::Repos => {
-                if self.repos_view == ReposView::PrList {
+            Column::Repos => match self.repos_view {
+                ReposView::PrList => {
                     if let Some(url) = self.selected_pr().map(|pr| pr.url.clone()) {
                         self.copy_and_notify(&url);
                     }
-                } else {
+                }
+                ReposView::IssueList => {
+                    if let Some(url) = self.selected_issue().map(|i| i.url.clone()) {
+                        self.copy_and_notify(&url);
+                    }
+                }
+                ReposView::RepoList => {
                     let Some(rid) = self.selected_owner_repo() else {
                         return;
                     };
                     self.copy_and_notify(&rid.url());
                 }
-            }
+            },
             Column::Repo | Column::Detail => match self.repo_view {
                 RepoView::Frontpage => {
                     let Some(rid) = self.selected_owner_repo() else {
@@ -236,6 +248,26 @@ impl App {
             repo: &repo,
         })?;
         self.dispatch_keybinding_cmd(kb, cmd, KbOutput::CaptureStdout)
+    }
+
+    pub fn trigger_keybinding_issue(&mut self, kb: &Keybinding) -> Option<String> {
+        let issue = self.selected_issue()?.clone();
+        let owner = if issue.repo_owner.is_empty() {
+            self.selected_source_owner()?
+        } else {
+            issue.repo_owner.clone()
+        };
+        let repo = if issue.repo.is_empty() {
+            self.selected_repo()?.to_string()
+        } else {
+            issue.repo.clone()
+        };
+        let cmd = kb.expand_command(&IssueContext {
+            issue: &issue,
+            owner: &owner,
+            repo: &repo,
+        })?;
+        self.dispatch_keybinding_cmd(kb, cmd, KbOutput::Silent)
     }
 
     pub fn trigger_keybinding_repo(&mut self, kb: &Keybinding) -> Option<String> {

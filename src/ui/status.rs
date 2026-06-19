@@ -2,7 +2,7 @@ use crate::{
     app::App,
     keys::{
         Action, CHECKS_AND_PRS_BAR, CHECKS_BAR, DIFF_HINT_TEXT, FRONTPAGE_BAR, ISSUES_BAR, PRS_BAR,
-        REPOS_BAR, SOURCE_PRS_BAR, SOURCES_BAR, find_binding,
+        REPOS_BAR, SOURCE_ISSUES_BAR, SOURCE_PRS_BAR, SOURCES_BAR, find_binding,
     },
     types::{Column, DetailSection, LoadingKind, RepoView, ReposView},
 };
@@ -121,6 +121,7 @@ fn hint_entries(app: &App, width: usize) -> String {
         Column::Sources => SOURCES_BAR,
         Column::Repos => match app.repos_view {
             ReposView::PrList => SOURCE_PRS_BAR,
+            ReposView::IssueList => SOURCE_ISSUES_BAR,
             ReposView::RepoList => REPOS_BAR,
         },
         Column::Repo => match app.repo_view {
@@ -131,10 +132,13 @@ fn hint_entries(app: &App, width: usize) -> String {
         Column::Detail => match app.repo_ctx.detail_section {
             DetailSection::Checks => match (app.repo_view, app.repos_view) {
                 (RepoView::Prs, _) | (_, ReposView::PrList) => CHECKS_AND_PRS_BAR,
-                (RepoView::Frontpage | RepoView::Issues, ReposView::RepoList) => CHECKS_BAR,
+                (
+                    RepoView::Frontpage | RepoView::Issues,
+                    ReposView::RepoList | ReposView::IssueList,
+                ) => CHECKS_BAR,
             },
             DetailSection::Body => match (app.repo_view, app.repos_view) {
-                (RepoView::Issues, _) => ISSUES_BAR,
+                (RepoView::Issues, _) | (_, ReposView::IssueList) => ISSUES_BAR,
                 (RepoView::Frontpage | RepoView::Prs, ReposView::RepoList | ReposView::PrList) => {
                     PRS_BAR
                 }
@@ -155,16 +159,18 @@ fn hint_entries(app: &App, width: usize) -> String {
     let col_kbs: &[crate::config::Keybinding] = match app.focus {
         Column::Repos => match app.repos_view {
             ReposView::PrList => &app.config.keybindings.prs,
+            ReposView::IssueList => &app.config.keybindings.issues,
             ReposView::RepoList => &app.config.keybindings.repos,
         },
         Column::Repo => match app.repo_view {
             RepoView::Prs => &app.config.keybindings.prs,
-            RepoView::Issues | RepoView::Frontpage => &[],
+            RepoView::Issues => &app.config.keybindings.issues,
+            RepoView::Frontpage => &[],
         },
         Column::Detail => match app.repo_ctx.detail_section {
             DetailSection::Checks => &app.config.keybindings.checks,
             DetailSection::Body => match (app.repo_view, app.repos_view) {
-                (RepoView::Issues, _) => &[],
+                (RepoView::Issues, _) | (_, ReposView::IssueList) => &app.config.keybindings.issues,
                 (RepoView::Frontpage | RepoView::Prs, ReposView::RepoList | ReposView::PrList) => {
                     &app.config.keybindings.prs
                 }

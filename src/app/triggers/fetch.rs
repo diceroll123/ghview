@@ -4,8 +4,8 @@ use crate::{
     config::SourcesConfig,
     data::{
         fetch_check_runs, fetch_diff, fetch_issue_body, fetch_issues, fetch_pr_body, fetch_prs,
-        fetch_rate_limit, fetch_repo_frontpage, fetch_repos, fetch_review_status, fetch_source_prs,
-        fetch_sources, fetch_viewer_permission, rerun_check,
+        fetch_rate_limit, fetch_repo_frontpage, fetch_repos, fetch_review_status,
+        fetch_source_issues, fetch_source_prs, fetch_sources, fetch_viewer_permission, rerun_check,
     },
     types::{
         Column, DataMsg, DetailSection, LoadingKind, PR, PrAction, PrId, RepoId, RepoView,
@@ -106,6 +106,13 @@ impl App {
         self.trigger_load_source_prs();
     }
 
+    pub(crate) fn force_load_source_issues(&mut self) {
+        if let Some(owner) = self.selected_source_owner() {
+            self.source_issues_cache.remove(&owner);
+        }
+        self.trigger_load_source_issues();
+    }
+
     pub(crate) fn trigger_load_more_repos(&mut self) {
         if !self.source_ctx.repos_pagination.can_load_more() {
             return;
@@ -200,6 +207,100 @@ impl App {
                 Err(e) => {
                     let _ = tx.send(DataMsg::Error(e.to_string()));
                 }
+            }
+        });
+    }
+
+    pub(crate) fn trigger_load_source_issues(&mut self) {
+        let Some(source) = self.selected_source().cloned() else {
+            return;
+        };
+        let owner = source.owner().to_string();
+        let is_org = matches!(source, Source::Org(_));
+        let per_page = self.per_page();
+
+        if let Some((fetched_at, cached)) = self.source_issues_cache.get(&owner).cloned()
+            && fetched_at.elapsed() < self.config.cache_ttl()
+        {
+            self.source_ctx
+                .source_issues_pagination
+                .reset(cached.len() == per_page as usize);
+            self.apply_source_issues(cached);
+            self.loading = None;
+            return;
+        }
+
+        self.loading = Some(LoadingKind::Issues);
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            match fetch_source_issues(&owner, is_org, per_page, 1).await {
+                Ok(issues) => {
+                    let has_more = issues.len() == per_page as usize;
+                    let _ = tx.send(DataMsg::SourceIssues {
+                        owner,
+                        issues,
+                        has_more,
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(DataMsg::Error(e.to_string()));
+                }
+            }
+        });
+    }
+
+    pub(crate) fn trigger_load_more_source_issues(&mut self) {
+        if !self.source_ctx.source_issues_pagination.can_load_more() {
+            return;
+        }
+        let Some(source) = self.selected_source().cloned() else {
+            return;
+        };
+        let owner = source.owner().to_string();
+        let is_org = matches!(source, Source::Org(_));
+        let per_page = self.per_page();
+        let page = self.source_ctx.source_issues_pagination.begin_fetch();
+        self.loading = Some(LoadingKind::Issues);
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            match fetch_source_issues(&owner, is_org, per_page, page).await {
+                Ok(issues) => {
+                    let has_more = issues.len() == per_page as usize;
+                    let _ = tx.send(DataMsg::MoreSourceIssues {
+                        owner,
+                        issues,
+                        has_more,
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(DataMsg::Error(e.to_string()));
+                }
+            }
+        });
+    }
+
+    pub(crate) fn trigger_load_source_issue_body(&mut self) {
+        let Some(issue) = self.selected_source_issue().cloned() else {
+            return;
+        };
+        let owner = self.selected_source_owner().unwrap_or_default();
+        let actual_owner = if issue.repo_owner.is_empty() {
+            owner
+        } else {
+            issue.repo_owner.clone()
+        };
+        let rid = RepoId::new(actual_owner, issue.repo.clone());
+        let number = issue.number;
+        self.repo_ctx.issue_body = None;
+        self.repo_ctx.issue_body_scroll = 0;
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            if let Ok(body) = fetch_issue_body(&rid, number).await {
+                let _ = tx.send(DataMsg::IssueBody {
+                    repo: rid,
+                    number,
+                    body,
+                });
             }
         });
     }
@@ -347,7 +448,7 @@ impl App {
     }
 
     pub(crate) fn trigger_review_and_check_fetches(&self) {
-        if self.repos_view == crate::types::ReposView::PrList {
+        if self.repos_view == ReposView::PrList {
             self.trigger_source_pr_review_fetches();
             return;
         }
@@ -423,7 +524,7 @@ impl App {
         if !self.config.ui.prefetch_pr_details {
             return;
         }
-        let prs_to_fetch: Vec<PrId> = if self.repos_view == crate::types::ReposView::PrList {
+        let prs_to_fetch: Vec<PrId> = if self.repos_view == ReposView::PrList {
             let Some(source_owner) = self.selected_source_owner() else {
                 return;
             };
@@ -627,6 +728,7 @@ impl App {
             Column::Sources => self.trigger_load_sources(),
             Column::Repos => match self.repos_view {
                 ReposView::PrList => self.force_load_source_prs(),
+                ReposView::IssueList => self.force_load_source_issues(),
                 ReposView::RepoList => self.force_load_repos(),
             },
             Column::Repo | Column::Detail => match self.repo_view {

@@ -456,9 +456,52 @@ pub async fn fetch_issues(repo: &RepoId, per_page: u32, page: u32) -> Result<(Ve
             created_at: r.created_at,
             labels: r.labels,
             url: r.url,
+            repo: String::new(),
+            repo_owner: String::new(),
         })
         .collect();
     Ok((issues, has_more))
+}
+
+pub async fn fetch_source_issues(
+    owner: &str,
+    is_org: bool,
+    per_page: u32,
+    page: u32,
+) -> Result<Vec<Issue>> {
+    debug!("fetch_source_issues: {owner} is_org={is_org} per_page={per_page} page={page}");
+    let per_page = per_page.clamp(1, 100);
+    let scope = if is_org {
+        format!("org:{owner}")
+    } else {
+        format!("author:{owner}")
+    };
+    let endpoint = format!(
+        "search/issues?q=is:issue+is:open+{scope}&sort=created&order=desc&per_page={per_page}&page={page}"
+    );
+    let jq = r#".items[] | {number, title, author: (.user.login // "ghost"), state, created_at, labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], url: .html_url, repo: (.repository_url | split("/") | .[-1]), repo_owner: (.repository_url | split("/") | .[-2])}"#;
+    let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
+    let mut issues = Vec::new();
+    let mut first_err: Option<String> = None;
+    for line in raw.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str::<Issue>(line) {
+            Ok(issue) => issues.push(issue),
+            Err(e) if first_err.is_none() => {
+                first_err = Some(format!("parse error: {e}\nraw: {line}"));
+            }
+            _ => {}
+        }
+    }
+    if issues.is_empty()
+        && let Some(err) = first_err
+    {
+        bail!("{err}");
+    }
+    debug!(
+        "fetch_source_issues: {owner} page={page} -> {} issues",
+        issues.len()
+    );
+    Ok(issues)
 }
 
 pub async fn fetch_issue_body(repo: &RepoId, number: u64) -> Result<String> {

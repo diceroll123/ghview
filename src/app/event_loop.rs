@@ -2,8 +2,8 @@ use super::App;
 use crate::{
     config::Keybinding,
     keys::{
-        Action, CHECKS_BINDINGS, DefaultBinding, PRS_BINDINGS, REPOS_BINDINGS, UNIVERSAL_BINDINGS,
-        builtin_to_action, map_key_universal,
+        Action, CHECKS_BINDINGS, DefaultBinding, ISSUES_BINDINGS, PRS_BINDINGS, REPOS_BINDINGS,
+        UNIVERSAL_BINDINGS, builtin_to_action, map_key_universal,
     },
     types::{Column, DataMsg, DetailSection, RepoId, RepoView, ReposView},
     ui::draw,
@@ -15,6 +15,7 @@ use tokio::time::interval_at;
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LayerKind {
     Checks,
+    Issues,
     Prs,
     Repos,
     Universal,
@@ -29,8 +30,9 @@ struct KeyLayer<'a> {
 enum InputContext {
     ChecksDetail, // checks section in detail panel; also inherits PR keys
     PrContext,    // PR list, source PR list, or PR detail
+    IssueContext, // issue list (per-repo or source-level) or issue detail
     Repos,        // repos column
-    Generic,      // sources, frontpage, issues
+    Generic,      // sources, frontpage
 }
 
 impl InputContext {
@@ -43,6 +45,12 @@ impl InputContext {
                 && app.repos_view == ReposView::PrList)
         {
             Self::PrContext
+        } else if (matches!(app.focus, Column::Repo | Column::Detail)
+            && app.repo_view == RepoView::Issues)
+            || (matches!(app.focus, Column::Repos | Column::Detail)
+                && app.repos_view == ReposView::IssueList)
+        {
+            Self::IssueContext
         } else if app.focus == Column::Repos {
             Self::Repos
         } else {
@@ -79,6 +87,8 @@ fn active_layers(app: &App) -> Vec<KeyLayer<'_>> {
             prs,
             universal,
         ],
+        // When Column::Repos is focused in PrList or IssueList mode, prepend a view-switch
+        // layer so r/p/i still work to switch tabs.
         InputContext::PrContext if app.focus == Column::Repos => vec![
             KeyLayer {
                 kind: LayerKind::Repos,
@@ -89,6 +99,27 @@ fn active_layers(app: &App) -> Vec<KeyLayer<'_>> {
             universal,
         ],
         InputContext::PrContext => vec![prs, universal],
+        InputContext::IssueContext if app.focus == Column::Repos => vec![
+            KeyLayer {
+                kind: LayerKind::Repos,
+                user: &[],
+                defaults: REPOS_BINDINGS,
+            },
+            KeyLayer {
+                kind: LayerKind::Issues,
+                user: &kb.issues,
+                defaults: ISSUES_BINDINGS,
+            },
+            universal,
+        ],
+        InputContext::IssueContext => vec![
+            KeyLayer {
+                kind: LayerKind::Issues,
+                user: &kb.issues,
+                defaults: ISSUES_BINDINGS,
+            },
+            universal,
+        ],
         InputContext::Repos => vec![repos, universal],
         InputContext::Generic => vec![universal],
     }
@@ -164,6 +195,15 @@ fn dispatch_key(key: KeyEvent, app: &mut App) -> Option<DispatchResult> {
                     kind: InteractiveKind::Custom(cmd),
                     repo: RepoId::new(owner, repo),
                     pr_number: 0,
+                })
+            }),
+            LayerKind::Issues => app.trigger_keybinding_issue(&kb).and_then(|cmd| {
+                app.selected_issue_context().map(|(rid, _)| {
+                    DispatchResult::Interactive(InteractiveCmd {
+                        kind: InteractiveKind::Custom(cmd),
+                        repo: rid,
+                        pr_number: 0,
+                    })
                 })
             }),
             LayerKind::Checks | LayerKind::Prs => {
@@ -245,8 +285,10 @@ pub async fn run_event_loop(
                     continue;
                 }
 
-                if app.focus == Column::Detail && key.code == KeyCode::Tab
-                    && (app.repo_view == RepoView::Prs || app.repos_view == ReposView::PrList) {
+                if app.focus == Column::Detail
+                    && key.code == KeyCode::Tab
+                    && (app.repo_view == RepoView::Prs || app.repos_view == ReposView::PrList)
+                {
                     app.detail_tab();
                     continue;
                 }
