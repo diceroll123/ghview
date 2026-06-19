@@ -2,7 +2,7 @@ use super::App;
 use crate::{
     config::Keybinding,
     keys::{
-        Action, CHECKS_BINDINGS, DefaultBinding, PRS_BINDINGS, UNIVERSAL_BINDINGS,
+        Action, CHECKS_BINDINGS, DefaultBinding, PRS_BINDINGS, REPOS_BINDINGS, UNIVERSAL_BINDINGS,
         builtin_to_action, map_key_universal,
     },
     types::{Column, DataMsg, DetailSection, RepoId, RepoView, ReposView},
@@ -52,35 +52,44 @@ impl InputContext {
 }
 
 fn active_layers(app: &App) -> Vec<KeyLayer<'_>> {
+    let kb = &app.config.keybindings;
     let universal = KeyLayer {
         kind: LayerKind::Universal,
-        user: &app.config.keybindings.universal,
+        user: &kb.universal,
         defaults: UNIVERSAL_BINDINGS,
     };
     let prs = KeyLayer {
         kind: LayerKind::Prs,
-        user: &app.config.keybindings.prs,
+        user: &kb.prs,
         defaults: PRS_BINDINGS,
     };
+    let repos = KeyLayer {
+        kind: LayerKind::Repos,
+        user: &kb.repos,
+        defaults: REPOS_BINDINGS,
+    };
+
     match InputContext::from_app(app) {
         InputContext::ChecksDetail => vec![
             KeyLayer {
                 kind: LayerKind::Checks,
-                user: &app.config.keybindings.checks,
+                user: &kb.checks,
                 defaults: CHECKS_BINDINGS,
             },
             prs,
             universal,
         ],
-        InputContext::PrContext => vec![prs, universal],
-        InputContext::Repos => vec![
+        InputContext::PrContext if app.focus == Column::Repos => vec![
             KeyLayer {
                 kind: LayerKind::Repos,
-                user: &app.config.keybindings.repos,
-                defaults: &[],
+                user: &[],
+                defaults: REPOS_BINDINGS,
             },
+            prs,
             universal,
         ],
+        InputContext::PrContext => vec![prs, universal],
+        InputContext::Repos => vec![repos, universal],
         InputContext::Generic => vec![universal],
     }
 }
@@ -240,24 +249,6 @@ pub async fn run_event_loop(
                     && (app.repo_view == RepoView::Prs || app.repos_view == ReposView::PrList) {
                     app.detail_tab();
                     continue;
-                }
-
-                // View switching in the Browse column (p = PR list, r = repo list).
-                if app.focus == Column::Repos {
-                    match key.code {
-                        KeyCode::Char('p') => {
-                            app.repos_view = ReposView::PrList;
-                            if app.source_ctx.source_prs.is_empty() {
-                                app.trigger_load_source_prs();
-                            }
-                            continue;
-                        }
-                        KeyCode::Char('r') if app.repos_view == ReposView::PrList => {
-                            app.repos_view = ReposView::RepoList;
-                            continue;
-                        }
-                        _ => {}
-                    }
                 }
 
                 // View switching when in repo workspace (f/p/i).

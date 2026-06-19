@@ -124,7 +124,7 @@ impl App {
                     self.repo_ctx.issue_body_scroll =
                         self.repo_ctx.issue_body_scroll.saturating_sub(1);
                 }
-                _ => match self.repo_ctx.detail_section {
+                RepoView::Prs | RepoView::Frontpage => match self.repo_ctx.detail_section {
                     DetailSection::Body => {
                         self.repo_ctx.pr_body_scroll =
                             self.repo_ctx.pr_body_scroll.saturating_sub(1);
@@ -201,7 +201,7 @@ impl App {
                     self.repo_ctx.issue_body_scroll =
                         self.repo_ctx.issue_body_scroll.saturating_add(1);
                 }
-                _ => match self.repo_ctx.detail_section {
+                RepoView::Prs | RepoView::Frontpage => match self.repo_ctx.detail_section {
                     DetailSection::Body => {
                         self.repo_ctx.pr_body_scroll =
                             self.repo_ctx.pr_body_scroll.saturating_add(1);
@@ -352,7 +352,7 @@ impl App {
                 RepoView::Issues => {
                     self.repo_ctx.issue_body_scroll = 0;
                 }
-                _ => match self.repo_ctx.detail_section {
+                RepoView::Prs | RepoView::Frontpage => match self.repo_ctx.detail_section {
                     DetailSection::Body => {
                         self.repo_ctx.pr_body_scroll = 0;
                     }
@@ -411,7 +411,7 @@ impl App {
                 RepoView::Issues => {
                     self.repo_ctx.issue_body_scroll = u16::MAX;
                 }
-                _ => match self.repo_ctx.detail_section {
+                RepoView::Prs | RepoView::Frontpage => match self.repo_ctx.detail_section {
                     DetailSection::Body => {
                         self.repo_ctx.pr_body_scroll = u16::MAX;
                     }

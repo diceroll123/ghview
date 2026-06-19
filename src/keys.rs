@@ -13,6 +13,10 @@ pub enum Action {
     Refresh,
     FilterStart,
     SortCycle,
+    // Browse column view switching
+    ViewRepos,
+    ViewPrs,
+    ViewIssues,
     // Context-sensitive (behaviour varies by focused column)
     OpenBrowser,
     OpenIssues,
@@ -182,6 +186,30 @@ pub static PRS_BINDINGS: &[DefaultBinding] = &[
     },
 ];
 
+#[allow(dead_code)]
+pub static ISSUES_BINDINGS: &[DefaultBinding] = &[];
+
+pub static REPOS_BINDINGS: &[DefaultBinding] = &[
+    DefaultBinding {
+        keys: &[KeyCode::Char('r')],
+        display: "r",
+        action: Action::ViewRepos,
+        label: "repos",
+    },
+    DefaultBinding {
+        keys: &[KeyCode::Char('p')],
+        display: "p",
+        action: Action::ViewPrs,
+        label: "prs",
+    },
+    DefaultBinding {
+        keys: &[KeyCode::Char('i')],
+        display: "i",
+        action: Action::ViewIssues,
+        label: "issues",
+    },
+];
+
 pub static CHECKS_BINDINGS: &[DefaultBinding] = &[
     DefaultBinding {
         keys: &[KeyCode::Char('o')],
@@ -225,6 +253,7 @@ pub fn find_binding(action: Action) -> Option<&'static DefaultBinding> {
     UNIVERSAL_BINDINGS
         .iter()
         .find(|b| b.action == action)
+        .or_else(|| REPOS_BINDINGS.iter().find(|b| b.action == action))
         .or_else(|| PRS_BINDINGS.iter().find(|b| b.action == action))
         .or_else(|| CHECKS_BINDINGS.iter().find(|b| b.action == action))
 }
@@ -233,14 +262,19 @@ pub fn find_binding(action: Action) -> Option<&'static DefaultBinding> {
 pub const SOURCES_BAR: &[Action] = &[Action::OpenBrowser, Action::CopyUrl, Action::FilterStart];
 
 pub const REPOS_BAR: &[Action] = &[
+    Action::ViewRepos,
+    Action::ViewPrs,
+    Action::ViewIssues,
     Action::OpenBrowser,
-    Action::OpenIssues,
     Action::CopyUrl,
     Action::FilterStart,
     Action::SortCycle,
 ];
 
 pub const SOURCE_PRS_BAR: &[Action] = &[
+    Action::ViewRepos,
+    Action::ViewPrs,
+    Action::ViewIssues,
     Action::Approve,
     Action::Merge,
     Action::Checkout,
@@ -301,6 +335,9 @@ pub fn builtin_to_action(name: &str) -> Option<Action> {
         "refresh" => Some(Action::Refresh),
         "filter" | "search" => Some(Action::FilterStart),
         "sort" => Some(Action::SortCycle),
+        "viewRepos" => Some(Action::ViewRepos),
+        "viewPrs" => Some(Action::ViewPrs),
+        "viewIssues" => Some(Action::ViewIssues),
         "openBrowser" | "openGithub" => Some(Action::OpenBrowser),
         "openIssues" => Some(Action::OpenIssues),
         "copyUrl" => Some(Action::CopyUrl),

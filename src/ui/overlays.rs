@@ -81,11 +81,10 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
         ("\u{f14e}  Navigation", bar_entries(NAV_ACTIONS)),
         ("\u{f0c0}  Sources", bar_entries(SOURCES_BAR)),
         ("\u{e702}  Browse", bar_entries(REPOS_BAR)),
-    ];
-    let mut right_sections: Vec<(&str, Vec<(String, String)>)> = vec![
         ("\u{f407}  PRs", pr_entries),
         ("\u{e641}  Checks", checks_entries),
     ];
+    let mut right_sections: Vec<(&str, Vec<(String, String)>)> = vec![];
     if !kb.universal.is_empty() {
         right_sections.push(("\u{f013}  Universal (custom)", custom_kv(&kb.universal)));
     }
