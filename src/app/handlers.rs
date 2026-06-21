@@ -256,10 +256,11 @@ impl App {
             }
             DataMsg::IssueBody { repo, number, body } => {
                 let passes = if self.repos_view == ReposView::IssueList {
-                    self.source_ctx
-                        .source_issues
-                        .iter()
-                        .any(|i| i.repo == repo.repo)
+                    self.source_ctx.source_issues.iter().any(|i| {
+                        i.number == number
+                            && i.repo == repo.repo
+                            && (i.repo_owner.is_empty() || i.repo_owner == repo.owner)
+                    })
                 } else {
                     self.current_repo_key().as_deref() == Some(repo.key().as_str())
                 };
