@@ -107,12 +107,11 @@ impl App {
             }
             DataMsg::CheckRuns { pr, mut runs } => {
                 let passes = if self.repos_view == ReposView::PrList {
-                    self.selected_source_owner().as_deref() == Some(&pr.repo.owner)
-                        && self
-                            .source_ctx
-                            .source_prs
-                            .iter()
-                            .any(|p| p.repo == pr.repo.repo)
+                    self.source_ctx.source_prs.iter().any(|p| {
+                        p.number == pr.number
+                            && p.repo == pr.repo.repo
+                            && (p.repo_owner.is_empty() || p.repo_owner == pr.repo.owner)
+                    })
                 } else {
                     self.current_repo_key().as_deref() == Some(pr.repo.key().as_str())
                 };
@@ -171,12 +170,11 @@ impl App {
                 deletions,
             } => {
                 let passes = if self.repos_view == ReposView::PrList {
-                    self.selected_source_owner().as_deref() == Some(&pr.repo.owner)
-                        && self
-                            .source_ctx
-                            .source_prs
-                            .iter()
-                            .any(|p| p.repo == pr.repo.repo)
+                    self.source_ctx.source_prs.iter().any(|p| {
+                        p.number == pr.number
+                            && p.repo == pr.repo.repo
+                            && (p.repo_owner.is_empty() || p.repo_owner == pr.repo.owner)
+                    })
                 } else {
                     self.current_repo_key().as_deref() == Some(pr.repo.key().as_str())
                 };
