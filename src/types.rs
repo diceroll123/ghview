@@ -252,7 +252,6 @@ pub struct Issue {
     pub number: u64,
     pub title: String,
     pub author: String,
-    pub state: String,
     pub created_at: String,
     pub labels: Vec<Label>,
     pub url: String,

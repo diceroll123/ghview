@@ -1,8 +1,8 @@
 use super::{
-    ICON_ARCHIVE, ICON_BUG, ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_DOT, ICON_FORK, ICON_ISSUE_OPEN,
-    ICON_LOCK, ICON_PR_CLOSED, ICON_REPO_GLYPH, ICON_STAR, active_style, dim_italic,
-    draw_scrollable_body, draw_strip_vertical, filter_title, gap_span, inactive_style, item_style,
-    lang_icon, list_highlight_style, loading_placeholder, panel_block, panel_focus, relative_time,
+    ICON_ARCHIVE, ICON_BUG, ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_DOT, ICON_FORK, ICON_LOCK,
+    ICON_REPO_GLYPH, ICON_STAR, active_style, dim_italic, draw_scrollable_body,
+    draw_strip_vertical, filter_title, gap_span, inactive_style, item_style, lang_icon,
+    list_highlight_style, loading_placeholder, panel_block, panel_focus, relative_time,
     render_list_scrollbar, render_markdown, repos_tab_line, truncate, view_tab_line,
     wrap_label_lines,
 };
@@ -431,18 +431,7 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
             ])
             .style(hl);
 
-            let (state_icon, state_color) = if issue.state == "closed" {
-                (ICON_PR_CLOSED, Color::Red)
-            } else {
-                (ICON_ISSUE_OPEN, Color::Green)
-            };
-            let icon_line = Line::from(vec![
-                Span::raw("  "),
-                Span::styled(state_icon, Style::new().fg(state_color)),
-            ])
-            .style(hl);
-
-            let mut text_lines = vec![line1, icon_line];
+            let mut text_lines = vec![line1];
             text_lines.extend(
                 wrap_label_lines(&issue.labels, inner_width, cap_bg)
                     .into_iter()
@@ -472,7 +461,7 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
     render_list_scrollbar(
         f,
         area,
-        total * 2,
+        total,
         body_area.height,
         app.repo_ctx.issue_state.offset(),
     );

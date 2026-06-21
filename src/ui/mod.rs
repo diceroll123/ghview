@@ -90,9 +90,6 @@ pub(super) const ICON_PR_DRAFT: &str = "\u{ebdb} ";
 pub(super) const ICON_PR_CLOSED: &str = "\u{f4dc} ";
 pub(super) const ICON_PR_OPEN: &str = "\u{f407} ";
 
-// Issue state (open; closed reuses ICON_PR_CLOSED glyph)
-pub(super) const ICON_ISSUE_OPEN: &str = "\u{f444} ";
-
 // Review status icons
 pub(super) const ICON_REVIEW_APPROVED: &str = "\u{f012c}";
 pub(super) const ICON_REVIEW_CHANGES: &str = "\u{eb43}";

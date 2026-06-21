@@ -15,10 +15,10 @@ pub(super) use sources::{draw_sources, draw_sources_strip};
 // Re-export ui/mod.rs items for sub-modules.
 pub(crate) use super::{
     ICON_ARCHIVE, ICON_BUG, ICON_CHECKLIST, ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_COMMENT, ICON_DOT,
-    ICON_FORK, ICON_ISSUE_OPEN, ICON_LOCK, ICON_ORG, ICON_ORG_GLYPH, ICON_PR_CLOSED, ICON_PR_DRAFT,
-    ICON_PR_HEADER, ICON_REPO_GLYPH, ICON_STAR, ICON_USER, ICON_USER_GLYPH, StatusLike,
-    active_style, filter_title, inactive_style, item_style, lang_icon, panel_focus, pr_state_icon,
-    relative_time, render_list_scrollbar, review_icon, truncate,
+    ICON_FORK, ICON_LOCK, ICON_ORG, ICON_ORG_GLYPH, ICON_PR_DRAFT, ICON_PR_HEADER, ICON_REPO_GLYPH,
+    ICON_STAR, ICON_USER, ICON_USER_GLYPH, StatusLike, active_style, filter_title, inactive_style,
+    item_style, lang_icon, panel_focus, pr_state_icon, relative_time, render_list_scrollbar,
+    review_icon, truncate,
 };
 
 use crate::types::{Label, MergeableState, PR, RepoView, ReposView};

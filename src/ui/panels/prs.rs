@@ -1,9 +1,9 @@
 use super::{
-    ICON_CHECKLIST, ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_COMMENT, ICON_DOT, ICON_ISSUE_OPEN,
-    ICON_PR_CLOSED, ICON_PR_HEADER, StatusLike, diff_stat_spans, dim_italic, filter_title,
-    gap_span, item_style, list_highlight_style, loading_placeholder, mergeable_state_span,
-    panel_block, panel_focus, pr_state_icon, relative_time, render_list_scrollbar, repos_tab_line,
-    review_icon, truncate, view_tab_line, wrap_label_lines,
+    ICON_CHECKLIST, ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_COMMENT, ICON_DOT, ICON_PR_HEADER,
+    StatusLike, diff_stat_spans, dim_italic, filter_title, gap_span, item_style,
+    list_highlight_style, loading_placeholder, mergeable_state_span, panel_block, panel_focus,
+    pr_state_icon, relative_time, render_list_scrollbar, repos_tab_line, review_icon, truncate,
+    view_tab_line, wrap_label_lines,
 };
 use crate::{
     app::App,
@@ -547,18 +547,7 @@ pub(crate) fn draw_source_issues(f: &mut Frame, app: &mut App, area: Rect) {
             ])
             .style(hl);
 
-            let (state_icon, state_color) = if issue.state == "closed" {
-                (ICON_PR_CLOSED, Color::Red)
-            } else {
-                (ICON_ISSUE_OPEN, Color::Green)
-            };
-            let icon_line = Line::from(vec![
-                Span::raw("  "),
-                Span::styled(state_icon, Style::new().fg(state_color)),
-            ])
-            .style(hl);
-
-            let mut text_lines = vec![line1, icon_line];
+            let mut text_lines = vec![line1];
             text_lines.extend(
                 wrap_label_lines(&issue.labels, inner_width, cap_bg)
                     .into_iter()
@@ -574,7 +563,7 @@ pub(crate) fn draw_source_issues(f: &mut Frame, app: &mut App, area: Rect) {
     render_list_scrollbar(
         f,
         area,
-        total * 2,
+        total,
         body_area.height,
         app.source_ctx.source_issue_state.offset(),
     );

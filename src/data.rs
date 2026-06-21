@@ -423,7 +423,6 @@ pub async fn fetch_issues(repo: &RepoId, per_page: u32, page: u32) -> Result<(Ve
         number: u64,
         title: String,
         author: String,
-        state: String,
         created_at: String,
         labels: Vec<crate::types::Label>,
         url: String,
@@ -437,7 +436,7 @@ pub async fn fetch_issues(repo: &RepoId, per_page: u32, page: u32) -> Result<(Ve
         repo.api_base()
     );
     // Include is_pr so we can compute has_more from the raw count before filtering
-    let jq = r#".[] | {number, title, author: (.user.login // "ghost"), state, created_at, labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], url: .html_url, is_pr: (.pull_request != null)}"#;
+    let jq = r#".[] | {number, title, author: (.user.login // "ghost"), created_at, labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], url: .html_url, is_pr: (.pull_request != null)}"#;
     let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
     let rows: Vec<Row> = raw
         .lines()
@@ -452,7 +451,6 @@ pub async fn fetch_issues(repo: &RepoId, per_page: u32, page: u32) -> Result<(Ve
             number: r.number,
             title: r.title,
             author: r.author,
-            state: r.state,
             created_at: r.created_at,
             labels: r.labels,
             url: r.url,
@@ -479,7 +477,7 @@ pub async fn fetch_source_issues(
     let endpoint = format!(
         "search/issues?q=is:issue+is:open+{scope}&sort=created&order=desc&per_page={per_page}&page={page}"
     );
-    let jq = r#".items[] | {number, title, author: (.user.login // "ghost"), state, created_at, labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], url: .html_url, repo: (.repository_url | split("/") | .[-1]), repo_owner: (.repository_url | split("/") | .[-2])}"#;
+    let jq = r#".items[] | {number, title, author: (.user.login // "ghost"), created_at, labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], url: .html_url, repo: (.repository_url | split("/") | .[-1]), repo_owner: (.repository_url | split("/") | .[-2])}"#;
     let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
     let mut issues = Vec::new();
     let mut first_err: Option<String> = None;
