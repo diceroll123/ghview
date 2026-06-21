@@ -178,7 +178,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
             cur_spans.push(Span::raw(" ".repeat(sep_w)));
             cur_w += sep_w;
         }
-        cur_spans.extend(label_pill_spans(lbl));
+        cur_spans.extend(label_pill_spans(lbl, Color::Reset));
         cur_w += pill_w;
         label_started = true;
     }

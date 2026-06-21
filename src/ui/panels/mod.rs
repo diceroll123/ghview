@@ -138,7 +138,7 @@ pub(crate) fn label_pill_w(label: &Label) -> usize {
     3 + label.name.width() + usize::from(!label_ends_wide(&label.name))
 }
 
-pub(crate) fn label_pill_spans(label: &Label) -> [Span<'static>; 3] {
+pub(crate) fn label_pill_spans(label: &Label, cap_bg: Color) -> [Span<'static>; 3] {
     let bg = hex_to_rgb(&label.color);
     let (r, g, b) = match bg {
         Color::Rgb(r, g, b) => (r, g, b),
@@ -151,12 +151,12 @@ pub(crate) fn label_pill_spans(label: &Label) -> [Span<'static>; 3] {
         " "
     };
     [
-        Span::styled("\u{e0b6}", Style::new().fg(bg).bg(Color::Reset)),
+        Span::styled("\u{e0b6}", Style::new().fg(bg).bg(cap_bg)),
         Span::styled(
             format!(" {}{trailing}", label.name),
             Style::new().fg(fg).bg(bg),
         ),
-        Span::styled("\u{e0b4}", Style::new().fg(bg).bg(Color::Reset)),
+        Span::styled("\u{e0b4}", Style::new().fg(bg).bg(cap_bg)),
     ]
 }
 
@@ -169,7 +169,11 @@ pub(crate) fn pad_to_width(spans: Vec<Span<'static>>, cur_w: usize, width: usize
     Line::from(spans)
 }
 
-pub(crate) fn wrap_label_lines(labels: &[Label], width: usize) -> Vec<Line<'static>> {
+pub(crate) fn wrap_label_lines(
+    labels: &[Label],
+    width: usize,
+    cap_bg: Color,
+) -> Vec<Line<'static>> {
     if labels.is_empty() {
         return vec![];
     }
@@ -187,7 +191,7 @@ pub(crate) fn wrap_label_lines(labels: &[Label], width: usize) -> Vec<Line<'stat
             cur_w += 1;
         }
         cur_w += pill_w;
-        cur_spans.extend(label_pill_spans(lbl));
+        cur_spans.extend(label_pill_spans(lbl, cap_bg));
     }
     if !cur_spans.is_empty() {
         lines.push(pad_to_width(cur_spans, cur_w, width));

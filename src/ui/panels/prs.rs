@@ -502,9 +502,28 @@ pub(crate) fn draw_source_issues(f: &mut Frame, app: &mut App, area: Rect) {
         .unwrap_or(6)
         .clamp(6, 20);
 
+    let selected_idx = app.source_ctx.source_issue_state.selected();
     let items: Vec<ListItem> = visible_issues
         .iter()
-        .map(|issue| {
+        .enumerate()
+        .map(|(i, issue)| {
+            let is_selected = selected_idx == Some(i);
+            let hl = if is_selected {
+                list_highlight_style()
+            } else {
+                Style::default()
+            };
+            let cap_bg = if is_selected {
+                Color::Rgb(50, 60, 80)
+            } else {
+                Color::Reset
+            };
+            let meta_fg = if is_selected {
+                Color::Gray
+            } else {
+                Color::DarkGray
+            };
+
             let repo_num = format!("{} #{} ", issue.repo, issue.number);
             let repo_num_w = repo_num.len();
             let age = relative_time(&issue.created_at);
@@ -522,12 +541,11 @@ pub(crate) fn draw_source_issues(f: &mut Frame, app: &mut App, area: Rect) {
                 gap_span(gap),
                 Span::styled(
                     author_str,
-                    Style::new()
-                        .fg(Color::DarkGray)
-                        .add_modifier(Modifier::BOLD),
+                    Style::new().fg(meta_fg).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(age_str, Style::new().fg(Color::DarkGray)),
-            ]);
+                Span::styled(age_str, Style::new().fg(meta_fg)),
+            ])
+            .style(hl);
 
             let (state_icon, state_color) = if issue.state == "closed" {
                 (ICON_PR_CLOSED, Color::Red)
@@ -537,17 +555,21 @@ pub(crate) fn draw_source_issues(f: &mut Frame, app: &mut App, area: Rect) {
             let icon_line = Line::from(vec![
                 Span::raw("  "),
                 Span::styled(state_icon, Style::new().fg(state_color)),
-            ]);
+            ])
+            .style(hl);
+
             let mut text_lines = vec![line1, icon_line];
-            text_lines.extend(wrap_label_lines(&issue.labels, inner_width));
+            text_lines.extend(
+                wrap_label_lines(&issue.labels, inner_width, cap_bg)
+                    .into_iter()
+                    .map(|line| line.style(hl)),
+            );
             ListItem::new(Text::from(text_lines))
         })
         .collect();
 
     let total = items.len();
-    let list = List::new(items)
-        .highlight_style(list_highlight_style())
-        .highlight_symbol("▶ ");
+    let list = List::new(items).highlight_symbol("▶ ");
     f.render_stateful_widget(list, body_area, &mut app.source_ctx.source_issue_state);
     render_list_scrollbar(
         f,
