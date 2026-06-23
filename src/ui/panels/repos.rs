@@ -46,7 +46,15 @@ pub(crate) fn draw_repos(f: &mut Frame, app: &mut App, area: Rect) {
     let repo_count_suffix = if app.filter_active || !app.source_ctx.repo_filter.is_empty() {
         let visible = app.visible_repos().len();
         let total = app.source_ctx.repos.len();
-        format!("  {visible}/{total}")
+        let more = if app.source_ctx.repos_pagination.has_more {
+            "+"
+        } else {
+            ""
+        };
+        format!("  {visible}/{total}{more}")
+    } else if app.source_ctx.repos_pagination.has_more {
+        let total = app.source_ctx.repos.len();
+        format!("  {total}+")
     } else {
         String::new()
     };
