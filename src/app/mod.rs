@@ -383,6 +383,15 @@ impl App {
     }
 
     pub fn handle_filter_input(&mut self, key: KeyEvent) {
+        let prev_source = self.selected_source_owner();
+        let prev_repo = self.selected_repo().map(str::to_string);
+        let prev_source_pr_num = (self.repos_view == ReposView::PrList)
+            .then(|| self.selected_pr().map(|p| p.number))
+            .flatten();
+        let prev_source_issue_num = (self.repos_view == ReposView::IssueList)
+            .then(|| self.selected_source_issue().map(|i| i.number))
+            .flatten();
+
         match key.code {
             KeyCode::Esc => {
                 *self.active_filter_mut() = String::new();
@@ -413,6 +422,20 @@ impl App {
                 self.rebuild_prs();
             }
             _ => {}
+        }
+
+        if self.selected_source_owner() != prev_source {
+            self.on_source_changed();
+        } else if self.selected_repo().map(str::to_string) != prev_repo {
+            self.on_repo_changed();
+        } else if self.repos_view == ReposView::PrList
+            && self.selected_pr().map(|p| p.number) != prev_source_pr_num
+        {
+            self.trigger_load_pr_body();
+        } else if self.repos_view == ReposView::IssueList
+            && self.selected_source_issue().map(|i| i.number) != prev_source_issue_num
+        {
+            self.trigger_load_source_issue_body();
         }
     }
 

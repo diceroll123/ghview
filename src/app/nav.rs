@@ -61,7 +61,7 @@ impl App {
         clamp_list_state(&mut self.source_ctx.source_issue_state, len);
     }
 
-    fn on_source_changed(&mut self) {
+    pub(crate) fn on_source_changed(&mut self) {
         self.invalidate_source();
         self.trigger_load_repos();
         match self.repos_view {
@@ -71,7 +71,7 @@ impl App {
         }
     }
 
-    fn on_repo_changed(&mut self) {
+    pub(crate) fn on_repo_changed(&mut self) {
         self.pr_filter.clear();
         self.invalidate_repo();
 
