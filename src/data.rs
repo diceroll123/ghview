@@ -1,6 +1,6 @@
 use crate::config::SourcesConfig;
 use crate::types::{
-    CheckRun, CheckStatus, Issue, PR, Repo, RepoId, ReviewStatus, Source, Visibility,
+    CheckRun, CheckStatus, Issue, PR, Repo, RepoId, RepoSortKey, ReviewStatus, Source, Visibility,
 };
 use anyhow::{Context, Result, bail};
 use log::debug;
@@ -132,6 +132,7 @@ pub async fn fetch_repos(
     current_user: &str,
     per_page: u32,
     page: u32,
+    sort_key: RepoSortKey,
 ) -> Result<Vec<Repo>> {
     debug!(
         "fetch_repos: {} per_page={per_page} page={page}",
@@ -144,7 +145,9 @@ pub async fn fetch_repos(
         Source::Org(name) => format!("orgs/{name}/repos"),
     };
     let per_page = per_page.clamp(1, 100);
-    let endpoint = format!("{base}?per_page={per_page}&page={page}");
+    let (sort, direction) = sort_key.api_params();
+    let endpoint =
+        format!("{base}?per_page={per_page}&page={page}&sort={sort}&direction={direction}");
     let jq = ".[] | {name, language, pushed_at, created_at, owner_login: .owner.login, stargazers_count, forks_count, open_issues_count, visibility, has_issues, has_pull_requests, archived}";
     let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
     let repos: Vec<Repo> = raw

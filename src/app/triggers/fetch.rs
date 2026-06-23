@@ -55,7 +55,11 @@ impl App {
         let owner = source.owner().to_string();
         let per_page = self.per_page();
 
-        if let Some((fetched_at, cached)) = self.repo_cache.get(&owner).cloned() {
+        if let Some((fetched_at, cached)) = self
+            .repo_cache
+            .get(&(owner.clone(), self.repo_sort_key))
+            .cloned()
+        {
             if fetched_at.elapsed() < self.config.cache_ttl() {
                 self.source_ctx
                     .repos_pagination
@@ -72,11 +76,12 @@ impl App {
         }
 
         let current_user = self.current_user.clone().unwrap_or_default();
+        let sort_key = self.repo_sort_key;
         self.loading = Some(LoadingKind::Repos);
         self.source_ctx.repos_pagination.fetching_more = false;
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            match fetch_repos(&source, &current_user, per_page, 1).await {
+            match fetch_repos(&source, &current_user, per_page, 1, sort_key).await {
                 Ok(repos) => {
                     let has_more = repos.len() == per_page as usize;
                     let _ = tx.send(DataMsg::Repos {
@@ -94,7 +99,7 @@ impl App {
 
     pub(crate) fn force_load_repos(&mut self) {
         if let Some(owner) = self.selected_source_owner() {
-            self.repo_cache.remove(&owner);
+            self.repo_cache.retain(|(o, _), _| o != &owner);
         }
         self.trigger_load_repos();
     }
@@ -123,11 +128,12 @@ impl App {
         let owner = source.owner().to_string();
         let current_user = self.current_user.clone().unwrap_or_default();
         let per_page = self.per_page();
+        let sort_key = self.repo_sort_key;
         self.loading = Some(LoadingKind::Repos);
         let page = self.source_ctx.repos_pagination.begin_fetch();
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            match fetch_repos(&source, &current_user, per_page, page).await {
+            match fetch_repos(&source, &current_user, per_page, page, sort_key).await {
                 Ok(repos) => {
                     let has_more = repos.len() == per_page as usize;
                     let _ = tx.send(DataMsg::MoreRepos {

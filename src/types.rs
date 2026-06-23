@@ -332,7 +332,7 @@ impl SortKey {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RepoSortKey {
     #[default]
@@ -357,6 +357,14 @@ impl RepoSortKey {
             Self::RecentlyUpdated => "pushed",
             Self::Alphabetical => "a-z",
             Self::Created => "created",
+        }
+    }
+
+    pub const fn api_params(self) -> (&'static str, &'static str) {
+        match self {
+            Self::RecentlyUpdated => ("pushed", "desc"),
+            Self::Alphabetical => ("full_name", "asc"),
+            Self::Created => ("created", "desc"),
         }
     }
 }

@@ -117,7 +117,7 @@ pub struct App {
     pub repo_ctx: RepoCtx,
     pub source_ctx: SourceCtx,
 
-    pub repo_cache: HashMap<String, (Instant, Vec<Repo>)>,
+    pub repo_cache: HashMap<(String, RepoSortKey), (Instant, Vec<Repo>)>,
     pub pr_filter: String,
     pub pr_cache: HashMap<String, (Instant, Vec<PR>)>,
     pub(crate) frontpage_cache: HashMap<String, (Instant, (String, String))>,
@@ -505,10 +505,7 @@ impl App {
             Action::SortCycle => {
                 if self.focus == Column::Repos && self.repos_view == ReposView::RepoList {
                     self.repo_sort_key = self.repo_sort_key.next();
-                    self.sort_repos_in_place();
-                    if !self.source_ctx.repos.is_empty() {
-                        self.source_ctx.repo_state.select(Some(0));
-                    }
+                    self.force_load_repos();
                 } else if !matches!(self.repos_view, ReposView::PrList | ReposView::IssueList) {
                     self.sort_key = self.sort_key.next();
                     self.repo_ctx.pr_state.select(Some(0));

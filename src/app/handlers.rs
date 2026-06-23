@@ -1,7 +1,7 @@
 use super::{App, RepoCtx, SourceCtx};
 use crate::types::{
-    CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, PR, Repo, RepoSortKey, RepoView,
-    ReposView, ReviewStatus, SortKey,
+    CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, PR, Repo, RepoView, ReposView,
+    ReviewStatus, SortKey,
 };
 
 impl App {
@@ -31,8 +31,10 @@ impl App {
                 if self.selected_source_owner().as_deref() != Some(&owner) {
                     return;
                 }
-                self.repo_cache
-                    .insert(owner, (std::time::Instant::now(), repos.clone()));
+                self.repo_cache.insert(
+                    (owner, self.repo_sort_key),
+                    (std::time::Instant::now(), repos.clone()),
+                );
                 self.source_ctx.repos_pagination.reset(has_more);
                 self.apply_repos(repos);
                 if self.source_ctx.repo_state.selected().is_some() {
@@ -51,7 +53,10 @@ impl App {
                 }
                 self.source_ctx.repos_pagination.finish(has_more);
                 self.source_ctx.repos.extend(repos);
-                self.sort_repos_in_place();
+                self.repo_cache.insert(
+                    (owner, self.repo_sort_key),
+                    (std::time::Instant::now(), self.source_ctx.repos.clone()),
+                );
                 self.loading = None;
             }
             DataMsg::Prs {
@@ -368,7 +373,6 @@ impl App {
 
     pub(crate) fn apply_repos(&mut self, repos: Vec<Repo>) {
         self.source_ctx.repos = repos;
-        self.sort_repos_in_place();
         self.invalidate_repo();
         self.clamp_repo_selection();
         if self.source_ctx.repo_state.selected().is_none() && !self.visible_repos().is_empty() {
@@ -402,26 +406,6 @@ impl App {
             && !self.source_ctx.source_prs.is_empty()
         {
             self.source_ctx.source_pr_state.select(Some(0));
-        }
-    }
-
-    pub(crate) fn sort_repos_in_place(&mut self) {
-        match self.repo_sort_key {
-            RepoSortKey::RecentlyUpdated => {
-                self.source_ctx
-                    .repos
-                    .sort_by(|a, b| b.pushed_at.cmp(&a.pushed_at));
-            }
-            RepoSortKey::Alphabetical => {
-                self.source_ctx
-                    .repos
-                    .sort_by_cached_key(|r| r.name.to_lowercase());
-            }
-            RepoSortKey::Created => {
-                self.source_ctx
-                    .repos
-                    .sort_by(|a, b| b.created_at.cmp(&a.created_at));
-            }
         }
     }
 
