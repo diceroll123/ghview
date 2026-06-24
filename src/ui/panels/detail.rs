@@ -311,7 +311,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
                 })
                 .collect();
             let list = List::new(items)
-                .highlight_style(list_highlight_style())
+                .highlight_style(list_highlight_style(checks_active))
                 .highlight_symbol("▶ ");
             f.render_stateful_widget(list, list_area, &mut app.repo_ctx.check_runs_state);
             if runs.len() > list_area.height as usize {

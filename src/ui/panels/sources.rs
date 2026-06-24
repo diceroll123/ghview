@@ -63,7 +63,7 @@ pub(crate) fn draw_sources(f: &mut Frame, app: &mut App, area: Rect) {
     let total = visible.len();
     let list = List::new(items)
         .block(block)
-        .highlight_style(list_highlight_style())
+        .highlight_style(list_highlight_style(focused))
         .highlight_symbol("▶ ");
 
     f.render_stateful_widget(list, area, &mut app.source_state);

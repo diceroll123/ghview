@@ -119,6 +119,7 @@ fn pr_state_color(pr: &PR) -> Color {
 /// `repo_override`: `Some(repo_name)` for the per-repo list (all PRs share the same repo,
 /// prefix shows `#N`); `None` for the source-level list (each PR carries its own `pr.repo`,
 /// prefix shows `repo #N`).
+#[allow(clippy::too_many_arguments)]
 fn build_pr_list_items(
     app: &App,
     prs: &[&PR],
@@ -126,11 +127,14 @@ fn build_pr_list_items(
     repo_override: Option<&str>,
     inner_width: usize,
     focused: bool,
+    selected_idx: Option<usize>,
     cols: &PrListCols,
 ) -> Vec<ListItem<'static>> {
     use crate::types::RepoId;
     prs.iter()
-        .map(|pr| {
+        .enumerate()
+        .map(|(i, pr)| {
+            let keep_vivid = focused || selected_idx == Some(i);
             let dimmed = pr.is_dimmed();
             let repo_name = repo_override.unwrap_or(&pr.repo);
             let pr_id = RepoId::new(owner, repo_name).pr(pr.number);
@@ -145,8 +149,13 @@ fn build_pr_list_items(
                 .review_cache
                 .get(&pr_id.repo.key())
                 .and_then(|m| m.get(&pr.number));
-            let (rv_sym, rv_col) =
+            let (rv_sym, rv_col_raw) =
                 review_icon(rv_status, app.repo_ctx.mergeable_states.get(&pr_id));
+            let rv_col = if keep_vivid {
+                rv_col_raw
+            } else {
+                Color::DarkGray
+            };
 
             let left_budget = inner_width.saturating_sub(cols.right_col_width);
             let mut line1_spans: Vec<Span> = if repo_override.is_some() {
@@ -199,6 +208,7 @@ fn build_pr_list_items(
                     .check_summary_cache
                     .get(&pr_id)
                     .map_or((ICON_DOT, Color::DarkGray), |s| (s.icon(), s.color()));
+                let color = if keep_vivid { color } else { Color::DarkGray };
                 line1_spans.push(Span::raw("  "));
                 line1_spans.push(Span::styled(icon, Style::new().fg(color)));
             }
@@ -234,7 +244,11 @@ fn build_pr_list_items(
             let line1 = Line::from(line1_spans);
 
             let state_icon = pr_state_icon(pr.draft, pr.state);
-            let state_col = pr_state_color(pr);
+            let state_col = if keep_vivid {
+                pr_state_color(pr)
+            } else {
+                Color::DarkGray
+            };
             let merge_state_w = mergeable_state_span(app.repo_ctx.mergeable_states.get(&pr_id))
                 .as_ref()
                 .map_or(0, Span::width);
@@ -303,6 +317,7 @@ pub(crate) fn draw_prs(f: &mut Frame, app: &mut App, area: Rect) {
         Some(repo),
         inner_width,
         focused,
+        app.repo_ctx.pr_state.selected(),
         &cols,
     );
 
@@ -336,7 +351,7 @@ pub(crate) fn draw_prs(f: &mut Frame, app: &mut App, area: Rect) {
 
     let total = items.len();
     let list = List::new(items)
-        .highlight_style(list_highlight_style())
+        .highlight_style(list_highlight_style(focused))
         .highlight_symbol("▶ ");
     f.render_stateful_widget(list, body_area, &mut app.repo_ctx.pr_state);
     render_list_scrollbar(
@@ -389,7 +404,16 @@ pub(crate) fn draw_source_prs(f: &mut Frame, app: &mut App, area: Rect) {
     let cols = PrListCols::new(&app.config);
     let owner = app.selected_source_owner().unwrap_or_default();
     let visible_prs = app.visible_source_prs();
-    let items = build_pr_list_items(app, &visible_prs, &owner, None, inner_width, focused, &cols);
+    let items = build_pr_list_items(
+        app,
+        &visible_prs,
+        &owner,
+        None,
+        inner_width,
+        focused,
+        app.source_ctx.source_pr_state.selected(),
+        &cols,
+    );
 
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -413,7 +437,7 @@ pub(crate) fn draw_source_prs(f: &mut Frame, app: &mut App, area: Rect) {
 
     let total = items.len();
     let list = List::new(items)
-        .highlight_style(list_highlight_style())
+        .highlight_style(list_highlight_style(focused))
         .highlight_symbol("▶ ");
     f.render_stateful_widget(list, body_area, &mut app.source_ctx.source_pr_state);
     render_list_scrollbar(
@@ -509,11 +533,11 @@ pub(crate) fn draw_source_issues(f: &mut Frame, app: &mut App, area: Rect) {
         .map(|(i, issue)| {
             let is_selected = selected_idx == Some(i);
             let hl = if is_selected {
-                list_highlight_style()
+                list_highlight_style(focused)
             } else {
                 Style::default()
             };
-            let cap_bg = if is_selected {
+            let cap_bg = if focused && is_selected {
                 Color::Rgb(50, 60, 80)
             } else {
                 Color::Reset

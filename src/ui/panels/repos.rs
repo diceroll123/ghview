@@ -236,7 +236,7 @@ pub(crate) fn draw_repos(f: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
     let list = List::new(items)
-        .highlight_style(list_highlight_style())
+        .highlight_style(list_highlight_style(focused))
         .highlight_symbol("▶ ");
 
     f.render_stateful_widget(list, body_area, &mut app.source_ctx.repo_state);
@@ -400,11 +400,11 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
         .map(|(i, issue)| {
             let is_selected = selected_idx == Some(i);
             let hl = if is_selected {
-                list_highlight_style()
+                list_highlight_style(focused)
             } else {
                 Style::default()
             };
-            let cap_bg = if is_selected {
+            let cap_bg = if focused && is_selected {
                 Color::Rgb(50, 60, 80)
             } else {
                 Color::Reset

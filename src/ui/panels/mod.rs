@@ -48,11 +48,15 @@ pub(crate) fn panel_block(title: String, style: Style) -> Block<'static> {
         .border_style(style)
 }
 
-pub(crate) fn list_highlight_style() -> Style {
-    Style::new()
-        .bg(Color::Rgb(50, 60, 80))
-        .fg(Color::White)
-        .add_modifier(Modifier::BOLD)
+pub(crate) fn list_highlight_style(focused: bool) -> Style {
+    if focused {
+        Style::new()
+            .bg(Color::Rgb(50, 60, 80))
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::new().add_modifier(Modifier::BOLD)
+    }
 }
 
 pub(crate) fn dim_italic(text: &'static str) -> Paragraph<'static> {
