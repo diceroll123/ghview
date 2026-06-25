@@ -8,8 +8,8 @@ use crate::{
         fetch_source_issues, fetch_source_prs, fetch_sources, fetch_viewer_permission, rerun_check,
     },
     types::{
-        Column, DataMsg, DetailSection, LoadingKind, PR, PrAction, PrId, RepoId, RepoView,
-        ReposView, Source,
+        Column, DataMsg, DetailSection, LoadingKind, PR, PrAction, RepoId, RepoView, ReposView,
+        Source,
     },
 };
 use ratatui::widgets::ListState;
@@ -530,60 +530,95 @@ impl App {
         if !self.config.ui.prefetch_pr_details {
             return;
         }
-        let prs_to_fetch: Vec<PrId> = if self.repos_view == ReposView::PrList {
+
+        // Cap concurrent gh subprocesses to avoid overwhelming the system (especially in
+        // containers where running dozens of gh processes at once causes silent failures).
+        let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(5));
+
+        if self.repos_view == ReposView::PrList {
             let Some(source_owner) = self.selected_source_owner() else {
                 return;
             };
-            self.source_ctx
-                .source_prs
-                .iter()
-                .filter_map(|pr| {
-                    let actual_owner = if pr.repo_owner.is_empty() {
-                        source_owner.clone()
-                    } else {
-                        pr.repo_owner.clone()
-                    };
-                    let id = RepoId::new(actual_owner, pr.repo.clone()).pr(pr.number);
-                    (!self.repo_ctx.mergeable_states.contains_key(&id)).then_some(id)
-                })
-                .collect()
-        } else {
-            let Some(rid) = self.selected_owner_repo() else {
-                return;
-            };
-            self.repo_ctx
-                .prs
-                .iter()
-                .filter_map(|pr| {
-                    let id = rid.clone().pr(pr.number);
-                    (!self.repo_ctx.mergeable_states.contains_key(&id)).then_some(id)
-                })
-                .collect()
+            for pr in &self.source_ctx.source_prs {
+                let actual_owner = if pr.repo_owner.is_empty() {
+                    source_owner.clone()
+                } else {
+                    pr.repo_owner.clone()
+                };
+                let pr_id = RepoId::new(actual_owner, pr.repo.clone()).pr(pr.number);
+                if self.repo_ctx.mergeable_states.contains_key(&pr_id) {
+                    continue;
+                }
+                let tx = self.tx.clone();
+                let sem = sem.clone();
+                let pr_number = pr_id.number;
+                tokio::spawn(async move {
+                    let _permit = sem.acquire_owned().await.unwrap();
+                    let (body, mergeable_state, additions, deletions, sha) =
+                        fetch_pr_body(&pr_id.repo, pr_number)
+                            .await
+                            .unwrap_or_default();
+                    let _ = tx.send(DataMsg::PrBody {
+                        pr: pr_id.repo.clone().pr(pr_number),
+                        body,
+                        mergeable_state,
+                        additions,
+                        deletions,
+                    });
+                    if !sha.is_empty() {
+                        let runs = fetch_check_runs(&pr_id.repo, &sha).await;
+                        let _ = tx.send(DataMsg::CheckRuns {
+                            pr: pr_id.repo.pr(pr_number),
+                            runs,
+                        });
+                    }
+                });
+            }
+            return;
+        }
+
+        let Some(rid) = self.selected_owner_repo() else {
+            return;
         };
 
-        for pr_id in prs_to_fetch {
-            let tx = self.tx.clone();
-            let pr_number = pr_id.number;
-            tokio::spawn(async move {
-                let (body, mergeable_state, additions, deletions, sha) =
-                    fetch_pr_body(&pr_id.repo, pr_number)
-                        .await
-                        .unwrap_or_default();
-                let _ = tx.send(DataMsg::PrBody {
-                    pr: pr_id.repo.clone().pr(pr_number),
-                    body,
-                    mergeable_state,
-                    additions,
-                    deletions,
-                });
-                if !sha.is_empty() {
+        for pr in &self.repo_ctx.prs {
+            let id = rid.clone().pr(pr.number);
+
+            // The list API already returns head_sha, so fetch check runs immediately without
+            // waiting for the body fetch to complete.
+            if !pr.head_sha.is_empty() && !self.repo_ctx.check_summary_cache.contains_key(&id) {
+                let tx = self.tx.clone();
+                let pr_id = id.clone();
+                let sha = pr.head_sha.clone();
+                let sem = sem.clone();
+                tokio::spawn(async move {
+                    let _permit = sem.acquire_owned().await.unwrap();
                     let runs = fetch_check_runs(&pr_id.repo, &sha).await;
-                    let _ = tx.send(DataMsg::CheckRuns {
+                    let _ = tx.send(DataMsg::CheckRuns { pr: pr_id, runs });
+                });
+            }
+
+            // Fetch body, diff stats, and mergeable state.
+            if !self.repo_ctx.mergeable_states.contains_key(&id) {
+                let tx = self.tx.clone();
+                let pr_id = id;
+                let pr_number = pr.number;
+                let sem = sem.clone();
+                tokio::spawn(async move {
+                    let _permit = sem.acquire_owned().await.unwrap();
+                    let (body, mergeable_state, additions, deletions, _) =
+                        fetch_pr_body(&pr_id.repo, pr_number)
+                            .await
+                            .unwrap_or_default();
+                    let _ = tx.send(DataMsg::PrBody {
                         pr: pr_id.repo.pr(pr_number),
-                        runs,
+                        body,
+                        mergeable_state,
+                        additions,
+                        deletions,
                     });
-                }
-            });
+                });
+            }
         }
     }
 
