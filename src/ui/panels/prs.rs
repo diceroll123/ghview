@@ -223,6 +223,15 @@ fn build_pr_list_items(
                     Some((add_span, del_span)) => {
                         let content_w = add_span.width() + 1 + del_span.width();
                         let pad = cols.diff_col.saturating_sub(content_w);
+                        let (add_span, del_span) = if keep_vivid {
+                            (add_span, del_span)
+                        } else {
+                            let dim = Style::new().fg(Color::DarkGray);
+                            (
+                                Span::styled(add_span.content, dim),
+                                Span::styled(del_span.content, dim),
+                            )
+                        };
                         line1_spans.extend([add_span, Span::raw(" "), del_span, gap_span(pad)]);
                     }
                 }
@@ -260,6 +269,11 @@ fn build_pr_list_items(
                 Span::raw(" "),
             ];
             if let Some(s) = mergeable_state_span(app.repo_ctx.mergeable_states.get(&pr_id)) {
+                let s = if keep_vivid {
+                    s
+                } else {
+                    Span::styled(s.content, Style::new().fg(Color::DarkGray))
+                };
                 line2_spans.push(s);
             }
             line2_spans.push(Span::styled(title2_text, base_style));
