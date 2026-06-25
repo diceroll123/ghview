@@ -5,24 +5,29 @@ duration_secs = 600
 [ui]
 # UI tick rate in milliseconds.
 tick_ms = 100
-# Default repo sort order: "updated" (most recently pushed) or "alpha".
+# Default repo sort order: "updated" (most recently pushed), "alpha", or "created".
 repo_sort = "updated"
-# Items per page when fetching lists. 0 = dynamic (~1.5× terminal height, clamped 10–50). Max 100.
+# Items per page when fetching lists. 0 = dynamic (~1.5x terminal height, clamped 10-50). Max 100.
 # per_page = 0
 # Merge method used by the m keybinding: "squash" (default), "merge", or "rebase".
 # merge_method = "squash"
+# Use --auto when merging PRs (enables auto-merge if checks haven't passed yet).
+# Set to false to merge immediately instead.
+# merge_auto = true
 # Directory to cd into before running `gh pr checkout`. Supports ~.
 # checkout_dir = "~/code"
 # Extra columns in the repos list. Default: ["stars"].
-# Supported: "stars", "forks", "issues", "visibility", "last_push"
+# Supported: "stars", "forks", "issues", "visibility", "last_push", "created"
 # repo_columns = ["stars"]
-# Extra columns in the PR list. Default: ["diff_stats", "updated_at", "age"].
-# Supported: "diff_stats", "updated_at", "age"
-# pr_columns = ["diff_stats", "updated_at", "age"]
-# Default view when entering a repo: "prs", "frontpage" (README + stats), or "issues".
+# Extra columns in the PR list. Default: ["comments", "check_summary", "diff_stats", "updated_at", "age"].
+# Supported: "comments", "check_summary", "diff_stats", "updated_at", "age"
+# pr_columns = ["comments", "check_summary", "diff_stats", "updated_at", "age"]
+# Default view when entering a repo: "prs" (default), "frontpage" (README + stats), or "issues".
 # default_repo_view = "prs"
+# Default view for the Browse column: "repos" (default), "prs", or "issues".
+# default_repos_view = "repos"
 # Pre-fetch diff stats, check summary, and mergeable state for all PRs when the list loads.
-# Costs 1–2 extra API calls per PR. Disable if you hit rate limits.
+# Costs 1-2 extra API calls per PR. Disable if you hit rate limits.
 # prefetch_pr_details = true
 # How often to refresh the rate-limit display, in seconds. Minimum 10.
 # rate_limit_refresh_secs = 60
@@ -52,7 +57,7 @@ users = []
 # Built-in action names
 # ─────────────────────
 # Universal:   up, down, left, right, top, bottom, quit, help, refresh,
-#              filter, sort, openBrowser, openIssues, copyUrl, copyNumber
+#              filter, sort, openBrowser, openIssues, copyUrl
 # PRs only:    approve, merge, checkout, comment, diff, close, reopen,
 #              ready, dependabot
 #
@@ -68,7 +73,7 @@ users = []
 # [[keybindings.repos]]
 # key         = "t"
 # name        = "clone & open shell"
-# command     = "gh repo clone {owner}/{repo} && cd {repo} && $SHELL"
+# command     = "gh repo clone {owner}/{repo} /tmp/{repo} && cd /tmp/{repo} && $SHELL"
 # interactive = true
 
 # PR command variables: {owner}, {org}, {repo}, {pr_number}, {author},
@@ -82,10 +87,10 @@ users = []
 # [[keybindings.prs]]
 # key         = "e"
 # name        = "edit in $EDITOR"
-# command     = "gh pr checkout {pr_number} -R {owner}/{repo} && $EDITOR"
+# command     = "gh pr checkout {pr_number} -R {owner}/{repo} && cd {repo} && $EDITOR"
 # interactive = true
 #
 # [[keybindings.prs]]
-# key     = "D"
-# name    = "delete branch after merge"
-# builtin = "merge"
+# key     = "M"
+# name    = "merge and delete branch"
+# command = "gh pr merge {pr_number} -R {owner}/{repo} --squash --delete-branch"

@@ -50,7 +50,7 @@ pub struct CacheConfig {
 pub struct UiConfig {
     /// Milliseconds between UI ticks.
     pub tick_ms: u64,
-    /// Default sort for the Browse column: "`recently_updated`" (default) or "alphabetical".
+    /// Default sort for the Browse column: "updated" (default), "alpha", or "created".
     pub repo_sort: crate::types::RepoSortKey,
     /// Directory to cd into before running `gh pr checkout`. Supports ~.
     pub checkout_dir: Option<String>,
