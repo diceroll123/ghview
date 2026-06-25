@@ -304,8 +304,10 @@ impl App {
                 self.loading = None;
             }
             DataMsg::RateLimit { remaining, limit } => {
+                if self.rate_limit != Some((remaining, limit)) {
+                    self.rate_limit_updated_at = Some(std::time::Instant::now());
+                }
                 self.rate_limit = Some((remaining, limit));
-                self.rate_limit_updated_at = Some(std::time::Instant::now());
             }
             DataMsg::ViewerPermission { repo, can_push } => {
                 if self.current_repo_key().as_deref() == Some(repo.key().as_str()) {

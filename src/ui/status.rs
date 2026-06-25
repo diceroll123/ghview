@@ -65,28 +65,26 @@ pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout
         };
 
     if let Some(rl) = rl_text {
-        let rl_color = if let Some((rem, _)) = app.rate_limit {
-            let target: (u8, u8, u8) = if rem < 100 {
-                (180, 30, 30)
+        let color = if let Some((rem, _)) = app.rate_limit {
+            if rem < 100 {
+                Color::Rgb(180, 30, 30)
             } else if rem < 500 {
-                (160, 130, 0)
+                Color::Rgb(160, 130, 0)
             } else {
-                (85, 85, 85)
-            };
-            let flash = app.config.ui.rate_limit_flash_secs;
-            let t = if flash > 0.0 {
-                app.rate_limit_updated_at
-                    .map(|at| (at.elapsed().as_secs_f32() / flash).min(1.0))
-                    .unwrap_or(1.0)
-            } else {
-                1.0
-            };
-            let r = (255.0 + (target.0 as f32 - 255.0) * t) as u8;
-            let g = (255.0 + (target.1 as f32 - 255.0) * t) as u8;
-            let b = (0.0 + (target.2 as f32) * t) as u8;
-            Color::Rgb(r, g, b)
+                Color::Rgb(85, 85, 85)
+            }
         } else {
             Color::DarkGray
+        };
+        const SHIMMER_SECS: f32 = 2.0;
+        let phase = app
+            .rate_limit_updated_at
+            .map(|at| (at.elapsed().as_secs_f32() / SHIMMER_SECS).min(1.0))
+            .unwrap_or(1.0);
+        let rl_spans: Vec<Span> = if phase < 1.0 {
+            tui_shimmer::shimmer_spans_with_style_at_phase(&rl, Style::new().fg(color), phase)
+        } else {
+            vec![Span::styled(rl, Style::new().fg(color))]
         };
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -100,10 +98,7 @@ pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout
             .alignment(hint_align),
             chunks[0],
         );
-        f.render_widget(
-            Paragraph::new(Line::from(Span::styled(rl, Style::new().fg(rl_color)))),
-            chunks[1],
-        );
+        f.render_widget(Paragraph::new(Line::from(rl_spans)), chunks[1]);
     } else {
         f.render_widget(
             Paragraph::new(Line::from(vec![
