@@ -18,7 +18,7 @@ repo_sort = "updated"
 # checkout_dir = "~/code"
 # Extra columns in the repos list. Default: ["stars"].
 # Supported: "stars", "forks", "issues", "visibility", "last_push", "created"
-# repo_columns = ["stars"]
+# repo_columns = ["last_push"]
 # Extra columns in the PR list. Default: ["comments", "check_summary", "diff_stats", "updated_at", "age"].
 # Supported: "comments", "check_summary", "diff_stats", "updated_at", "age"
 # pr_columns = ["comments", "check_summary", "diff_stats", "updated_at", "age"]

@@ -244,7 +244,7 @@ impl Default for UiConfig {
             tick_ms: DEFAULT_TICK_MS,
             repo_sort: crate::types::RepoSortKey::default(),
             checkout_dir: None,
-            repo_columns: vec![crate::types::RepoColumn::Stars],
+            repo_columns: vec![crate::types::RepoColumn::LastPush],
             pr_columns: vec![
                 crate::types::PrColumn::Comments,
                 crate::types::PrColumn::CheckSummary,
