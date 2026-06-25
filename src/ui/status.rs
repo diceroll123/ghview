@@ -196,7 +196,18 @@ fn hint_entries(app: &App, width: usize) -> String {
         if pr_column && !app.action_permitted(action) {
             return None;
         }
-        find_binding(action).map(|b| format!("{} {}", b.display, b.label))
+        find_binding(action).map(|b| {
+            let label = if action == Action::Merge {
+                if app.merge_uses_auto() {
+                    "auto-merge"
+                } else {
+                    "merge"
+                }
+            } else {
+                b.label
+            };
+            format!("{} {}", b.display, label)
+        })
     }));
     for kb in &app.config.keybindings.universal {
         if let Some(name) = &kb.name {

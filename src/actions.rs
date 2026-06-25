@@ -16,17 +16,15 @@ pub async fn approve(pr: &PrId) -> Result<()> {
     .await
 }
 
-pub async fn merge(pr: &PrId, method: crate::config::MergeMethod) -> Result<()> {
-    run_silent(&[
-        "pr",
-        "merge",
-        &pr.number.to_string(),
-        "-R",
-        &pr.repo.to_string(),
-        "--auto",
-        method.flag(),
-    ])
-    .await
+pub async fn merge(pr: &PrId, method: crate::config::MergeMethod, auto: bool) -> Result<()> {
+    let number = pr.number.to_string();
+    let repo = pr.repo.to_string();
+    let mut args = vec!["pr", "merge", &number, "-R", &repo];
+    if auto {
+        args.push("--auto");
+    }
+    args.push(method.flag());
+    run_silent(&args).await
 }
 
 pub async fn close_pr(pr: &PrId) -> Result<()> {

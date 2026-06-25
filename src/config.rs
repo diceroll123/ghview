@@ -67,6 +67,9 @@ pub struct UiConfig {
     pub per_page: u32,
     /// Merge method used by the `m` keybinding: "squash", "merge", or "rebase".
     pub merge_method: MergeMethod,
+    /// Use `--auto` when merging PRs (enables auto-merge if checks haven't passed yet).
+    /// Set to false to merge immediately instead.
+    pub merge_auto: bool,
     /// Pre-fetch diff stats, check summary, and mergeable state for all PRs on load.
     pub prefetch_pr_details: bool,
     /// Duration in seconds of the rate-limit flash animation. Set to 0 to disable.
@@ -256,6 +259,7 @@ impl Default for UiConfig {
             default_repos_view: crate::types::ReposView::default(),
             per_page: 0,
             merge_method: MergeMethod::default(),
+            merge_auto: true,
             prefetch_pr_details: true,
             rate_limit_flash_secs: DEFAULT_RATE_LIMIT_FLASH_SECS,
             rate_limit_refresh_secs: DEFAULT_RATE_LIMIT_REFRESH_SECS,

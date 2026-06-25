@@ -47,6 +47,8 @@ pub struct Repo {
     pub has_pull_requests: bool,
     #[serde(default)]
     pub archived: bool,
+    #[serde(default)]
+    pub allow_auto_merge: bool,
 }
 
 fn bool_true() -> bool {
@@ -390,7 +392,7 @@ pub enum PrColumn {
     CheckSummary,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrAction {
     Approve,
     Merge,
@@ -403,7 +405,7 @@ impl PrAction {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Approve => "approve",
-            Self::Merge => "merge",
+            Self::Merge => "auto-merge",
             Self::Close => "close",
             Self::Reopen => "reopen",
             Self::MarkReady => "ready",
@@ -467,7 +469,7 @@ mod tests {
     #[test]
     fn pr_action_labels_all_variants() {
         assert_eq!(PrAction::Approve.label(), "approve");
-        assert_eq!(PrAction::Merge.label(), "merge");
+        assert_eq!(PrAction::Merge.label(), "auto-merge");
         assert_eq!(PrAction::Close.label(), "close");
         assert_eq!(PrAction::Reopen.label(), "reopen");
         assert_eq!(PrAction::MarkReady.label(), "ready");

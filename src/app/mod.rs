@@ -268,6 +268,17 @@ impl App {
             .and_then(|i| vr.get(i).map(|r| r.name.as_str()))
     }
 
+    pub fn merge_uses_auto(&self) -> bool {
+        if !self.config.ui.merge_auto {
+            return false;
+        }
+        self.source_ctx
+            .repos
+            .iter()
+            .find(|r| Some(r.name.as_str()) == self.selected_repo())
+            .is_some_and(|r| r.allow_auto_merge)
+    }
+
     pub fn selected_repo_has_issues(&self) -> bool {
         let vr = self.visible_repos();
         self.source_ctx

@@ -140,7 +140,7 @@ pub static PRS_BINDINGS: &[DefaultBinding] = &[
         keys: &[KeyCode::Char('m')],
         display: "m",
         action: Action::Merge,
-        label: "merge",
+        label: "auto-merge",
     },
     DefaultBinding {
         keys: &[KeyCode::Char('C')],

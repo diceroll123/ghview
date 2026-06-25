@@ -804,18 +804,31 @@ impl App {
         };
 
         let tx = self.tx.clone();
-        self.loading = Some(LoadingKind::Action(action.label().into()));
+        let use_auto = self.merge_uses_auto();
+        let action_label = if action == PrAction::Merge && !use_auto {
+            "merge"
+        } else {
+            action.label()
+        };
+        self.loading = Some(LoadingKind::Action(action_label.into()));
 
         let merge_method = self.config.ui.merge_method;
         tokio::spawn(async move {
             let result = match action {
                 PrAction::Approve => actions::approve(&pr_id).await,
-                PrAction::Merge => actions::merge(&pr_id, merge_method).await,
+                PrAction::Merge => actions::merge(&pr_id, merge_method, use_auto).await,
                 PrAction::Close => actions::close_pr(&pr_id).await,
                 PrAction::Reopen => actions::reopen_pr(&pr_id).await,
                 PrAction::MarkReady => actions::mark_ready(&pr_id).await,
             }
-            .map(|()| Some(action.success_msg(pr_id.number)));
+            .map(|()| {
+                let msg = if action == PrAction::Merge && use_auto {
+                    format!("✓ Auto-merge enabled #{}", pr_id.number)
+                } else {
+                    action.success_msg(pr_id.number)
+                };
+                Some(msg)
+            });
             match result {
                 Ok(msg) => {
                     let _ = tx.send(DataMsg::ActionDone(msg));

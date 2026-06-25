@@ -28,6 +28,7 @@ struct RepoRaw {
     has_pull_requests: bool,
     #[serde(default)]
     archived: bool,
+    allow_auto_merge: Option<bool>,
 }
 
 fn bool_true() -> bool {
@@ -148,7 +149,7 @@ pub async fn fetch_repos(
     let (sort, direction) = sort_key.api_params();
     let endpoint =
         format!("{base}?per_page={per_page}&page={page}&sort={sort}&direction={direction}");
-    let jq = ".[] | {name, language, pushed_at, created_at, owner_login: .owner.login, stargazers_count, forks_count, open_issues_count, visibility, has_issues, has_pull_requests, archived}";
+    let jq = ".[] | {name, language, pushed_at, created_at, owner_login: .owner.login, stargazers_count, forks_count, open_issues_count, visibility, has_issues, has_pull_requests, archived, allow_auto_merge}";
     let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
     let repos: Vec<Repo> = raw
         .lines()
@@ -167,6 +168,7 @@ pub async fn fetch_repos(
             has_issues: r.has_issues,
             has_pull_requests: r.has_pull_requests,
             archived: r.archived,
+            allow_auto_merge: r.allow_auto_merge.unwrap_or(false),
         })
         .collect();
     debug!("fetch_repos: {} -> {} repos", source.owner(), repos.len());
