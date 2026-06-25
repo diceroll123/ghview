@@ -71,6 +71,7 @@ impl App {
                     self.pr_cache
                         .insert(key, (std::time::Instant::now(), prs.clone()));
                     self.apply_prs(prs);
+                    self.trigger_review_and_check_fetches();
                     self.trigger_prefetch_pr_details();
                     // PRs are also fetched in the background when viewing Frontpage/Issues
                     // to keep the tab count current. Only clear the loading indicator when
