@@ -3,6 +3,7 @@ use crate::types::{
     CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, PR, Repo, RepoView, ReposView,
     ReviewStatus, SortKey,
 };
+use log::debug;
 
 impl App {
     pub fn handle_data(&mut self, msg: DataMsg) {
@@ -351,6 +352,7 @@ impl App {
                 self.loading = None;
             }
             DataMsg::Error(e) => {
+                debug!("error: {e}");
                 self.set_status(format!("Error: {e}"));
                 self.loading = None;
             }
