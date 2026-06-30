@@ -122,6 +122,7 @@ pub struct App {
     pub pr_filter: String,
     pub pr_cache: HashMap<String, (Instant, Vec<PR>)>,
     pub(crate) frontpage_cache: HashMap<String, (Instant, (String, String))>,
+    pub(crate) permission_cache: HashMap<String, (Instant, (bool, bool))>,
 
     pub(crate) review_cache: HashMap<String, HashMap<u64, ReviewStatus>>,
 
@@ -194,6 +195,7 @@ impl App {
             source_prs_cache: HashMap::new(),
             source_issues_cache: HashMap::new(),
             frontpage_cache: HashMap::new(),
+            permission_cache: HashMap::new(),
             terminal_height: 40,
             should_quit: false,
             tx,

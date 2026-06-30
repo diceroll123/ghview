@@ -316,6 +316,10 @@ impl App {
                 can_push,
                 allow_auto_merge,
             } => {
+                self.permission_cache.insert(
+                    repo.key(),
+                    (std::time::Instant::now(), (can_push, allow_auto_merge)),
+                );
                 if self.current_repo_key().as_deref() == Some(repo.key().as_str()) {
                     self.repo_ctx.viewer_can_push = Some(can_push);
                     self.repo_ctx.allow_auto_merge = Some(allow_auto_merge);

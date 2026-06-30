@@ -358,16 +358,26 @@ impl App {
         self.invalidate_repo();
         let key = rid.key();
         {
-            let repo_id = rid.clone();
-            let tx = self.tx.clone();
-            tokio::spawn(async move {
-                let (can_push, allow_auto_merge) = fetch_viewer_permission(&repo_id).await;
-                let _ = tx.send(DataMsg::ViewerPermission {
-                    repo: repo_id,
-                    can_push,
-                    allow_auto_merge,
+            let needs_fetch = match self.permission_cache.get(&key).copied() {
+                Some((fetched_at, (can_push, allow_auto_merge))) => {
+                    self.repo_ctx.viewer_can_push = Some(can_push);
+                    self.repo_ctx.allow_auto_merge = Some(allow_auto_merge);
+                    fetched_at.elapsed() >= self.config.cache_ttl()
+                }
+                None => true,
+            };
+            if needs_fetch {
+                let repo_id = rid.clone();
+                let tx = self.tx.clone();
+                tokio::spawn(async move {
+                    let (can_push, allow_auto_merge) = fetch_viewer_permission(&repo_id).await;
+                    let _ = tx.send(DataMsg::ViewerPermission {
+                        repo: repo_id,
+                        can_push,
+                        allow_auto_merge,
+                    });
                 });
-            });
+            }
         }
 
         if let Some((fetched_at, cached)) = self.pr_cache.get(&key).cloned() {
