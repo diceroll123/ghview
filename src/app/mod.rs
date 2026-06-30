@@ -272,10 +272,18 @@ impl App {
         if !self.config.ui.merge_auto {
             return false;
         }
+        let repo_name = if self.repos_view == ReposView::PrList {
+            self.selected_pr().map(|pr| pr.repo.as_str())
+        } else {
+            self.selected_repo()
+        };
+        let Some(repo_name) = repo_name else {
+            return false;
+        };
         self.source_ctx
             .repos
             .iter()
-            .find(|r| Some(r.name.as_str()) == self.selected_repo())
+            .find(|r| r.name == repo_name)
             .is_some_and(|r| r.allow_auto_merge)
     }
 
