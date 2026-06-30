@@ -12,11 +12,11 @@ mod ui;
 use app::{App, InteractiveCmd, InteractiveKind, run_event_loop};
 use clap::Parser;
 use color_eyre::Result;
-use log::debug;
 use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use log::debug;
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 use tokio::sync::mpsc::unbounded_channel;
