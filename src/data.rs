@@ -37,13 +37,16 @@ fn bool_true() -> bool {
 
 /// Run a `gh` command, return stdout as String, bail on non-zero exit.
 async fn gh_run(args: &[&str]) -> Result<String> {
+    debug!("gh {}", args.join(" "));
     let out = Command::new("gh")
         .args(args)
         .output()
         .await
         .context("failed to run gh")?;
     if !out.status.success() {
-        bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        debug!("gh {} error: {}", args.join(" "), stderr.trim());
+        bail!("{}", stderr.trim());
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
@@ -245,6 +248,7 @@ pub async fn fetch_source_prs(
 pub async fn fetch_review_status(repo: &RepoId, pr_number: u64) -> ReviewStatus {
     debug!("fetch_review_status: {repo}#{pr_number}");
     let endpoint = format!("{}/pulls/{pr_number}/reviews?per_page=100", repo.api_base());
+    debug!("gh api {} --jq .[] | .state", endpoint);
     let Ok(out) = Command::new("gh")
         .args(["api", &endpoint, "--jq", ".[] | .state"])
         .output()
@@ -289,6 +293,8 @@ pub async fn fetch_check_runs(repo: &RepoId, sha: &str) -> Vec<CheckRun> {
     let workflows_endpoint = format!("{base}/actions/runs?head_sha={sha}");
     let workflows_jq = r"[.workflow_runs[] | {name, event, suite_id: .check_suite_id}]";
 
+    debug!("gh api {runs_endpoint}");
+    debug!("gh api {workflows_endpoint}");
     let (runs_out, wf_out) = tokio::join!(
         Command::new("gh")
             .args(["api", &runs_endpoint, "--jq", runs_jq])
@@ -323,9 +329,14 @@ pub async fn fetch_check_runs(repo: &RepoId, sha: &str) -> Vec<CheckRun> {
     }
 
     let Ok(out) = runs_out else {
+        debug!("gh api {runs_endpoint} error: spawn failed");
         return Vec::new();
     };
     if !out.status.success() {
+        debug!(
+            "gh api {runs_endpoint} error: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
         return Vec::new();
     }
     let text = String::from_utf8_lossy(&out.stdout);
@@ -389,6 +400,7 @@ pub async fn fetch_rate_limit() -> Result<(u32, u32)> {
 }
 
 pub async fn fetch_diff(repo: &RepoId, pr: u64) -> Result<String> {
+    debug!("gh pr diff {pr} -R {repo}");
     let out = Command::new("gh")
         .args(["pr", "diff", &pr.to_string(), "-R", &repo.to_string()])
         .env("GH_PAGER", "")
@@ -397,7 +409,9 @@ pub async fn fetch_diff(repo: &RepoId, pr: u64) -> Result<String> {
         .await
         .context("failed to run gh")?;
     if !out.status.success() {
-        bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        debug!("gh pr diff {pr} -R {repo} error: {}", stderr.trim());
+        bail!("{}", stderr.trim());
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
@@ -541,6 +555,7 @@ pub async fn fetch_pr_body(
 
 pub async fn fetch_viewer_permission(repo: &RepoId) -> bool {
     let endpoint = repo.api_base();
+    debug!("gh api {endpoint} --jq .permissions");
     let Ok(out) = Command::new("gh")
         .args([
             "api",
@@ -551,7 +566,14 @@ pub async fn fetch_viewer_permission(repo: &RepoId) -> bool {
         .output()
         .await
     else {
+        debug!("gh api {endpoint} error: spawn failed");
         return false;
     };
+    if !out.status.success() {
+        debug!(
+            "gh api {endpoint} error: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
     out.status.success() && out.stdout.starts_with(b"true")
 }

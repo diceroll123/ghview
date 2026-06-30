@@ -12,6 +12,7 @@ mod ui;
 use app::{App, InteractiveCmd, InteractiveKind, run_event_loop};
 use clap::Parser;
 use color_eyre::Result;
+use log::debug;
 use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
@@ -82,6 +83,7 @@ async fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Resul
 
         let mut child = match kind {
             InteractiveKind::Checkout => {
+                debug!("gh pr checkout {pr_number} -R {repo} (interactive)");
                 let mut cmd = std::process::Command::new("gh");
                 cmd.args([
                     "pr",
@@ -103,10 +105,13 @@ async fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Resul
                 "-R",
                 &repo.to_string(),
             ])?,
-            InteractiveKind::Custom(cmd) => std::process::Command::new("sh")
-                .arg("-c")
-                .arg(&cmd)
-                .spawn()?,
+            InteractiveKind::Custom(cmd) => {
+                debug!("sh -c {cmd} (interactive)");
+                std::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(&cmd)
+                    .spawn()?
+            }
         };
         let _ = child.wait();
 

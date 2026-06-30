@@ -4,6 +4,7 @@ use crate::{
     config::{CheckContext, IssueContext, Keybinding, PrContext, RepoContext},
     types::{DataMsg, RepoId, RepoView, ReposView},
 };
+use log::debug;
 
 pub(super) enum KbOutput {
     Silent,
@@ -16,7 +17,8 @@ fn copy_to_clipboard(text: &str) {
     } else {
         "xclip"
     };
-    let _ = std::process::Command::new(cmd)
+    debug!("{cmd} (clipboard)");
+    let result = std::process::Command::new(cmd)
         .stdin(std::process::Stdio::piped())
         .spawn()
         .and_then(|mut c| {
@@ -26,6 +28,9 @@ fn copy_to_clipboard(text: &str) {
             }
             c.wait()
         });
+    if let Err(e) = result {
+        debug!("{cmd} error: {e}");
+    }
 }
 
 impl App {
@@ -34,6 +39,7 @@ impl App {
         self.loading = Some(LoadingKind::Action(name));
         let tx = self.tx.clone();
         tokio::spawn(async move {
+            debug!("sh -c {cmd}");
             let out = tokio::process::Command::new("sh")
                 .arg("-c")
                 .arg(&cmd)
@@ -44,15 +50,27 @@ impl App {
                     Ok(o) if o.status.success() => DataMsg::ActionDone(Some(
                         String::from_utf8_lossy(&o.stdout).trim().to_string(),
                     )),
-                    Ok(o) => DataMsg::Error(String::from_utf8_lossy(&o.stderr).trim().to_string()),
-                    Err(e) => DataMsg::Error(e.to_string()),
+                    Ok(o) => {
+                        let stderr = String::from_utf8_lossy(&o.stderr);
+                        debug!("sh -c {cmd} error: {}", stderr.trim());
+                        DataMsg::Error(stderr.trim().to_string())
+                    }
+                    Err(e) => {
+                        debug!("sh -c {cmd} error: {e}");
+                        DataMsg::Error(e.to_string())
+                    }
                 },
                 KbOutput::Silent => match out {
                     Ok(o) if o.status.success() => DataMsg::ActionDone(None),
-                    Ok(o) => DataMsg::ActionDone(Some(
-                        String::from_utf8_lossy(&o.stderr).trim().to_string(),
-                    )),
-                    Err(e) => DataMsg::ActionDone(Some(e.to_string())),
+                    Ok(o) => {
+                        let stderr = String::from_utf8_lossy(&o.stderr);
+                        debug!("sh -c {cmd} error: {}", stderr.trim());
+                        DataMsg::ActionDone(Some(stderr.trim().to_string()))
+                    }
+                    Err(e) => {
+                        debug!("sh -c {cmd} error: {e}");
+                        DataMsg::ActionDone(Some(e.to_string()))
+                    }
                 },
             };
             let _ = tx.send(msg);
