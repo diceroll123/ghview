@@ -36,12 +36,12 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     if args.debug {
         let log_file = std::fs::File::create("debug.log")?;
-        let config = simplelog::ConfigBuilder::new()
-            .set_time_format_custom(time::macros::format_description!(
-                "[hour]:[minute]:[second].[subsecond digits:3]"
-            ))
-            .build();
-        simplelog::WriteLogger::init(simplelog::LevelFilter::Debug, config, log_file).ok();
+        let mut builder = simplelog::ConfigBuilder::new();
+        builder.set_time_format_custom(time::macros::format_description!(
+            "[hour]:[minute]:[second].[subsecond digits:3]"
+        ));
+        let _ = builder.set_time_offset_to_local();
+        simplelog::WriteLogger::init(simplelog::LevelFilter::Debug, builder.build(), log_file).ok();
     }
 
     let mut stdout = io::stdout();
