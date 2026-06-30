@@ -1,4 +1,5 @@
 use anyhow::{Result, bail};
+use log::debug;
 use std::process::Stdio;
 use tokio::process::Command;
 
@@ -67,6 +68,7 @@ pub fn open_url(url: &str) -> Result<()> {
     } else {
         "xdg-open"
     };
+    debug!("{cmd} {url}");
     tokio::process::Command::new(cmd)
         .arg(url)
         .spawn()
@@ -90,6 +92,7 @@ pub async fn post_comment(pr: &PrId, body: &str) -> Result<()> {
 /// Runs an interactive gh subcommand (checkout, comment) after TUI suspends.
 /// Caller must restore terminal after this returns.
 pub fn spawn_interactive(args: &[&str]) -> std::io::Result<std::process::Child> {
+    debug!("gh {} (interactive)", args.join(" "));
     std::process::Command::new("gh")
         .args(args)
         .stdin(Stdio::inherit())
@@ -100,6 +103,7 @@ pub fn spawn_interactive(args: &[&str]) -> std::io::Result<std::process::Child> 
 
 async fn run_silent(args: &[&str]) -> Result<()> {
     use anyhow::Context;
+    debug!("gh {}", args.join(" "));
     let out = Command::new("gh")
         .args(args)
         .output()
@@ -109,6 +113,8 @@ async fn run_silent(args: &[&str]) -> Result<()> {
     if out.status.success() {
         Ok(())
     } else {
-        bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        debug!("gh {} error: {}", args.join(" "), stderr.trim());
+        bail!("{}", stderr.trim());
     }
 }
