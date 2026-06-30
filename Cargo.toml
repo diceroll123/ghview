@@ -21,6 +21,7 @@ toml = "1.1"
 clap = { version = "4", features = ["derive"] }
 log = "0.4"
 simplelog = "0.12"
+time = { version = "0.3", features = ["macros"] }
 unicode-width = "0.2"
 shellexpand = "3"
 pulldown-cmark = { version = "0.13.3", default-features = false }
