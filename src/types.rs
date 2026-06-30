@@ -652,6 +652,7 @@ pub enum DataMsg {
     ViewerPermission {
         repo: RepoId,
         can_push: bool,
+        allow_auto_merge: bool,
     },
     SourcePrs {
         owner: String,

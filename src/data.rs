@@ -553,27 +553,35 @@ pub async fn fetch_pr_body(
     ))
 }
 
-pub async fn fetch_viewer_permission(repo: &RepoId) -> bool {
+pub async fn fetch_viewer_permission(repo: &RepoId) -> (bool, bool) {
     let endpoint = repo.api_base();
-    debug!("gh api {endpoint} --jq .permissions");
+    debug!("gh api {endpoint} --jq {{can_push, allow_auto_merge}}");
     let Ok(out) = Command::new("gh")
         .args([
             "api",
             &endpoint,
             "--jq",
-            ".permissions | (.push or .maintain or .admin) // false",
+            "{can_push: (.permissions | (.push or .maintain or .admin) // false), allow_auto_merge: (.allow_auto_merge // false)}",
         ])
         .output()
         .await
     else {
         debug!("gh api {endpoint} error: spawn failed");
-        return false;
+        return (false, false);
     };
     if !out.status.success() {
         debug!(
             "gh api {endpoint} error: {}",
             String::from_utf8_lossy(&out.stderr).trim()
         );
+        return (false, false);
     }
-    out.status.success() && out.stdout.starts_with(b"true")
+    #[derive(serde::Deserialize)]
+    struct Perm {
+        can_push: bool,
+        allow_auto_merge: bool,
+    }
+    serde_json::from_slice::<Perm>(&out.stdout)
+        .map(|p| (p.can_push, p.allow_auto_merge))
+        .unwrap_or((false, false))
 }

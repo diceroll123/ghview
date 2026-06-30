@@ -361,10 +361,11 @@ impl App {
             let repo_id = rid.clone();
             let tx = self.tx.clone();
             tokio::spawn(async move {
-                let can_push = fetch_viewer_permission(&repo_id).await;
+                let (can_push, allow_auto_merge) = fetch_viewer_permission(&repo_id).await;
                 let _ = tx.send(DataMsg::ViewerPermission {
                     repo: repo_id,
                     can_push,
+                    allow_auto_merge,
                 });
             });
         }
