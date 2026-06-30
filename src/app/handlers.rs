@@ -311,9 +311,14 @@ impl App {
                 }
                 self.rate_limit = Some((remaining, limit));
             }
-            DataMsg::ViewerPermission { repo, can_push } => {
+            DataMsg::ViewerPermission {
+                repo,
+                can_push,
+                allow_auto_merge,
+            } => {
                 if self.current_repo_key().as_deref() == Some(repo.key().as_str()) {
                     self.repo_ctx.viewer_can_push = Some(can_push);
+                    self.repo_ctx.allow_auto_merge = Some(allow_auto_merge);
                 }
             }
             DataMsg::SourcePrs {

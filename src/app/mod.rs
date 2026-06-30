@@ -88,6 +88,7 @@ pub struct RepoCtx {
     pub repo_frontpage: Option<(String, String)>,
     pub repo_frontpage_scroll: u16,
     pub viewer_can_push: Option<bool>,
+    pub allow_auto_merge: Option<bool>,
 }
 
 #[derive(Debug, Default)]
@@ -272,12 +273,13 @@ impl App {
         if !self.config.ui.merge_auto {
             return false;
         }
-        let repo_name = if self.repos_view == ReposView::PrList {
-            self.selected_pr().map(|pr| pr.repo.as_str())
-        } else {
-            self.selected_repo()
-        };
-        let Some(repo_name) = repo_name else {
+        if self.repos_view != ReposView::PrList {
+            // Per-repo view: use allow_auto_merge fetched from the individual repo
+            // endpoint alongside viewer permissions. Defaults false until that arrives.
+            return self.repo_ctx.allow_auto_merge.unwrap_or(false);
+        }
+        // Source PR list: look up the PR's repo in the already-loaded repos list.
+        let Some(repo_name) = self.selected_pr().map(|pr| pr.repo.as_str()) else {
             return false;
         };
         self.source_ctx
