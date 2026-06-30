@@ -8,7 +8,7 @@ use crate::{
     types::{Column, DataMsg, DetailSection, RepoId, RepoView, ReposView},
     ui::draw,
 };
-use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
 use tokio::time::interval_at;
 
@@ -258,6 +258,10 @@ pub async fn run_event_loop(
             maybe_event = events.next() => {
                 let Some(Ok(Event::Key(key))) = maybe_event else { continue };
                 if key.kind != KeyEventKind::Press { continue }
+
+                if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    return Ok((None, app));
+                }
 
                 if app.filter_active {
                     app.handle_filter_input(key);
