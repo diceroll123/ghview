@@ -16,3 +16,14 @@ lint:
 fix:
     cargo fmt
     cargo clippy --fix --allow-dirty
+
+test:
+    INSTA_UPDATE=no GH_CONFIG_DIR=/nonexistent-gh-config cargo test
+
+# requires cargo-insta: cargo install cargo-insta
+snapshots:
+    cargo insta test --review
+
+fixtures org="ratatui" org_repo="ratatui/ratatui" user="sindresorhus" user_repo="sindresorhus/got":
+    GHVIEW_FIXTURE_ORG="{{org}}" GHVIEW_FIXTURE_ORG_REPO="{{org_repo}}" GHVIEW_FIXTURE_USER="{{user}}" GHVIEW_FIXTURE_USER_REPO="{{user_repo}}" ./scripts/capture-fixtures.sh
+    GHVIEW_FIXTURE_ORGS="{{org}}" GHVIEW_FIXTURE_USER="{{user}}" python3 scripts/anonymize-fixtures.py
