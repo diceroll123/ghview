@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Anonymize fixture data by replacing sensitive values with deterministic placeholders."""
 
+from __future__ import annotations
+
 import json
 import re
 import hashlib
@@ -10,7 +12,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
-def main():
+JsonValue = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
+
+
+def main() -> None:
     repo_root = Path(__file__).resolve().parent.parent
     raw_dir = repo_root / "tests" / "fixtures" / "raw"
     out_dir = repo_root / "tests" / "fixtures"
@@ -82,14 +87,14 @@ def main():
     files_to_process = ordered_files + sorted(extra_files)
 
     # === PASS 1: Collect data from JSON/JSONL files ===
-    usernames = []
-    repos = []
-    timestamps = []
-    shas = []
-    ids = []
-    titles = []
+    usernames: list[str] = []
+    repos: list[str] = []
+    timestamps: list[str] = []
+    shas: list[str] = []
+    ids: list[int] = []
+    titles: list[str] = []
 
-    def add_unique(lst, val):
+    def add_unique(lst: list, val: object) -> None:
         if val is not None and val != "" and val not in lst:
             lst.append(val)
 
@@ -112,7 +117,7 @@ def main():
                         continue
 
                     # Walk the object recursively
-                    def process_node(node):
+                    def process_node(node: JsonValue) -> None:
                         if isinstance(node, dict):
                             for key, val in node.items():
                                 process_key_value(key, val)
@@ -121,7 +126,7 @@ def main():
                             for item in node:
                                 process_node(item)
 
-                    def process_key_value(key, val):
+                    def process_key_value(key: str, val: JsonValue) -> None:
                         # Username fields
                         if key in ("author", "owner_login", "repo_owner"):
                             if isinstance(val, str) and val not in PRESERVED_USERS:
@@ -201,7 +206,7 @@ def main():
                 pass
 
     # Build mappings
-    username_map = {}
+    username_map: dict[str, str] = {}
     user_counter = 0
     for u in usernames:
         if u in ORG_LOGINS:
@@ -214,7 +219,7 @@ def main():
             username_map[u] = f"user-{user_counter + 1:02d}"
             user_counter += 1
 
-    repo_map = {}
+    repo_map: dict[str, str] = {}
     repo_counter = 0
     for r in repos:
         if r not in repo_map:
@@ -225,21 +230,21 @@ def main():
                 repo_map[r] = f"repo-{base_name}"
             repo_counter += 1
 
-    timestamp_map = {}
+    timestamp_map: dict[str, str] = {}
     for i, ts in enumerate(timestamps):
         dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
         offset = TIME_OFFSETS[i % len(TIME_OFFSETS)]
         new_dt = FIXED_NOW - offset
         timestamp_map[ts] = new_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    sha_map = {}
+    sha_map: dict[str, str] = {}
     for i, sha in enumerate(shas):
         sha_map[sha] = hashlib.sha1(str(i).encode()).hexdigest()
 
     # Helper functions for SHA anonymization
     HEX_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
 
-    def fake_sha_for(tok):
+    def fake_sha_for(tok: str) -> str:
         # full sha known
         if tok in sha_map:
             return sha_map[tok]
@@ -251,25 +256,25 @@ def main():
         h = hashlib.sha1(tok.encode()).hexdigest()
         return (h * ((len(tok) // 40) + 1))[:len(tok)]
 
-    def anonymize_shas(text):
-        def repl(m):
+    def anonymize_shas(text: str) -> str:
+        def repl(m) -> str:
             tok = m.group(0)
             if not re.search(r"\d", tok):
                 return tok  # avoid mangling english words like 'acceded'
             return fake_sha_for(tok)
         return HEX_RE.sub(repl, text)
 
-    id_map = {}
+    id_map: dict[int, int] = {}
     for i, uid in enumerate(ids):
         id_map[uid] = 100001 + i
 
-    title_map = {}
+    title_map: dict[str, str] = {}
     for i, t in enumerate(titles):
         title_map[t] = FAKE_TITLES[i % len(FAKE_TITLES)]
 
     # === PASS 2: Rewrite files ===
 
-    def transform_value(key, val, branch=False):
+    def transform_value(key: str, val: JsonValue, branch: bool = False) -> JsonValue:
         """Transform a value based on its key."""
         if key in ("id", "suite_id") and isinstance(val, int):
             return id_map.get(val, val)
@@ -326,7 +331,7 @@ def main():
 
         return val
 
-    def rewrite_json_object(obj):
+    def rewrite_json_object(obj: JsonValue) -> JsonValue:
         """Recursively rewrite a JSON object."""
         if isinstance(obj, dict):
             new_obj = {}
@@ -342,7 +347,7 @@ def main():
             return [rewrite_json_object(item) for item in obj]
         return obj
 
-    def rewrite_url(url):
+    def rewrite_url(url) -> JsonValue:
         """Rewrite URLs with mapped usernames and repos."""
         if not isinstance(url, str):
             return url
@@ -377,7 +382,7 @@ def main():
 
         return url
 
-    def process_file(filename):
+    def process_file(filename: str) -> None:
         filepath = raw_dir / filename
         out_path = out_dir / filename
         ext = filepath.suffix.lower()
@@ -395,7 +400,7 @@ def main():
                         obj = json.loads(line)
                         new_obj = rewrite_json_object(obj)
                         # Rewrite URLs in the object
-                        def transform_urls(node):
+                        def transform_urls(node: JsonValue) -> None:
                             if isinstance(node, dict):
                                 for k, v in node.items():
                                     if k in ("url", "html_url", "repository_url") and isinstance(v, str):
@@ -418,7 +423,7 @@ def main():
                     new_obj = rewrite_json_object(obj)
 
                     # Rewrite URLs in the object
-                    def transform_urls(node):
+                    def transform_urls(node: JsonValue) -> None:
                         if isinstance(node, dict):
                             for k, v in node.items():
                                 if k in ("url", "html_url", "repository_url") and isinstance(v, str):
@@ -460,7 +465,7 @@ def main():
     # Catch prose mentions (readme, issue bodies, diffs) that the structured
     # passes miss. Longest names first so substring names cannot clobber
     # longer ones (e.g. a repo named after its owner plus a suffix).
-    residual_terms = []
+    residual_terms: list[tuple[str, str]] = []
     for old, new in list(repo_map.items()) + list(username_map.items()):
         if old != new:
             residual_terms.append((old, new))
@@ -484,7 +489,7 @@ def main():
         filepath.write_text(content)
 
     # === ACCEPTANCE TEST ===
-    leak_names = {old for old, new in residual_terms} | ORG_LOGINS
+    leak_names: set[str] = {old for old, new in residual_terms} | ORG_LOGINS
     if CAPTURE_USER:
         leak_names.add(CAPTURE_USER)
     leak_names = {n for n in leak_names if n}
