@@ -5,7 +5,6 @@ use crate::types::{
 use anyhow::{Context, Result, bail};
 use log::debug;
 use serde::Deserialize;
-use tokio::process::Command;
 
 #[derive(Deserialize)]
 struct RepoRaw {
@@ -35,25 +34,44 @@ fn bool_true() -> bool {
     true
 }
 
-/// Run a `gh` command, return stdout as String, bail on non-zero exit.
-async fn gh_run(args: &[&str]) -> Result<String> {
-    debug!("gh {}", args.join(" "));
-    let out = Command::new("gh")
-        .args(args)
-        .output()
-        .await
-        .context("failed to run gh")?;
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        debug!("gh {} error: {}", args.join(" "), stderr.trim());
-        bail!("{}", stderr.trim());
+#[allow(async_fn_in_trait)]
+pub trait GhRunner {
+    async fn run(&self, args: &[&str]) -> anyhow::Result<String>;
+}
+
+pub struct GhCli;
+
+impl GhRunner for GhCli {
+    async fn run(&self, args: &[&str]) -> anyhow::Result<String> {
+        debug!("gh {}", args.join(" "));
+        let out = tokio::process::Command::new("gh")
+            .args(args)
+            .env("GH_PAGER", "")
+            .env("NO_COLOR", "1")
+            .output()
+            .await
+            .context("failed to run gh")?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            debug!("gh {} error: {}", args.join(" "), stderr.trim());
+            bail!("{}", stderr.trim());
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     }
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+async fn gh_run(args: &[&str]) -> Result<String> {
+    GhCli.run(args).await
 }
 
 pub async fn fetch_user() -> Result<String> {
+    fetch_user_with(&GhCli).await
+}
+
+pub async fn fetch_user_with<R: GhRunner>(runner: &R) -> Result<String> {
     debug!("fetch_user");
-    let stdout = gh_run(&["api", "user", "--jq", ".login"])
+    let stdout = runner
+        .run(&["api", "user", "--jq", ".login"])
         .await
         .map_err(|e| {
             debug!("fetch_user error: {e}");
@@ -64,12 +82,14 @@ pub async fn fetch_user() -> Result<String> {
     Ok(login)
 }
 
-async fn fetch_orgs() -> Result<Vec<String>> {
+async fn fetch_orgs_with<R: GhRunner>(runner: &R) -> Result<Vec<String>> {
     let mut all_orgs: Vec<String> = Vec::new();
     let mut page = 1u32;
     loop {
         let endpoint = format!("user/memberships/orgs?per_page=100&page={page}");
-        let stdout = gh_run(&["api", &endpoint, "--jq", ".[] | .organization.login"]).await?;
+        let stdout = runner
+            .run(&["api", &endpoint, "--jq", ".[] | .organization.login"])
+            .await?;
         let page_orgs: Vec<String> = stdout
             .lines()
             .map(|s| s.trim().to_string())
@@ -87,11 +107,18 @@ async fn fetch_orgs() -> Result<Vec<String>> {
 }
 
 pub async fn fetch_sources(cfg: &SourcesConfig) -> Result<(Vec<Source>, String)> {
+    fetch_sources_with(&GhCli, cfg).await
+}
+
+pub async fn fetch_sources_with<R: GhRunner>(
+    runner: &R,
+    cfg: &SourcesConfig,
+) -> Result<(Vec<Source>, String)> {
     let mut sources: Vec<Source> = Vec::with_capacity(1 + cfg.orgs.len() + cfg.users.len());
     let mut current_user = String::new();
 
     if cfg.include_self || cfg.auto_fetch_orgs {
-        match fetch_user().await {
+        match fetch_user_with(runner).await {
             Ok(login) if !login.is_empty() => {
                 if cfg.include_self {
                     current_user.clone_from(&login);
@@ -105,7 +132,7 @@ pub async fn fetch_sources(cfg: &SourcesConfig) -> Result<(Vec<Source>, String)>
     }
 
     if cfg.auto_fetch_orgs
-        && let Ok(orgs) = fetch_orgs().await
+        && let Ok(orgs) = fetch_orgs_with(runner).await
     {
         for org in orgs {
             if !sources.iter().any(|s| s.owner() == org) {
@@ -138,6 +165,17 @@ pub async fn fetch_repos(
     page: u32,
     sort_key: RepoSortKey,
 ) -> Result<Vec<Repo>> {
+    fetch_repos_with(&GhCli, source, current_user, per_page, page, sort_key).await
+}
+
+pub async fn fetch_repos_with<R: GhRunner>(
+    runner: &R,
+    source: &Source,
+    current_user: &str,
+    per_page: u32,
+    page: u32,
+    sort_key: RepoSortKey,
+) -> Result<Vec<Repo>> {
     debug!(
         "fetch_repos: {} per_page={per_page} page={page}",
         source.owner()
@@ -153,7 +191,7 @@ pub async fn fetch_repos(
     let endpoint =
         format!("{base}?per_page={per_page}&page={page}&sort={sort}&direction={direction}");
     let jq = ".[] | {name, language, pushed_at, created_at, owner_login: .owner.login, stargazers_count, forks_count, open_issues_count, visibility, has_issues, has_pull_requests, archived, allow_auto_merge}";
-    let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
+    let raw = runner.run(&["api", &endpoint, "--jq", jq]).await?;
     let repos: Vec<Repo> = raw
         .lines()
         .filter(|l| !l.trim().is_empty())
@@ -179,6 +217,15 @@ pub async fn fetch_repos(
 }
 
 pub async fn fetch_prs(repo: &RepoId, per_page: u32, page: u32) -> Result<Vec<PR>> {
+    fetch_prs_with(&GhCli, repo, per_page, page).await
+}
+
+pub async fn fetch_prs_with<R: GhRunner>(
+    runner: &R,
+    repo: &RepoId,
+    per_page: u32,
+    page: u32,
+) -> Result<Vec<PR>> {
     debug!("fetch_prs: {repo} per_page={per_page} page={page}");
     let per_page = per_page.clamp(1, 100);
     let endpoint = format!(
@@ -186,7 +233,7 @@ pub async fn fetch_prs(repo: &RepoId, per_page: u32, page: u32) -> Result<Vec<PR
         repo.api_base()
     );
     let jq = r#".[] | {number, title, author: (.user.login // "ghost"), draft, state, created_at, updated_at, url: .html_url, requested_reviewers: ([.requested_reviewers[] | .login] + [.requested_teams[] | .slug]), labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], head_ref: .head.ref, base_ref: .base.ref, head_sha: .head.sha, comments: ((.comments // 0) + (.review_comments // 0))}"#;
-    let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
+    let raw = runner.run(&["api", &endpoint, "--jq", jq]).await?;
     let mut prs = Vec::new();
     let mut first_err: Option<String> = None;
     for line in raw.lines().filter(|l| !l.trim().is_empty()) {
@@ -213,6 +260,16 @@ pub async fn fetch_source_prs(
     per_page: u32,
     page: u32,
 ) -> Result<Vec<PR>> {
+    fetch_source_prs_with(&GhCli, owner, is_org, per_page, page).await
+}
+
+pub async fn fetch_source_prs_with<R: GhRunner>(
+    runner: &R,
+    owner: &str,
+    is_org: bool,
+    per_page: u32,
+    page: u32,
+) -> Result<Vec<PR>> {
     debug!("fetch_source_prs: {owner} is_org={is_org} per_page={per_page} page={page}");
     let per_page = per_page.clamp(1, 100);
     let scope = if is_org {
@@ -224,7 +281,7 @@ pub async fn fetch_source_prs(
         "search/issues?q=is:pr+is:open+{scope}&sort=created&order=desc&per_page={per_page}&page={page}"
     );
     let jq = r#".items[] | {number, title, author: (.user.login // "ghost"), state, created_at, updated_at, url: .html_url, labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], comments: ((.comments // 0)), repo: (.repository_url | split("/") | .[-1]), repo_owner: (.repository_url | split("/") | .[-2])}"#;
-    let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
+    let raw = runner.run(&["api", &endpoint, "--jq", jq]).await?;
     let mut prs = Vec::new();
     let mut first_err: Option<String> = None;
     for line in raw.lines().filter(|l| !l.trim().is_empty()) {
@@ -246,24 +303,23 @@ pub async fn fetch_source_prs(
 }
 
 pub async fn fetch_review_status(repo: &RepoId, pr_number: u64) -> ReviewStatus {
+    fetch_review_status_with(&GhCli, repo, pr_number).await
+}
+
+pub async fn fetch_review_status_with<R: GhRunner>(
+    runner: &R,
+    repo: &RepoId,
+    pr_number: u64,
+) -> ReviewStatus {
     debug!("fetch_review_status: {repo}#{pr_number}");
     let endpoint = format!("{}/pulls/{pr_number}/reviews?per_page=100", repo.api_base());
     debug!("gh api {} --jq .[] | .state", endpoint);
-    let Ok(out) = Command::new("gh")
-        .args(["api", &endpoint, "--jq", ".[] | .state"])
-        .output()
+    let Ok(text) = runner
+        .run(&["api", &endpoint, "--jq", ".[] | .state"])
         .await
     else {
         return ReviewStatus::Unknown;
     };
-    if !out.status.success() {
-        debug!(
-            "fetch_review_status error: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
-        return ReviewStatus::Unknown;
-    }
-    let text = String::from_utf8_lossy(&out.stdout);
     let mut approved = false;
     for state in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
         if state == "CHANGES_REQUESTED" {
@@ -284,6 +340,14 @@ pub async fn fetch_review_status(repo: &RepoId, pr_number: u64) -> ReviewStatus 
 }
 
 pub async fn fetch_check_runs(repo: &RepoId, sha: &str) -> Vec<CheckRun> {
+    fetch_check_runs_with(&GhCli, repo, sha).await
+}
+
+pub async fn fetch_check_runs_with<R: GhRunner>(
+    runner: &R,
+    repo: &RepoId,
+    sha: &str,
+) -> Vec<CheckRun> {
     if sha.is_empty() {
         return Vec::new();
     }
@@ -295,51 +359,35 @@ pub async fn fetch_check_runs(repo: &RepoId, sha: &str) -> Vec<CheckRun> {
 
     debug!("gh api {runs_endpoint}");
     debug!("gh api {workflows_endpoint}");
-    let (runs_out, wf_out) = tokio::join!(
-        Command::new("gh")
-            .args(["api", &runs_endpoint, "--jq", runs_jq])
-            .output(),
-        Command::new("gh")
-            .args(["api", &workflows_endpoint, "--jq", workflows_jq])
-            .output(),
-    );
+
+    let runs_args = ["api", &runs_endpoint, "--jq", runs_jq];
+    let wf_args = ["api", &workflows_endpoint, "--jq", workflows_jq];
+    let (runs_out, wf_out) = tokio::join!(runner.run(&runs_args), runner.run(&wf_args));
 
     // Build suite_id → (workflow_name, event) map from workflow runs.
     let mut suite_map: std::collections::HashMap<u64, (String, String)> =
         std::collections::HashMap::new();
-    if let Ok(out) = wf_out
-        && out.status.success()
-    {
-        let text = String::from_utf8_lossy(&out.stdout);
-        if let Ok(serde_json::Value::Array(arr)) =
+    if let Ok(text) = wf_out
+        && let Ok(serde_json::Value::Array(arr)) =
             serde_json::from_str::<serde_json::Value>(text.trim())
-        {
-            for item in &arr {
-                if let (Some(suite_id), Some(wf_name), Some(event)) = (
-                    item["suite_id"].as_u64(),
-                    item["name"].as_str(),
-                    item["event"].as_str(),
-                ) {
-                    suite_map
-                        .entry(suite_id)
-                        .or_insert_with(|| (wf_name.to_string(), event.to_string()));
-                }
+    {
+        for item in &arr {
+            if let (Some(suite_id), Some(wf_name), Some(event)) = (
+                item["suite_id"].as_u64(),
+                item["name"].as_str(),
+                item["event"].as_str(),
+            ) {
+                suite_map
+                    .entry(suite_id)
+                    .or_insert_with(|| (wf_name.to_string(), event.to_string()));
             }
         }
     }
 
-    let Ok(out) = runs_out else {
+    let Ok(text) = runs_out else {
         debug!("gh api {runs_endpoint} error: spawn failed");
         return Vec::new();
     };
-    if !out.status.success() {
-        debug!(
-            "gh api {runs_endpoint} error: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
-        return Vec::new();
-    }
-    let text = String::from_utf8_lossy(&out.stdout);
     let Ok(serde_json::Value::Array(items)) =
         serde_json::from_str::<serde_json::Value>(text.trim())
     else {
@@ -383,13 +431,18 @@ pub async fn rerun_check(repo: &RepoId, check_run_id: u64) -> Result<()> {
 }
 
 pub async fn fetch_rate_limit() -> Result<(u32, u32)> {
-    let text = gh_run(&[
-        "api",
-        "rate_limit",
-        "--jq",
-        r#".resources.core | "\(.remaining)/\(.limit)""#,
-    ])
-    .await?;
+    fetch_rate_limit_with(&GhCli).await
+}
+
+pub async fn fetch_rate_limit_with<R: GhRunner>(runner: &R) -> Result<(u32, u32)> {
+    let text = runner
+        .run(&[
+            "api",
+            "rate_limit",
+            "--jq",
+            r#".resources.core | "\(.remaining)/\(.limit)""#,
+        ])
+        .await?;
     let text = text.trim().to_string();
     let (rem, lim) = text
         .split_once('/')
@@ -400,43 +453,55 @@ pub async fn fetch_rate_limit() -> Result<(u32, u32)> {
 }
 
 pub async fn fetch_diff(repo: &RepoId, pr: u64) -> Result<String> {
+    fetch_diff_with(&GhCli, repo, pr).await
+}
+
+pub async fn fetch_diff_with<R: GhRunner>(runner: &R, repo: &RepoId, pr: u64) -> Result<String> {
     debug!("gh pr diff {pr} -R {repo}");
-    let out = Command::new("gh")
-        .args(["pr", "diff", &pr.to_string(), "-R", &repo.to_string()])
-        .env("GH_PAGER", "")
-        .env("NO_COLOR", "1")
-        .output()
-        .await
-        .context("failed to run gh")?;
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        debug!("gh pr diff {pr} -R {repo} error: {}", stderr.trim());
-        bail!("{}", stderr.trim());
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    let pr_s = pr.to_string();
+    let repo_s = repo.to_string();
+    runner.run(&["pr", "diff", &pr_s, "-R", &repo_s]).await
 }
 
 pub async fn fetch_repo_frontpage(repo: &RepoId) -> Result<(String, String)> {
+    fetch_repo_frontpage_with(&GhCli, repo).await
+}
+
+pub async fn fetch_repo_frontpage_with<R: GhRunner>(
+    runner: &R,
+    repo: &RepoId,
+) -> Result<(String, String)> {
     let base = repo.api_base();
-    let description = gh_run(&["api", &base, "--jq", ".description // \"\""])
+    let description = runner
+        .run(&["api", &base, "--jq", ".description // \"\""])
         .await
         .map(|s| s.trim().to_string())
         .unwrap_or_default();
 
     let readme_endpoint = format!("{base}/readme");
-    let readme = gh_run(&[
-        "api",
-        &readme_endpoint,
-        "--jq",
-        r#".content | gsub("\n";"") | @base64d"#,
-    ])
-    .await
-    .unwrap_or_default();
+    let readme = runner
+        .run(&[
+            "api",
+            &readme_endpoint,
+            "--jq",
+            r#".content | gsub("\n";"") | @base64d"#,
+        ])
+        .await
+        .unwrap_or_default();
 
     Ok((description, readme))
 }
 
 pub async fn fetch_issues(repo: &RepoId, per_page: u32, page: u32) -> Result<(Vec<Issue>, bool)> {
+    fetch_issues_with(&GhCli, repo, per_page, page).await
+}
+
+pub async fn fetch_issues_with<R: GhRunner>(
+    runner: &R,
+    repo: &RepoId,
+    per_page: u32,
+    page: u32,
+) -> Result<(Vec<Issue>, bool)> {
     #[derive(serde::Deserialize)]
     struct Row {
         number: u64,
@@ -456,7 +521,7 @@ pub async fn fetch_issues(repo: &RepoId, per_page: u32, page: u32) -> Result<(Ve
     );
     // Include is_pr so we can compute has_more from the raw count before filtering
     let jq = r#".[] | {number, title, author: (.user.login // "ghost"), created_at, labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], url: .html_url, is_pr: (.pull_request != null)}"#;
-    let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
+    let raw = runner.run(&["api", &endpoint, "--jq", jq]).await?;
     let rows: Vec<Row> = raw
         .lines()
         .filter(|l| !l.trim().is_empty())
@@ -486,6 +551,16 @@ pub async fn fetch_source_issues(
     per_page: u32,
     page: u32,
 ) -> Result<Vec<Issue>> {
+    fetch_source_issues_with(&GhCli, owner, is_org, per_page, page).await
+}
+
+pub async fn fetch_source_issues_with<R: GhRunner>(
+    runner: &R,
+    owner: &str,
+    is_org: bool,
+    per_page: u32,
+    page: u32,
+) -> Result<Vec<Issue>> {
     debug!("fetch_source_issues: {owner} is_org={is_org} per_page={per_page} page={page}");
     let per_page = per_page.clamp(1, 100);
     let scope = if is_org {
@@ -497,7 +572,7 @@ pub async fn fetch_source_issues(
         "search/issues?q=is:issue+is:open+{scope}&sort=created&order=desc&per_page={per_page}&page={page}"
     );
     let jq = r#".items[] | {number, title, author: (.user.login // "ghost"), created_at, labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], url: .html_url, repo: (.repository_url | split("/") | .[-1]), repo_owner: (.repository_url | split("/") | .[-2])}"#;
-    let raw = gh_run(&["api", &endpoint, "--jq", jq]).await?;
+    let raw = runner.run(&["api", &endpoint, "--jq", jq]).await?;
     let mut issues = Vec::new();
     let mut first_err: Option<String> = None;
     for line in raw.lines().filter(|l| !l.trim().is_empty()) {
@@ -522,12 +597,30 @@ pub async fn fetch_source_issues(
 }
 
 pub async fn fetch_issue_body(repo: &RepoId, number: u64) -> Result<String> {
+    fetch_issue_body_with(&GhCli, repo, number).await
+}
+
+pub async fn fetch_issue_body_with<R: GhRunner>(
+    runner: &R,
+    repo: &RepoId,
+    number: u64,
+) -> Result<String> {
     let endpoint = format!("{}/issues/{number}", repo.api_base());
-    let text = gh_run(&["api", &endpoint, "--jq", r#".body // """#]).await?;
+    let text = runner
+        .run(&["api", &endpoint, "--jq", r#".body // """#])
+        .await?;
     Ok(text.trim().to_string())
 }
 
 pub async fn fetch_pr_body(
+    repo: &RepoId,
+    pr_number: u64,
+) -> Result<(String, crate::types::MergeableState, u32, u32, String)> {
+    fetch_pr_body_with(&GhCli, repo, pr_number).await
+}
+
+pub async fn fetch_pr_body_with<R: GhRunner>(
+    runner: &R,
     repo: &RepoId,
     pr_number: u64,
 ) -> Result<(String, crate::types::MergeableState, u32, u32, String)> {
@@ -542,7 +635,7 @@ pub async fn fetch_pr_body(
 
     debug!("fetch_pr_body: {repo}#{pr_number}");
     let endpoint = format!("{}/pulls/{pr_number}", repo.api_base());
-    let raw = gh_run(&["api", &endpoint, "--jq", r#"{body: (.body // ""), mergeable_state: (.mergeable_state // "unknown"), additions: (.additions // 0), deletions: (.deletions // 0), head_sha: .head.sha}"#]).await?;
+    let raw = runner.run(&["api", &endpoint, "--jq", r#"{body: (.body // ""), mergeable_state: (.mergeable_state // "unknown"), additions: (.additions // 0), deletions: (.deletions // 0), head_sha: .head.sha}"#]).await?;
     let resp: Resp = serde_json::from_str(&raw).context("parse pr body response")?;
     Ok((
         resp.body,
@@ -554,34 +647,21 @@ pub async fn fetch_pr_body(
 }
 
 pub async fn fetch_viewer_permission(repo: &RepoId) -> (bool, bool) {
+    fetch_viewer_permission_with(&GhCli, repo).await
+}
+
+pub async fn fetch_viewer_permission_with<R: GhRunner>(runner: &R, repo: &RepoId) -> (bool, bool) {
     let endpoint = repo.api_base();
     debug!("gh api {endpoint} --jq {{can_push, allow_auto_merge}}");
-    let Ok(out) = Command::new("gh")
-        .args([
-            "api",
-            &endpoint,
-            "--jq",
-            "{can_push: (.permissions | (.push or .maintain or .admin) // false), allow_auto_merge: (.allow_auto_merge // false)}",
-        ])
-        .output()
-        .await
-    else {
-        debug!("gh api {endpoint} error: spawn failed");
+    let Ok(text) = runner.run(&["api", &endpoint, "--jq", "{can_push: (.permissions | (.push or .maintain or .admin) // false), allow_auto_merge: (.allow_auto_merge // false)}"]).await else {
         return (false, false);
     };
-    if !out.status.success() {
-        debug!(
-            "gh api {endpoint} error: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
-        return (false, false);
-    }
     #[derive(serde::Deserialize)]
     struct Perm {
         can_push: bool,
         allow_auto_merge: bool,
     }
-    serde_json::from_slice::<Perm>(&out.stdout)
+    serde_json::from_str::<Perm>(&text)
         .map(|p| (p.can_push, p.allow_auto_merge))
         .unwrap_or((false, false))
 }
