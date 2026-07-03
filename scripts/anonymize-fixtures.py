@@ -281,13 +281,20 @@ def main() -> None:
         if isinstance(val, str):
             new_val = val
 
-            # Apply username map
-            for old_u, new_u in username_map.items():
-                new_val = re.sub(rf"\b{re.escape(old_u)}\b", new_u, new_val)
+            # url/html_url/repository_url fields are rewritten positionally
+            # later by rewrite_url() (owner and repo looked up independently).
+            # Skipping the blind substring passes here avoids corruption when
+            # the org login and repo name are identical (e.g. ratatui/ratatui),
+            # which would otherwise collapse both path segments to the same
+            # replacement before rewrite_url ever sees the original text.
+            if key not in ("url", "html_url", "repository_url"):
+                # Apply username map
+                for old_u, new_u in username_map.items():
+                    new_val = re.sub(rf"\b{re.escape(old_u)}\b", new_u, new_val)
 
-            # Apply repo map
-            for old_r, new_r in repo_map.items():
-                new_val = re.sub(rf"\b{re.escape(old_r)}\b", new_r, new_val)
+                # Apply repo map
+                for old_r, new_r in repo_map.items():
+                    new_val = re.sub(rf"\b{re.escape(old_r)}\b", new_r, new_val)
 
             # Apply timestamp map (for *_at fields)
             if key.endswith("_at") and val in timestamp_map:
@@ -339,6 +346,14 @@ def main() -> None:
                 # branch names need special handling for URL-like content
                 if k in ("head_ref", "base_ref"):
                     new_v = transform_value(k, v, branch=True)
+                elif k in ("url", "html_url", "repository_url"):
+                    # Leave untouched here; transform_urls() rewrites these
+                    # from the original text so it can tell owner from repo.
+                    # Running the generic word-substitution pass first would
+                    # corrupt this when a repo shares its org's name (e.g.
+                    # "ratatui/ratatui"): the org->placeholder substitution
+                    # would already replace the repo segment too.
+                    new_v = v
                 else:
                     new_v = transform_value(k, v)
                 new_obj[k] = new_v

@@ -60,7 +60,11 @@ echo "Capturing repo_description.txt..."
 gh api "repos/$ORG_REPO" --jq '.description // ""' > "$RAW/repo_description.txt"
 
 echo "Fetching issue number from user repo..."
-ISSUE_NUMBER="$(gh api "repos/$USER_REPO/issues?state=open&per_page=1&page=1" --jq '.[0].number')"
+ISSUE_NUMBER="$(gh api "repos/$USER_REPO/issues?state=all&per_page=1&page=1" --jq '.[0].number')"
+if [ -z "$ISSUE_NUMBER" ] || [ "$ISSUE_NUMBER" = "null" ]; then
+  echo "ERROR: No issues found in $USER_REPO, cannot continue"
+  exit 1
+fi
 
 echo "Capturing issue_body.md..."
 gh api "repos/$USER_REPO/issues/$ISSUE_NUMBER" --jq '.body // ""' > "$RAW/issue_body.md"
