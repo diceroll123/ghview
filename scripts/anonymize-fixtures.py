@@ -10,8 +10,9 @@ from pathlib import Path
 
 
 def main():
-    raw_dir = Path("/Users/steve/Desktop/ghview/tests/fixtures/raw")
-    out_dir = Path("/Users/steve/Desktop/ghview/tests/fixtures")
+    repo_root = Path(__file__).resolve().parent.parent
+    raw_dir = repo_root / "tests" / "fixtures" / "raw"
+    out_dir = repo_root / "tests" / "fixtures"
 
     raw_files = sorted(f.name for f in raw_dir.iterdir() if f.is_file() and f.name != ".gitkeep")
     if not raw_files:
