@@ -1,10 +1,10 @@
-use ghview::app::{App, InteractiveCmd, InteractiveKind, run_event_loop};
 use clap::Parser;
 use color_eyre::Result;
 use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use ghview::app::{App, InteractiveCmd, InteractiveKind, run_event_loop};
 use log::debug;
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
