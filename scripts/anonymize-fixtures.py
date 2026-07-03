@@ -4,6 +4,7 @@
 import json
 import re
 import hashlib
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -30,8 +31,8 @@ def main():
         timedelta(days=180),
         timedelta(days=730),
     ]
-    ORG_LOGINS = {"ratatui"}
-    CAPTURE_USER = ""
+    ORG_LOGINS = {s.strip() for s in os.environ.get("GHVIEW_FIXTURE_ORGS", "").split(",") if s.strip()}
+    CAPTURE_USER = os.environ.get("GHVIEW_FIXTURE_USER", "")
     PRESERVED_USERS = {"dependabot[bot]", "ghost"}
 
     NATO_ALPHABET = [
@@ -457,19 +458,21 @@ def main():
 
     # === FINAL RESIDUAL SWEEP ===
     # Catch prose mentions (readme, issue bodies, diffs) that the structured
-    # passes miss. Order matters: "discord.py" before "discord".
-    def lookup_ci(mapping, name, fallback):
-        for k, v in mapping.items():
-            if k.lower() == name:
-                return v
-        return fallback
-
-    residual = [
-        (re.compile(r"discord\.py", re.IGNORECASE), lookup_ci(repo_map, "discord.py", "repo-alpha")),
-        (re.compile(r"ratatui", re.IGNORECASE), "octo-org"),
-        (re.compile(r"sindresorhus", re.IGNORECASE), lookup_ci(username_map, "sindresorhus", "user-01")),
-        (re.compile(r"discord", re.IGNORECASE), "chatapp"),
-    ]
+    # passes miss. Longest names first so substring names cannot clobber
+    # longer ones (e.g. a repo named after its owner plus a suffix).
+    residual_terms = []
+    for old, new in list(repo_map.items()) + list(username_map.items()):
+        if old != new:
+            residual_terms.append((old, new))
+    # Extra prose terms that cannot be derived from the data, e.g. a product
+    # name mentioned in READMEs. Format: "old1=new1,old2=new2".
+    for pair in os.environ.get("GHVIEW_FIXTURE_EXTRA_TERMS", "").split(","):
+        if "=" in pair:
+            old, new = pair.split("=", 1)
+            if old.strip():
+                residual_terms.append((old.strip(), new.strip()))
+    residual_terms.sort(key=lambda x: -len(x[0]))
+    residual = [(re.compile(re.escape(old), re.IGNORECASE), new) for old, new in residual_terms]
 
     for filename in files_to_process:
         filepath = out_dir / filename
@@ -481,7 +484,14 @@ def main():
         filepath.write_text(content)
 
     # === ACCEPTANCE TEST ===
-    pattern = re.compile(r"ratatui|sindresorhus|discord", re.IGNORECASE)
+    leak_names = {old for old, new in residual_terms} | ORG_LOGINS
+    if CAPTURE_USER:
+        leak_names.add(CAPTURE_USER)
+    leak_names = {n for n in leak_names if n}
+    if leak_names:
+        pattern = re.compile("|".join(re.escape(n) for n in sorted(leak_names, key=len, reverse=True)), re.IGNORECASE)
+    else:
+        pattern = re.compile(r"(?!x)x")  # matches nothing
     leak_found = False
 
     for filename in files_to_process:

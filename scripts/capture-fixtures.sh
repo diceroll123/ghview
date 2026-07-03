@@ -3,10 +3,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RAW="$ROOT/tests/fixtures/raw"
-ORG="ratatui"
-ORG_REPO="ratatui/ratatui"
-USER_LOGIN="sindresorhus"
-USER_REPO="sindresorhus/got"
+ORG="${GHVIEW_FIXTURE_ORG:?Set GHVIEW_FIXTURE_ORG to the org to capture from}"
+ORG_REPO="${GHVIEW_FIXTURE_ORG_REPO:?Set GHVIEW_FIXTURE_ORG_REPO to owner/repo for the org repo}"
+USER_LOGIN="${GHVIEW_FIXTURE_USER:?Set GHVIEW_FIXTURE_USER to the user to capture from}"
+USER_REPO="${GHVIEW_FIXTURE_USER_REPO:?Set GHVIEW_FIXTURE_USER_REPO to owner/repo for the user repo}"
 
 mkdir -p "$RAW"
 
