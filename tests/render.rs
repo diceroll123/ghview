@@ -10,84 +10,84 @@ fn render(name: &str, app: &mut ghview::app::App, width: u16, height: u16) {
     insta::assert_snapshot!(name, terminal.backend());
 }
 
-#[test]
-fn preview_repo_list() {
-    let mut app = inflate::app_with_repo_list();
+#[tokio::test]
+async fn preview_repo_list() {
+    let mut app = inflate::app_with_repo_list().await;
     render("preview_repo_list", &mut app, 120, 40);
 }
 
-#[test]
-fn preview_pr_list() {
-    let mut app = inflate::app_with_source_prs();
+#[tokio::test]
+async fn preview_pr_list() {
+    let mut app = inflate::app_with_source_prs().await;
     app.repos_view = ReposView::PrList;
     render("preview_pr_list", &mut app, 120, 40);
 }
 
-#[test]
-fn preview_issue_list() {
-    let mut app = inflate::app_with_source_issues();
+#[tokio::test]
+async fn preview_issue_list() {
+    let mut app = inflate::app_with_source_issues().await;
     app.repos_view = ReposView::IssueList;
     render("preview_issue_list", &mut app, 120, 40);
 }
 
-#[test]
-fn detail_pr_list() {
-    let mut app = inflate::app_with_source_prs();
+#[tokio::test]
+async fn detail_pr_list() {
+    let mut app = inflate::app_with_source_prs().await;
     app.repos_view = ReposView::PrList;
     app.focus = Column::Repo;
     render("detail_pr_list", &mut app, 120, 40);
 }
 
-#[test]
-fn detail_issue_list() {
-    let mut app = inflate::app_with_source_issues();
+#[tokio::test]
+async fn detail_issue_list() {
+    let mut app = inflate::app_with_source_issues().await;
     app.repos_view = ReposView::IssueList;
     app.focus = Column::Repo;
     render("detail_issue_list", &mut app, 120, 40);
 }
 
-#[test]
-fn detail_frontpage() {
-    let mut app = inflate::app_with_frontpage();
+#[tokio::test]
+async fn detail_frontpage() {
+    let mut app = inflate::app_with_frontpage().await;
     app.focus = Column::Repo;
     app.repo_view = RepoView::Frontpage;
     render("detail_frontpage", &mut app, 120, 40);
 }
 
-#[test]
-fn detail_prs() {
-    let mut app = inflate::app_with_prs();
+#[tokio::test]
+async fn detail_prs() {
+    let mut app = inflate::app_with_prs().await;
     app.focus = Column::Repo;
     render("detail_prs", &mut app, 120, 40);
 }
 
-#[test]
-fn detail_issues() {
-    let mut app = inflate::app_with_issues();
+#[tokio::test]
+async fn detail_issues() {
+    let mut app = inflate::app_with_issues().await;
     app.focus = Column::Repo;
     app.repo_view = RepoView::Issues;
     render("detail_issues", &mut app, 120, 40);
 }
 
-#[test]
-fn help_overlay_shown() {
-    let mut app = inflate::app_with_prs();
+#[tokio::test]
+async fn help_overlay_shown() {
+    let mut app = inflate::app_with_prs().await;
     app.focus = Column::Repo;
     app.show_help = true;
     render("help_overlay_shown", &mut app, 120, 40);
 }
 
-#[test]
-fn dependabot_menu_overlay_shown() {
-    let mut app = inflate::app_with_prs();
+#[tokio::test]
+async fn dependabot_menu_overlay_shown() {
+    let mut app = inflate::app_with_prs().await;
     app.focus = Column::Repo;
     app.show_dependabot_menu = true;
     render("dependabot_menu_overlay_shown", &mut app, 120, 40);
 }
 
-#[test]
-fn diff_view_overlay_shown() {
-    let mut app = inflate::app_with_prs();
+#[tokio::test]
+async fn diff_view_overlay_shown() {
+    let mut app = inflate::app_with_prs().await;
     app.focus = Column::Repo;
     app.repo_ctx.diff_view = Some(DiffView {
         title: "src/main.rs".into(),
@@ -120,22 +120,22 @@ fn status_message_error() {
     render("status_message_error", &mut app, 120, 40);
 }
 
-#[test]
-fn narrow_60x20() {
-    let mut app = inflate::app_with_prs();
+#[tokio::test]
+async fn narrow_60x20() {
+    let mut app = inflate::app_with_prs().await;
     app.focus = Column::Repo;
     render("narrow_60x20", &mut app, 60, 20);
 }
 
-#[test]
-fn medium_80x24() {
-    let mut app = inflate::app_with_repo_list();
+#[tokio::test]
+async fn medium_80x24() {
+    let mut app = inflate::app_with_repo_list().await;
     render("medium_80x24", &mut app, 80, 24);
 }
 
-#[test]
-fn wide_200x50() {
-    let mut app = inflate::app_with_prs();
+#[tokio::test]
+async fn wide_200x50() {
+    let mut app = inflate::app_with_prs().await;
     app.focus = Column::Repo;
     render("wide_200x50", &mut app, 200, 50);
 }
