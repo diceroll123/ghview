@@ -1,1 +1,1 @@
-A small, dependency-light library for building terminal user interfaces in Rust.
+A tiny Rust service that does absolutely nothing, on purpose. NoOps as a Service.

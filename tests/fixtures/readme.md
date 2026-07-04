@@ -1,12 +1,13 @@
-# widget-tui
+# noop-svc
 
-[![Crate Badge](https://img.shields.io/badge/crates.io-widget--tui-blue)](https://example.com/crates/widget-tui)
-[![Docs Badge](https://img.shields.io/badge/docs-widget--tui-blue)](https://example.com/docs/widget-tui)
-[![CI Badge](https://img.shields.io/badge/CI-passing-brightgreen)](https://example.com/ci/widget-tui)
+[![Crate Badge](https://img.shields.io/badge/crates.io-noop--svc-blue)](https://example.com/crates/noop-svc)
+[![Docs Badge](https://img.shields.io/badge/docs-noop--svc-blue)](https://example.com/docs/noop-svc)
+[![CI Badge](https://img.shields.io/badge/CI-passing-brightgreen)](https://example.com/ci/noop-svc)
 [![License Badge](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 
-widget-tui is a small library for building terminal user interfaces. It focuses on a simple
-widget model, predictable layout rules, and minimal dependencies.
+noop-svc is NoOps, as a Service. Point any client at it and every request gets a fast,
+predictable `200 OK` and an empty body. No handlers to write, no state to manage, nothing to
+break. It's the backend you get when you don't need a backend yet.
 
 ## Table of Contents
 
@@ -21,43 +22,38 @@ widget model, predictable layout rules, and minimal dependencies.
 Add the crate to your project:
 
 ```shell
-cargo add widget-tui
+cargo add noop-svc
 ```
 
-A minimal application looks like this:
+A minimal server looks like this:
 
 ```rust
-use widget_tui::{Terminal, Frame};
+use noop_svc::Server;
 
-fn main() -> anyhow::Result<()> {
-    let mut terminal = Terminal::new()?;
-    loop {
-        terminal.draw(render)?;
-        if widget_tui::poll_quit()? {
-            break;
-        }
-    }
-    Ok(())
-}
-
-fn render(frame: &mut Frame) {
-    frame.render_text("hello, terminal");
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    Server::bind("0.0.0.0:8080")
+        .respond_with_nothing()
+        .serve()
+        .await
 }
 ```
+
+Every route, every method, every body: `200 OK`, zero bytes, done.
 
 ## Documentation
 
-- [Guide](https://example.com/docs/widget-tui/guide) - concepts and walkthroughs.
-- [API Reference](https://example.com/docs/widget-tui/api) - generated API documentation.
+- [Guide](https://example.com/docs/noop-svc/guide) - concepts and configuration options.
+- [API Reference](https://example.com/docs/noop-svc/api) - generated API documentation.
 - [Changelog](./CHANGELOG.md) - notable changes between releases.
 
 ## Examples
 
 The `examples/` directory contains small, focused programs:
 
-- `examples/list.rs` - a scrollable list widget.
-- `examples/tabs.rs` - switching between multiple views.
-- `examples/form.rs` - basic keyboard-driven input handling.
+- `examples/health.rs` - a health-check endpoint that never fails.
+- `examples/latency.rs` - injecting an artificial (configurable) response delay.
+- `examples/logging.rs` - logging requests before doing nothing with them.
 
 ## Contributing
 
