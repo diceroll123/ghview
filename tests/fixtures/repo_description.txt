@@ -1,1 +1,1 @@
-A Rust crate for cooking up terminal user interfaces (TUIs) 👨‍🍳🐀 https://octo-org.rs
+A small, dependency-light library for building terminal user interfaces in Rust.
