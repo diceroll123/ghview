@@ -20,6 +20,10 @@ fix:
 test:
     INSTA_UPDATE=no GH_CONFIG_DIR=/nonexistent-gh-config cargo test
 
+# accept/update all insta snapshots non-interactively
+update-snapshots:
+    INSTA_UPDATE=always GH_CONFIG_DIR=/nonexistent-gh-config cargo test
+
 # requires cargo-insta: cargo install cargo-insta
 snapshots:
     cargo insta test --review
