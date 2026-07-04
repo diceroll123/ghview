@@ -1,0 +1,28 @@
+---
+source: tests/render.rs
+expression: terminal.backend()
+---
+"┌ Sources ─────────────┐┌  octo-org  pushed ───▲┌ octo-org/repo-alpha  newest ─┐"
+"│▶  octo-org          ││                      █│           ±               │"
+"│                      ││▶  repo-alpha        █│No open pull requests         │"
+"│                      ││   octo-org-labs     █│                              │"
+"│                      ││   octo-org          █│                              │"
+"│                      ││   octo-org-image    █│                              │"
+"│                      ││   octo-org-website  █│                              │"
+"│                      ││   repo-foxtrot      █│                              │"
+"│                      ││   repo-yankee       █│                              │"
+"│                      ││   repo-hotel        █│                              │"
+"│                      ││   repo-india        █│                              │"
+"│                      ││   repo-juliett      █│                              │"
+"│                      ││   repo-kilo         ║│                              │"
+"│                      ││   repo-lima         ║│                              │"
+"│                      ││   repo-mike         ║│                              │"
+"│                      ││   repo-november     ║│                              │"
+"│                      ││   repo-oscar        ║│                              │"
+"│                      ││   octo-org-textarea ║│                              │"
+"│                      ││   repo-quebec       ║│                              │"
+"│                      ││   repo-romeo        ║│                              │"
+"│                      ││   repo-sierra       ║│                              │"
+"│                      ││   octo-org-macros  ║│                              │"
+"└──────────────────────┘└ r·repos  p·prs  i·iss▼└ f·page  p·prs  i·issues ─────┘"
+" o open  y copy URL  / filter  ? help                                           "

@@ -148,6 +148,7 @@ pub struct App {
 
     pub terminal_height: u16,
     pub should_quit: bool,
+    pub now_override: Option<jiff::Timestamp>,
     pub(crate) tx: UnboundedSender<DataMsg>,
 }
 
@@ -198,8 +199,14 @@ impl App {
             permission_cache: HashMap::new(),
             terminal_height: 40,
             should_quit: false,
+            now_override: None,
             tx,
         }
+    }
+
+    /// Current time, overridable by tests for deterministic rendering.
+    pub fn now(&self) -> jiff::Timestamp {
+        self.now_override.unwrap_or_else(jiff::Timestamp::now)
     }
 
     pub fn resume(mut self, tx: UnboundedSender<DataMsg>) -> Self {

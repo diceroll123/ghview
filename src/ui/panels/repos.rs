@@ -36,6 +36,7 @@ fn fmt_count(n: u32) -> String {
 pub(crate) fn draw_repos(f: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Column::Repos;
     let border_style = panel_focus(focused);
+    let now = app.now();
 
     let loading_suffix = match &app.loading {
         Some(LoadingKind::Repos) => " ⟳",
@@ -173,14 +174,14 @@ pub(crate) fn draw_repos(f: &mut Frame, app: &mut App, area: Rect) {
                         let age = repo
                             .pushed_at
                             .as_deref()
-                            .map_or_else(|| "—".into(), relative_time);
+                            .map_or_else(|| "—".into(), |s| relative_time(s, now));
                         right_spans.push(Span::styled(format!("{age:>3}"), dim));
                     }
                     RepoColumn::Created => {
                         let age = repo
                             .created_at
                             .as_deref()
-                            .map_or_else(|| "—".into(), relative_time);
+                            .map_or_else(|| "—".into(), |s| relative_time(s, now));
                         right_spans.push(Span::styled(format!("{age:>3}"), dim));
                     }
                 }
@@ -417,7 +418,7 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
 
             let number_str = format!("#{} ", issue.number);
             let num_w = number_str.len();
-            let age = relative_time(&issue.created_at);
+            let age = relative_time(&issue.created_at, app.now());
             let author_str = format!("@{:<acol$}", issue.author, acol = author_col);
             let age_str = format!("  {ICON_CLOCK} {age:>age_col$}");
             // 2 sep + 1 icon (display) + 1 space + age_col

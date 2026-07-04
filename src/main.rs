@@ -1,21 +1,10 @@
-#![deny(clippy::correctness)]
-#![warn(clippy::suspicious, clippy::style, clippy::complexity, clippy::perf)]
-
-mod actions;
-mod app;
-mod config;
-mod data;
-mod keys;
-mod types;
-mod ui;
-
-use app::{App, InteractiveCmd, InteractiveKind, run_event_loop};
 use clap::Parser;
 use color_eyre::Result;
 use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use ghview::app::{App, InteractiveCmd, InteractiveKind, run_event_loop};
 use log::debug;
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
@@ -61,7 +50,7 @@ async fn main() -> Result<()> {
 }
 
 async fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
-    let cfg = config::load();
+    let cfg = ghview::config::load();
     let (tx, mut rx) = unbounded_channel();
     let mut app = App::new(tx, cfg);
     app.trigger_load_sources();
@@ -98,7 +87,7 @@ async fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Resul
                 }
                 cmd.spawn()?
             }
-            InteractiveKind::Comment => actions::spawn_interactive(&[
+            InteractiveKind::Comment => ghview::actions::spawn_interactive(&[
                 "pr",
                 "comment",
                 &pr_number.to_string(),

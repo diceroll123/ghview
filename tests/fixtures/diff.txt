@@ -1,0 +1,30 @@
+diff --git a/src/handler.rs b/src/handler.rs
+index 3b1a2c4..9e7f0aa 100644
+--- a/src/handler.rs
++++ b/src/handler.rs
+@@ -10,7 +10,7 @@ impl Handler {
+     pub async fn respond(&self, req: Request) -> Response {
+-        let delay = self.config.latency_ms.unwrap();
++        let delay = self.config.latency_ms.unwrap_or(0);
+         tokio::time::sleep(Duration::from_millis(delay)).await;
+         Response::empty(StatusCode::OK)
+     }
+@@ -30,6 +30,15 @@ impl Handler {
+         }
+     }
++
++    /// Regression test: a client that doesn't set `latency_ms` used to panic the handler
++    /// on `unwrap()`, even though doing nothing is the one thing this service is supposed
++    /// to never fail at.
++    #[cfg(test)]
++    mod tests {
++        use super::*;
++
++        #[tokio::test]
++        async fn respond_without_latency_config_does_not_panic() {
++            let handler = Handler::new(Config::default());
++            let resp = handler.respond(Request::empty()).await;
++            assert_eq!(resp.status(), StatusCode::OK);
++        }
++    }
+ }

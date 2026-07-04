@@ -237,14 +237,14 @@ fn build_pr_list_items(
                 }
             }
             if cols.show_updated {
-                let upd = relative_time(&pr.updated_at);
+                let upd = relative_time(&pr.updated_at, app.now());
                 line1_spans.push(Span::styled(
                     format!("  {upd:>width$}", width = cols.age_col),
                     meta_style,
                 ));
             }
             if cols.show_age {
-                let age = relative_time(&pr.created_at);
+                let age = relative_time(&pr.created_at, app.now());
                 line1_spans.push(Span::styled(
                     format!("  {age:>width$}", width = cols.age_col),
                     meta_style,
@@ -564,7 +564,7 @@ pub(crate) fn draw_source_issues(f: &mut Frame, app: &mut App, area: Rect) {
 
             let repo_num = format!("{} #{} ", issue.repo, issue.number);
             let repo_num_w = repo_num.len();
-            let age = relative_time(&issue.created_at);
+            let age = relative_time(&issue.created_at, app.now());
             let author_str = format!("@{:<acol$}", issue.author, acol = author_col);
             let age_str = format!("  {ICON_CLOCK} {age:>age_col$}");
             let author_age_w = author_str.width() + 2 + 1 + 1 + age_col;

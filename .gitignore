@@ -1,2 +1,4 @@
 /target
 debug.log
+*.pending-snap
+/tests/fixtures/raw/

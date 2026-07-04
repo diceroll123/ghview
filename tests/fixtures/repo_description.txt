@@ -1,0 +1,1 @@
+A tiny Rust service that does absolutely nothing, on purpose. NoOps as a Service.
