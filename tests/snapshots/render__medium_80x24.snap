@@ -1,0 +1,28 @@
+---
+source: tests/render.rs
+expression: terminal.backend()
+---
+"┌ Sources ─────────────┐┌  @owner  pushed ─────┐┌ Pull Requests  newest ───────┐"
+"│▶  @owner            ││                      ││           ±               │"
+"│                      ││                      ││Select a repo                 │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"│                      ││                      ││                              │"
+"└──────────────────────┘└ r·repos  p·prs  i·iss┘└ f·page  p·prs  i·issues ─────┘"
+" o open  y copy URL  / filter  ? help                                           "
