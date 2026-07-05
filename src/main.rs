@@ -106,7 +106,8 @@ async fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Resul
 
         execute!(io::stdout(), EnterAlternateScreen)?;
         enable_raw_mode()?;
-        terminal.clear()?;
+        // Reinitialize instead of terminal.clear() - clear() reads cursor position via stdin, timing out if the child left residual bytes there.
+        *terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
 
         let (new_tx, new_rx) = unbounded_channel();
         app = returned_app.resume(new_tx);
