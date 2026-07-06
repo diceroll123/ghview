@@ -362,7 +362,7 @@ impl App {
             }
             DataMsg::Error(e) => {
                 debug!("error: {e}");
-                self.set_status(format!("Error: {e}"));
+                self.set_error(format!("Error: {e}"));
                 self.loading = None;
             }
         }
