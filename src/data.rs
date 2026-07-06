@@ -302,41 +302,70 @@ pub async fn fetch_source_prs_with<R: GhRunner>(
     Ok(prs)
 }
 
-pub async fn fetch_review_status(repo: &RepoId, pr_number: u64) -> ReviewStatus {
-    fetch_review_status_with(&GhCli, repo, pr_number).await
+pub async fn fetch_review_status(
+    repo: &RepoId,
+    pr_number: u64,
+    viewer: Option<&str>,
+) -> (ReviewStatus, bool) {
+    fetch_review_status_with(&GhCli, repo, pr_number, viewer).await
 }
 
 pub async fn fetch_review_status_with<R: GhRunner>(
     runner: &R,
     repo: &RepoId,
     pr_number: u64,
-) -> ReviewStatus {
+    viewer: Option<&str>,
+) -> (ReviewStatus, bool) {
+    #[derive(Deserialize)]
+    struct Review {
+        state: String,
+        login: String,
+    }
+
     debug!("fetch_review_status: {repo}#{pr_number}");
     let endpoint = format!("{}/pulls/{pr_number}/reviews?per_page=100", repo.api_base());
-    debug!("gh api {} --jq .[] | .state", endpoint);
+    debug!(
+        "gh api {} --jq .[] | {{state, login: .user.login}}",
+        endpoint
+    );
     let Ok(text) = runner
-        .run(&["api", &endpoint, "--jq", ".[] | .state"])
+        .run(&[
+            "api",
+            &endpoint,
+            "--jq",
+            ".[] | {state, login: .user.login}",
+        ])
         .await
     else {
-        return ReviewStatus::Unknown;
+        return (ReviewStatus::Unknown, false);
     };
     let mut approved = false;
-    for state in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
-        if state == "CHANGES_REQUESTED" {
-            debug!("fetch_review_status: #{pr_number} -> ChangesRequested (early)");
-            return ReviewStatus::ChangesRequested;
+    let mut changes_requested = false;
+    let mut viewer_approved = false;
+    for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let Ok(review) = serde_json::from_str::<Review>(line) else {
+            continue;
+        };
+        match review.state.as_str() {
+            "CHANGES_REQUESTED" => changes_requested = true,
+            "APPROVED" => approved = true,
+            _ => {}
         }
-        if state == "APPROVED" {
-            approved = true;
+        if let Some(v) = viewer
+            && review.login == v
+        {
+            viewer_approved = review.state == "APPROVED";
         }
     }
-    let result = if approved {
+    let status = if changes_requested {
+        ReviewStatus::ChangesRequested
+    } else if approved {
         ReviewStatus::Approved
     } else {
         ReviewStatus::Pending
     };
-    debug!("fetch_review_status: #{pr_number} -> {result:?}");
-    result
+    debug!("fetch_review_status: #{pr_number} -> {status:?} viewer_approved={viewer_approved}");
+    (status, viewer_approved)
 }
 
 pub async fn fetch_check_runs(repo: &RepoId, sha: &str) -> Vec<CheckRun> {
@@ -646,29 +675,6 @@ pub async fn fetch_pr_body_with<R: GhRunner>(
         resp.head_sha,
         resp.auto_merge,
     ))
-}
-
-/// Returns true if the given viewer has already approved the PR.
-pub async fn fetch_viewer_approved(repo: &RepoId, pr_number: u64, viewer: &str) -> bool {
-    fetch_viewer_approved_with(&GhCli, repo, pr_number, viewer).await
-}
-
-pub async fn fetch_viewer_approved_with<R: GhRunner>(
-    runner: &R,
-    repo: &RepoId,
-    pr_number: u64,
-    viewer: &str,
-) -> bool {
-    let endpoint = format!("{}/pulls/{pr_number}/reviews?per_page=100", repo.api_base());
-    debug!("fetch_viewer_approved: {repo}#{pr_number} viewer={viewer}");
-    let jq = format!(
-        "[.[] | select(.user.login == {:?} and .state == \"APPROVED\")] | length > 0",
-        viewer
-    );
-    let Ok(text) = runner.run(&["api", &endpoint, "--jq", &jq]).await else {
-        return false;
-    };
-    text.trim() == "true"
 }
 
 pub async fn fetch_viewer_permission(repo: &RepoId) -> (bool, bool) {

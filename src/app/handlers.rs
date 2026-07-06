@@ -101,7 +101,11 @@ impl App {
                     self.loading = None;
                 }
             }
-            DataMsg::ReviewStatus { pr, status } => {
+            DataMsg::ReviewStatus {
+                pr,
+                status,
+                viewer_approved,
+            } => {
                 let key = pr.repo.key();
                 let is_current = self.current_repo_key().as_deref() == Some(&key);
                 self.review_cache
@@ -110,6 +114,19 @@ impl App {
                     .insert(pr.number, status);
                 if is_current {
                     self.repo_ctx.review_statuses.insert(pr.number, status);
+                }
+                for list in [&mut self.repo_ctx.prs_raw, &mut self.repo_ctx.prs] {
+                    if let Some(p) = list.iter_mut().find(|p| p.number == pr.number) {
+                        p.viewer_approved = viewer_approved;
+                    }
+                }
+                if let Some(spr) = self
+                    .source_ctx
+                    .source_prs
+                    .iter_mut()
+                    .find(|p| p.number == pr.number)
+                {
+                    spr.viewer_approved = viewer_approved;
                 }
             }
             DataMsg::CheckRuns { pr, mut runs } => {
@@ -377,6 +394,19 @@ impl App {
                         self.repo_ctx
                             .review_statuses
                             .insert(pr.number, ReviewStatus::Approved);
+                        for list in [&mut self.repo_ctx.prs_raw, &mut self.repo_ctx.prs] {
+                            if let Some(p) = list.iter_mut().find(|p| p.number == pr.number) {
+                                p.viewer_approved = true;
+                            }
+                        }
+                        if let Some(spr) = self
+                            .source_ctx
+                            .source_prs
+                            .iter_mut()
+                            .find(|p| p.number == pr.number)
+                        {
+                            spr.viewer_approved = true;
+                        }
                     }
                     PrAction::Merge if use_auto => {
                         for list in [&mut self.repo_ctx.prs_raw, &mut self.repo_ctx.prs] {

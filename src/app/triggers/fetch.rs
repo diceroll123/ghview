@@ -5,8 +5,7 @@ use crate::{
     data::{
         fetch_check_runs, fetch_diff, fetch_issue_body, fetch_issues, fetch_pr_body, fetch_prs,
         fetch_rate_limit, fetch_repo_frontpage, fetch_repos, fetch_review_status,
-        fetch_source_issues, fetch_source_prs, fetch_sources, fetch_viewer_approved,
-        fetch_viewer_permission, rerun_check,
+        fetch_source_issues, fetch_source_prs, fetch_sources, fetch_viewer_permission, rerun_check,
     },
     types::{
         Column, DataMsg, DetailSection, LoadingKind, PR, PrAction, PrState, RepoId, RepoView,
@@ -490,6 +489,7 @@ impl App {
             return;
         }
 
+        let current_user = self.current_user.clone();
         let RepoId { owner, repo } = rid;
         let owner: std::sync::Arc<str> = owner.into();
         let repo: std::sync::Arc<str> = repo.into();
@@ -498,11 +498,14 @@ impl App {
             let rid = RepoId::new(owner.as_ref(), repo.as_ref());
             let tx2 = tx.clone();
             let num = pr.number;
+            let current_user = current_user.clone();
             tokio::spawn(async move {
-                let status = fetch_review_status(&rid, num).await;
+                let (status, viewer_approved) =
+                    fetch_review_status(&rid, num, current_user.as_deref()).await;
                 let _ = tx2.send(DataMsg::ReviewStatus {
                     pr: rid.pr(num),
                     status,
+                    viewer_approved,
                 });
             });
         }
@@ -512,6 +515,7 @@ impl App {
         let Some(source_owner) = self.selected_source_owner() else {
             return;
         };
+        let current_user = self.current_user.clone();
         for pr in &self.source_ctx.source_prs {
             let actual_owner = if pr.repo_owner.is_empty() {
                 source_owner.clone()
@@ -529,11 +533,14 @@ impl App {
             let rid = RepoId::new(actual_owner, pr.repo.clone());
             let num = pr.number;
             let tx = self.tx.clone();
+            let current_user = current_user.clone();
             tokio::spawn(async move {
-                let status = fetch_review_status(&rid, num).await;
+                let (status, viewer_approved) =
+                    fetch_review_status(&rid, num, current_user.as_deref()).await;
                 let _ = tx.send(DataMsg::ReviewStatus {
                     pr: rid.pr(num),
                     status,
+                    viewer_approved,
                 });
             });
         }
@@ -891,12 +898,16 @@ impl App {
                     return;
                 }
             }
-            PrAction::Approve => {}
+            PrAction::Approve => {
+                if self.selected_pr().is_some_and(|p| p.viewer_approved) {
+                    self.set_status(format!("Already approved #{}", pr_id.number));
+                    return;
+                }
+            }
         }
 
         let tx = self.tx.clone();
         let use_auto = self.merge_uses_auto();
-        let current_user = self.current_user.clone();
         let action_label = if action == PrAction::Merge && !use_auto {
             "merge"
         } else {
@@ -906,21 +917,6 @@ impl App {
 
         let merge_method = self.config.ui.merge_method;
         tokio::spawn(async move {
-            // Live API pre-check: skip approve if the viewer already approved
-            let pr_number = pr_id.number;
-            if action == PrAction::Approve
-                && let Some(ref user) = current_user
-                && fetch_viewer_approved(&pr_id.repo, pr_number, user).await
-            {
-                let _ = tx.send(DataMsg::PrActionDone {
-                    pr: pr_id,
-                    action,
-                    use_auto,
-                    msg: Some(format!("Already approved #{pr_number}")),
-                });
-                return;
-            }
-
             let result = match action {
                 PrAction::Approve => actions::approve(&pr_id).await,
                 PrAction::Merge => actions::merge(&pr_id, merge_method, use_auto).await,

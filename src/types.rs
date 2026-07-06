@@ -108,6 +108,8 @@ pub struct PR {
     pub comments: u32,
     #[serde(default)]
     pub auto_merge: bool,
+    #[serde(default)]
+    pub viewer_approved: bool,
     /// Populated for source-level PR lists; empty for per-repo lists.
     #[serde(default)]
     pub repo: String,
@@ -615,6 +617,7 @@ pub enum DataMsg {
     ReviewStatus {
         pr: PrId,
         status: ReviewStatus,
+        viewer_approved: bool,
     },
     CheckRuns {
         pr: PrId,

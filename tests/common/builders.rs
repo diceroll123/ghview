@@ -30,6 +30,7 @@ pub fn make_pr(author: &str) -> PR {
         deletions: 0,
         comments: 0,
         auto_merge: false,
+        viewer_approved: false,
         repo: String::new(),
         repo_owner: String::new(),
     }

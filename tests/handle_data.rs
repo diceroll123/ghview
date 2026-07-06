@@ -169,6 +169,7 @@ fn review_status_current_repo_updates_statuses() {
     app.handle_data(DataMsg::ReviewStatus {
         pr: RepoId::new("owner", "repo").pr(7),
         status: ReviewStatus::Approved,
+        viewer_approved: false,
     });
 
     assert_eq!(
@@ -185,6 +186,7 @@ fn review_status_other_repo_not_applied() {
     app.handle_data(DataMsg::ReviewStatus {
         pr: RepoId::new("owner", "otherrepo").pr(7),
         status: ReviewStatus::Approved,
+        viewer_approved: false,
     });
 
     assert!(app.repo_ctx.review_statuses.is_empty());
