@@ -71,7 +71,7 @@ pub async fn app_with_pr_detail() -> App {
 
     let endpoint = format!("repos/octo-org/repo-charlie/pulls/{pr_number}");
     let gh = MockGh::new().on_fixture(&endpoint, "pr_body.json");
-    let (body, _, _, _, _) = fetch_pr_body_with(&gh, &octo_repo_id(), pr_number)
+    let (body, _, _, _, _, _) = fetch_pr_body_with(&gh, &octo_repo_id(), pr_number)
         .await
         .expect("fetch_pr_body_with should succeed against pr_body.json fixture");
 

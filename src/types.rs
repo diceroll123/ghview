@@ -106,6 +106,10 @@ pub struct PR {
     pub deletions: u32,
     #[serde(default)]
     pub comments: u32,
+    #[serde(default)]
+    pub auto_merge: bool,
+    #[serde(default)]
+    pub viewer_approved: bool,
     /// Populated for source-level PR lists; empty for per-repo lists.
     #[serde(default)]
     pub repo: String,
@@ -613,6 +617,7 @@ pub enum DataMsg {
     ReviewStatus {
         pr: PrId,
         status: ReviewStatus,
+        viewer_approved: bool,
     },
     CheckRuns {
         pr: PrId,
@@ -624,6 +629,7 @@ pub enum DataMsg {
         mergeable_state: MergeableState,
         additions: u32,
         deletions: u32,
+        auto_merge: bool,
     },
     RepoFrontpage {
         repo: RepoId,
@@ -675,6 +681,12 @@ pub enum DataMsg {
         has_more: bool,
     },
     ActionDone(Option<String>),
+    PrActionDone {
+        pr: PrId,
+        action: PrAction,
+        use_auto: bool,
+        msg: Option<String>,
+    },
     Error(String),
 }
 

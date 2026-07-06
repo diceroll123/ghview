@@ -1,7 +1,7 @@
 use super::{App, RepoCtx, SourceCtx};
 use crate::types::{
-    CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, PR, Repo, RepoView, ReposView,
-    ReviewStatus, SortKey,
+    CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, PR, PrAction, Repo, RepoView,
+    ReposView, ReviewStatus, SortKey,
 };
 use log::debug;
 
@@ -101,7 +101,11 @@ impl App {
                     self.loading = None;
                 }
             }
-            DataMsg::ReviewStatus { pr, status } => {
+            DataMsg::ReviewStatus {
+                pr,
+                status,
+                viewer_approved,
+            } => {
                 let key = pr.repo.key();
                 let is_current = self.current_repo_key().as_deref() == Some(&key);
                 self.review_cache
@@ -110,6 +114,19 @@ impl App {
                     .insert(pr.number, status);
                 if is_current {
                     self.repo_ctx.review_statuses.insert(pr.number, status);
+                }
+                for list in [&mut self.repo_ctx.prs_raw, &mut self.repo_ctx.prs] {
+                    if let Some(p) = list.iter_mut().find(|p| p.number == pr.number) {
+                        p.viewer_approved = viewer_approved;
+                    }
+                }
+                if let Some(spr) = self
+                    .source_ctx
+                    .source_prs
+                    .iter_mut()
+                    .find(|p| p.number == pr.number)
+                {
+                    spr.viewer_approved = viewer_approved;
                 }
             }
             DataMsg::CheckRuns { pr, mut runs } => {
@@ -175,6 +192,7 @@ impl App {
                 mergeable_state,
                 additions,
                 deletions,
+                auto_merge,
             } => {
                 let passes = if self.repos_view == ReposView::PrList {
                     self.source_ctx.source_prs.iter().any(|p| {
@@ -203,6 +221,7 @@ impl App {
                     if let Some(p) = list.iter_mut().find(|p| p.number == pr.number) {
                         p.additions = additions;
                         p.deletions = deletions;
+                        p.auto_merge = auto_merge;
                     }
                 }
                 if let Some(spr) = self
@@ -213,6 +232,7 @@ impl App {
                 {
                     spr.additions = additions;
                     spr.deletions = deletions;
+                    spr.auto_merge = auto_merge;
                 }
             }
             DataMsg::RepoFrontpage {
@@ -357,6 +377,53 @@ impl App {
             DataMsg::ActionDone(msg) => {
                 if let Some(m) = msg {
                     self.set_status(m);
+                }
+                self.loading = None;
+            }
+            DataMsg::PrActionDone {
+                pr,
+                action,
+                use_auto,
+                msg,
+            } => {
+                if let Some(m) = msg {
+                    self.set_status(m);
+                }
+                match action {
+                    PrAction::Approve => {
+                        self.repo_ctx
+                            .review_statuses
+                            .insert(pr.number, ReviewStatus::Approved);
+                        for list in [&mut self.repo_ctx.prs_raw, &mut self.repo_ctx.prs] {
+                            if let Some(p) = list.iter_mut().find(|p| p.number == pr.number) {
+                                p.viewer_approved = true;
+                            }
+                        }
+                        if let Some(spr) = self
+                            .source_ctx
+                            .source_prs
+                            .iter_mut()
+                            .find(|p| p.number == pr.number)
+                        {
+                            spr.viewer_approved = true;
+                        }
+                    }
+                    PrAction::Merge if use_auto => {
+                        for list in [&mut self.repo_ctx.prs_raw, &mut self.repo_ctx.prs] {
+                            if let Some(p) = list.iter_mut().find(|p| p.number == pr.number) {
+                                p.auto_merge = true;
+                            }
+                        }
+                        if let Some(spr) = self
+                            .source_ctx
+                            .source_prs
+                            .iter_mut()
+                            .find(|p| p.number == pr.number)
+                        {
+                            spr.auto_merge = true;
+                        }
+                    }
+                    _ => {}
                 }
                 self.loading = None;
             }

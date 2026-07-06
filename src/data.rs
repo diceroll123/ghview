@@ -232,7 +232,7 @@ pub async fn fetch_prs_with<R: GhRunner>(
         "{}/pulls?state=open&per_page={per_page}&page={page}&sort=created&direction=desc",
         repo.api_base()
     );
-    let jq = r#".[] | {number, title, author: (.user.login // "ghost"), draft, state, created_at, updated_at, url: .html_url, requested_reviewers: ([.requested_reviewers[] | .login] + [.requested_teams[] | .slug]), labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], head_ref: .head.ref, base_ref: .base.ref, head_sha: .head.sha, comments: ((.comments // 0) + (.review_comments // 0))}"#;
+    let jq = r#".[] | {number, title, author: (.user.login // "ghost"), draft, state, created_at, updated_at, url: .html_url, requested_reviewers: ([.requested_reviewers[] | .login] + [.requested_teams[] | .slug]), labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], head_ref: .head.ref, base_ref: .base.ref, head_sha: .head.sha, comments: ((.comments // 0) + (.review_comments // 0)), auto_merge: (.auto_merge != null)}"#;
     let raw = runner.run(&["api", &endpoint, "--jq", jq]).await?;
     let mut prs = Vec::new();
     let mut first_err: Option<String> = None;
@@ -302,41 +302,70 @@ pub async fn fetch_source_prs_with<R: GhRunner>(
     Ok(prs)
 }
 
-pub async fn fetch_review_status(repo: &RepoId, pr_number: u64) -> ReviewStatus {
-    fetch_review_status_with(&GhCli, repo, pr_number).await
+pub async fn fetch_review_status(
+    repo: &RepoId,
+    pr_number: u64,
+    viewer: Option<&str>,
+) -> (ReviewStatus, bool) {
+    fetch_review_status_with(&GhCli, repo, pr_number, viewer).await
 }
 
 pub async fn fetch_review_status_with<R: GhRunner>(
     runner: &R,
     repo: &RepoId,
     pr_number: u64,
-) -> ReviewStatus {
+    viewer: Option<&str>,
+) -> (ReviewStatus, bool) {
+    #[derive(Deserialize)]
+    struct Review {
+        state: String,
+        login: String,
+    }
+
     debug!("fetch_review_status: {repo}#{pr_number}");
     let endpoint = format!("{}/pulls/{pr_number}/reviews?per_page=100", repo.api_base());
-    debug!("gh api {} --jq .[] | .state", endpoint);
+    debug!(
+        "gh api {} --jq .[] | {{state, login: .user.login}}",
+        endpoint
+    );
     let Ok(text) = runner
-        .run(&["api", &endpoint, "--jq", ".[] | .state"])
+        .run(&[
+            "api",
+            &endpoint,
+            "--jq",
+            ".[] | {state, login: .user.login}",
+        ])
         .await
     else {
-        return ReviewStatus::Unknown;
+        return (ReviewStatus::Unknown, false);
     };
     let mut approved = false;
-    for state in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
-        if state == "CHANGES_REQUESTED" {
-            debug!("fetch_review_status: #{pr_number} -> ChangesRequested (early)");
-            return ReviewStatus::ChangesRequested;
+    let mut changes_requested = false;
+    let mut viewer_approved = false;
+    for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let Ok(review) = serde_json::from_str::<Review>(line) else {
+            continue;
+        };
+        match review.state.as_str() {
+            "CHANGES_REQUESTED" => changes_requested = true,
+            "APPROVED" => approved = true,
+            _ => {}
         }
-        if state == "APPROVED" {
-            approved = true;
+        if let Some(v) = viewer
+            && review.login == v
+        {
+            viewer_approved = review.state == "APPROVED";
         }
     }
-    let result = if approved {
+    let status = if changes_requested {
+        ReviewStatus::ChangesRequested
+    } else if approved {
         ReviewStatus::Approved
     } else {
         ReviewStatus::Pending
     };
-    debug!("fetch_review_status: #{pr_number} -> {result:?}");
-    result
+    debug!("fetch_review_status: #{pr_number} -> {status:?} viewer_approved={viewer_approved}");
+    (status, viewer_approved)
 }
 
 pub async fn fetch_check_runs(repo: &RepoId, sha: &str) -> Vec<CheckRun> {
@@ -615,7 +644,7 @@ pub async fn fetch_issue_body_with<R: GhRunner>(
 pub async fn fetch_pr_body(
     repo: &RepoId,
     pr_number: u64,
-) -> Result<(String, crate::types::MergeableState, u32, u32, String)> {
+) -> Result<(String, crate::types::MergeableState, u32, u32, String, bool)> {
     fetch_pr_body_with(&GhCli, repo, pr_number).await
 }
 
@@ -623,7 +652,7 @@ pub async fn fetch_pr_body_with<R: GhRunner>(
     runner: &R,
     repo: &RepoId,
     pr_number: u64,
-) -> Result<(String, crate::types::MergeableState, u32, u32, String)> {
+) -> Result<(String, crate::types::MergeableState, u32, u32, String, bool)> {
     #[derive(serde::Deserialize)]
     struct Resp {
         body: String,
@@ -631,11 +660,12 @@ pub async fn fetch_pr_body_with<R: GhRunner>(
         additions: u32,
         deletions: u32,
         head_sha: String,
+        auto_merge: bool,
     }
 
     debug!("fetch_pr_body: {repo}#{pr_number}");
     let endpoint = format!("{}/pulls/{pr_number}", repo.api_base());
-    let raw = runner.run(&["api", &endpoint, "--jq", r#"{body: (.body // ""), mergeable_state: (.mergeable_state // "unknown"), additions: (.additions // 0), deletions: (.deletions // 0), head_sha: .head.sha}"#]).await?;
+    let raw = runner.run(&["api", &endpoint, "--jq", r#"{body: (.body // ""), mergeable_state: (.mergeable_state // "unknown"), additions: (.additions // 0), deletions: (.deletions // 0), head_sha: .head.sha, auto_merge: (.auto_merge != null)}"#]).await?;
     let resp: Resp = serde_json::from_str(&raw).context("parse pr body response")?;
     Ok((
         resp.body,
@@ -643,6 +673,7 @@ pub async fn fetch_pr_body_with<R: GhRunner>(
         resp.additions,
         resp.deletions,
         resp.head_sha,
+        resp.auto_merge,
     ))
 }
 

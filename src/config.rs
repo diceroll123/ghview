@@ -389,6 +389,8 @@ mod tests {
             additions: 0,
             deletions: 0,
             comments: 0,
+            auto_merge: false,
+            viewer_approved: false,
             repo: String::new(),
             repo_owner: String::new(),
         }

@@ -203,24 +203,36 @@ async fn fetch_source_prs_org() {
 #[tokio::test]
 async fn fetch_review_status_approved() {
     let endpoint = "repos/octo-org/repo-charlie/pulls/7/reviews?per_page=100";
-    let gh = MockGh::new().on(endpoint, "APPROVED\nAPPROVED");
-    let status = fetch_review_status_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 7).await;
+    let gh = MockGh::new().on(
+        endpoint,
+        "{\"state\":\"APPROVED\",\"login\":\"alice\"}\n{\"state\":\"APPROVED\",\"login\":\"bob\"}",
+    );
+    let (status, _) =
+        fetch_review_status_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 7, None).await;
     assert_eq!(status, ReviewStatus::Approved);
 }
 
 #[tokio::test]
 async fn fetch_review_status_changes_requested() {
     let endpoint = "repos/octo-org/repo-charlie/pulls/7/reviews?per_page=100";
-    let gh = MockGh::new().on(endpoint, "APPROVED\nCHANGES_REQUESTED\nCOMMENTED");
-    let status = fetch_review_status_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 7).await;
+    let gh = MockGh::new().on(
+        endpoint,
+        "{\"state\":\"APPROVED\",\"login\":\"alice\"}\n{\"state\":\"CHANGES_REQUESTED\",\"login\":\"bob\"}\n{\"state\":\"COMMENTED\",\"login\":\"charlie\"}",
+    );
+    let (status, _) =
+        fetch_review_status_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 7, None).await;
     assert_eq!(status, ReviewStatus::ChangesRequested);
 }
 
 #[tokio::test]
 async fn fetch_review_status_pending() {
     let endpoint = "repos/octo-org/repo-charlie/pulls/7/reviews?per_page=100";
-    let gh = MockGh::new().on(endpoint, "COMMENTED\nCOMMENTED");
-    let status = fetch_review_status_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 7).await;
+    let gh = MockGh::new().on(
+        endpoint,
+        "{\"state\":\"COMMENTED\",\"login\":\"alice\"}\n{\"state\":\"COMMENTED\",\"login\":\"bob\"}",
+    );
+    let (status, _) =
+        fetch_review_status_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 7, None).await;
     assert_eq!(status, ReviewStatus::Pending);
 }
 
@@ -228,7 +240,8 @@ async fn fetch_review_status_pending() {
 async fn fetch_review_status_no_reviews() {
     let endpoint = "repos/octo-org/repo-charlie/pulls/7/reviews?per_page=100";
     let gh = MockGh::new().on(endpoint, "");
-    let status = fetch_review_status_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 7).await;
+    let (status, _) =
+        fetch_review_status_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 7, None).await;
     assert_eq!(status, ReviewStatus::Pending);
 }
 
@@ -236,8 +249,44 @@ async fn fetch_review_status_no_reviews() {
 async fn fetch_review_status_runner_error() {
     let endpoint = "repos/octo-org/repo-charlie/pulls/7/reviews?per_page=100";
     let gh = MockGh::new().on_err(endpoint, "boom");
-    let status = fetch_review_status_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 7).await;
+    let (status, _) =
+        fetch_review_status_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 7, None).await;
     assert_eq!(status, ReviewStatus::Unknown);
+}
+
+#[tokio::test]
+async fn fetch_review_status_viewer_approved() {
+    let endpoint = "repos/octo-org/repo-charlie/pulls/7/reviews?per_page=100";
+    let gh = MockGh::new().on(
+        endpoint,
+        "{\"state\":\"APPROVED\",\"login\":\"alice\"}\n{\"state\":\"CHANGES_REQUESTED\",\"login\":\"bob\"}",
+    );
+    let (status, viewer_approved) = fetch_review_status_with(
+        &gh,
+        &RepoId::new("octo-org", "repo-charlie"),
+        7,
+        Some("alice"),
+    )
+    .await;
+    assert_eq!(status, ReviewStatus::ChangesRequested);
+    assert!(viewer_approved);
+}
+
+#[tokio::test]
+async fn fetch_review_status_viewer_not_approved() {
+    let endpoint = "repos/octo-org/repo-charlie/pulls/7/reviews?per_page=100";
+    let gh = MockGh::new().on(
+        endpoint,
+        "{\"state\":\"APPROVED\",\"login\":\"alice\"}\n{\"state\":\"CHANGES_REQUESTED\",\"login\":\"bob\"}",
+    );
+    let (_, viewer_approved) = fetch_review_status_with(
+        &gh,
+        &RepoId::new("octo-org", "repo-charlie"),
+        7,
+        Some("bob"),
+    )
+    .await;
+    assert!(!viewer_approved);
 }
 
 #[tokio::test]
@@ -420,7 +469,7 @@ async fn fetch_issue_body_success() {
 #[tokio::test]
 async fn fetch_pr_body_success() {
     let gh = MockGh::new().on_fixture("repos/octo-org/repo-charlie/pulls/2628", "pr_body.json");
-    let (body, mergeable_state, additions, deletions, head_sha) =
+    let (body, mergeable_state, additions, deletions, head_sha, auto_merge) =
         fetch_pr_body_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 2628)
             .await
             .unwrap();
@@ -429,13 +478,14 @@ async fn fetch_pr_body_success() {
     assert_eq!(additions, 48);
     assert_eq!(deletions, 1);
     assert_eq!(head_sha, "b6589fc6ab0dc82cf12099d1c2d40ab994e8410c");
+    assert!(!auto_merge);
 }
 
 #[tokio::test]
 async fn fetch_pr_body_unknown_mergeable_state() {
-    let inline_json = r#"{"additions":1,"body":"x","deletions":1,"head_sha":"abc","mergeable_state":"some_bogus_value"}"#;
+    let inline_json = r#"{"additions":1,"auto_merge":false,"body":"x","deletions":1,"head_sha":"abc","mergeable_state":"some_bogus_value"}"#;
     let gh = MockGh::new().on("repos/octo-org/repo-charlie/pulls/999", inline_json);
-    let (_, mergeable_state, _, _, _) =
+    let (_, mergeable_state, _, _, _, _) =
         fetch_pr_body_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 999)
             .await
             .unwrap();
