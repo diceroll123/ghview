@@ -648,6 +648,50 @@ pub async fn fetch_pr_body_with<R: GhRunner>(
     ))
 }
 
+/// Returns true if auto-merge is currently enabled on the PR.
+pub async fn fetch_pr_auto_merge(repo: &RepoId, pr_number: u64) -> bool {
+    fetch_pr_auto_merge_with(&GhCli, repo, pr_number).await
+}
+
+pub async fn fetch_pr_auto_merge_with<R: GhRunner>(
+    runner: &R,
+    repo: &RepoId,
+    pr_number: u64,
+) -> bool {
+    let endpoint = format!("{}/pulls/{pr_number}", repo.api_base());
+    debug!("fetch_pr_auto_merge: {repo}#{pr_number}");
+    let Ok(text) = runner
+        .run(&["api", &endpoint, "--jq", ".auto_merge != null"])
+        .await
+    else {
+        return false;
+    };
+    text.trim() == "true"
+}
+
+/// Returns true if the given viewer has already approved the PR.
+pub async fn fetch_viewer_approved(repo: &RepoId, pr_number: u64, viewer: &str) -> bool {
+    fetch_viewer_approved_with(&GhCli, repo, pr_number, viewer).await
+}
+
+pub async fn fetch_viewer_approved_with<R: GhRunner>(
+    runner: &R,
+    repo: &RepoId,
+    pr_number: u64,
+    viewer: &str,
+) -> bool {
+    let endpoint = format!("{}/pulls/{pr_number}/reviews?per_page=100", repo.api_base());
+    debug!("fetch_viewer_approved: {repo}#{pr_number} viewer={viewer}");
+    let jq = format!(
+        "[.[] | select(.user.login == {:?} and .state == \"APPROVED\")] | length > 0",
+        viewer
+    );
+    let Ok(text) = runner.run(&["api", &endpoint, "--jq", &jq]).await else {
+        return false;
+    };
+    text.trim() == "true"
+}
+
 pub async fn fetch_viewer_permission(repo: &RepoId) -> (bool, bool) {
     fetch_viewer_permission_with(&GhCli, repo).await
 }
