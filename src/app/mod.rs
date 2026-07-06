@@ -78,7 +78,6 @@ pub struct RepoCtx {
     pub detail_section: DetailSection,
     pub diff_view: Option<DiffView>,
     pub review_statuses: HashMap<u64, ReviewStatus>,
-    pub pr_auto_merge: HashMap<u64, bool>,
     pub mergeable_states: HashMap<PrId, MergeableState>,
     pub check_summary_cache: HashMap<PrId, CheckStatus>,
     pub issues: Vec<Issue>,
@@ -643,6 +642,7 @@ mod tests {
             additions: 0,
             deletions: 0,
             comments: 0,
+            auto_merge: false,
             repo: String::new(),
             repo_owner: String::new(),
         }
@@ -782,6 +782,7 @@ mod tests {
             additions: 0,
             deletions: 0,
             comments: 0,
+            auto_merge: false,
             repo: String::new(),
             repo_owner: String::new(),
         }

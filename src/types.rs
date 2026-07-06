@@ -106,6 +106,8 @@ pub struct PR {
     pub deletions: u32,
     #[serde(default)]
     pub comments: u32,
+    #[serde(default)]
+    pub auto_merge: bool,
     /// Populated for source-level PR lists; empty for per-repo lists.
     #[serde(default)]
     pub repo: String,

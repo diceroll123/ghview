@@ -444,31 +444,6 @@ async fn fetch_pr_body_unknown_mergeable_state() {
 }
 
 #[tokio::test]
-async fn fetch_pr_auto_merge_false() {
-    // pr_body.json has "auto_merge":false; MockGh returns raw fixture content,
-    // which does not equal "true", so the function returns false.
-    let gh = MockGh::new().on_fixture("repos/octo-org/repo-charlie/pulls/2628", "pr_body.json");
-    let result =
-        fetch_pr_auto_merge_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 2628).await;
-    assert!(!result);
-}
-
-#[tokio::test]
-async fn fetch_pr_auto_merge_true() {
-    // Simulate gh returning "true" (auto_merge object is non-null).
-    let gh = MockGh::new().on("repos/octo-org/repo-charlie/pulls/42", "true\n");
-    let result = fetch_pr_auto_merge_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 42).await;
-    assert!(result);
-}
-
-#[tokio::test]
-async fn fetch_pr_auto_merge_runner_error() {
-    let gh = MockGh::new().on_err("repos/octo-org/repo-charlie/pulls/42", "boom");
-    let result = fetch_pr_auto_merge_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 42).await;
-    assert!(!result);
-}
-
-#[tokio::test]
 async fn fetch_viewer_approved_true() {
     let endpoint = "repos/octo-org/repo-charlie/pulls/7/reviews?per_page=100";
     let gh = MockGh::new().on(endpoint, "true\n");

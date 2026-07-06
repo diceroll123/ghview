@@ -192,7 +192,6 @@ impl App {
                 self.repo_ctx
                     .mergeable_states
                     .insert(pr.clone(), mergeable_state);
-                self.repo_ctx.pr_auto_merge.insert(pr.number, auto_merge);
                 if self.selected_pr().is_some_and(|p| {
                     p.number == pr.number && (p.repo.is_empty() || p.repo == pr.repo.repo)
                 }) {
@@ -205,6 +204,7 @@ impl App {
                     if let Some(p) = list.iter_mut().find(|p| p.number == pr.number) {
                         p.additions = additions;
                         p.deletions = deletions;
+                        p.auto_merge = auto_merge;
                     }
                 }
                 if let Some(spr) = self
@@ -215,6 +215,7 @@ impl App {
                 {
                     spr.additions = additions;
                     spr.deletions = deletions;
+                    spr.auto_merge = auto_merge;
                 }
             }
             DataMsg::RepoFrontpage {
@@ -378,7 +379,19 @@ impl App {
                             .insert(pr.number, ReviewStatus::Approved);
                     }
                     PrAction::Merge if use_auto => {
-                        self.repo_ctx.pr_auto_merge.insert(pr.number, true);
+                        for list in [&mut self.repo_ctx.prs_raw, &mut self.repo_ctx.prs] {
+                            if let Some(p) = list.iter_mut().find(|p| p.number == pr.number) {
+                                p.auto_merge = true;
+                            }
+                        }
+                        if let Some(spr) = self
+                            .source_ctx
+                            .source_prs
+                            .iter_mut()
+                            .find(|p| p.number == pr.number)
+                        {
+                            spr.auto_merge = true;
+                        }
                     }
                     _ => {}
                 }

@@ -232,7 +232,7 @@ pub async fn fetch_prs_with<R: GhRunner>(
         "{}/pulls?state=open&per_page={per_page}&page={page}&sort=created&direction=desc",
         repo.api_base()
     );
-    let jq = r#".[] | {number, title, author: (.user.login // "ghost"), draft, state, created_at, updated_at, url: .html_url, requested_reviewers: ([.requested_reviewers[] | .login] + [.requested_teams[] | .slug]), labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], head_ref: .head.ref, base_ref: .base.ref, head_sha: .head.sha, comments: ((.comments // 0) + (.review_comments // 0))}"#;
+    let jq = r#".[] | {number, title, author: (.user.login // "ghost"), draft, state, created_at, updated_at, url: .html_url, requested_reviewers: ([.requested_reviewers[] | .login] + [.requested_teams[] | .slug]), labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], head_ref: .head.ref, base_ref: .base.ref, head_sha: .head.sha, comments: ((.comments // 0) + (.review_comments // 0)), auto_merge: (.auto_merge != null)}"#;
     let raw = runner.run(&["api", &endpoint, "--jq", jq]).await?;
     let mut prs = Vec::new();
     let mut first_err: Option<String> = None;
@@ -646,27 +646,6 @@ pub async fn fetch_pr_body_with<R: GhRunner>(
         resp.head_sha,
         resp.auto_merge,
     ))
-}
-
-/// Returns true if auto-merge is currently enabled on the PR.
-pub async fn fetch_pr_auto_merge(repo: &RepoId, pr_number: u64) -> bool {
-    fetch_pr_auto_merge_with(&GhCli, repo, pr_number).await
-}
-
-pub async fn fetch_pr_auto_merge_with<R: GhRunner>(
-    runner: &R,
-    repo: &RepoId,
-    pr_number: u64,
-) -> bool {
-    let endpoint = format!("{}/pulls/{pr_number}", repo.api_base());
-    debug!("fetch_pr_auto_merge: {repo}#{pr_number}");
-    let Ok(text) = runner
-        .run(&["api", &endpoint, "--jq", ".auto_merge != null"])
-        .await
-    else {
-        return false;
-    };
-    text.trim() == "true"
 }
 
 /// Returns true if the given viewer has already approved the PR.

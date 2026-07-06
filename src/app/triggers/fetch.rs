@@ -3,10 +3,10 @@ use crate::{
     actions,
     config::SourcesConfig,
     data::{
-        fetch_check_runs, fetch_diff, fetch_issue_body, fetch_issues, fetch_pr_auto_merge,
-        fetch_pr_body, fetch_prs, fetch_rate_limit, fetch_repo_frontpage, fetch_repos,
-        fetch_review_status, fetch_source_issues, fetch_source_prs, fetch_sources,
-        fetch_viewer_approved, fetch_viewer_permission, rerun_check,
+        fetch_check_runs, fetch_diff, fetch_issue_body, fetch_issues, fetch_pr_body, fetch_prs,
+        fetch_rate_limit, fetch_repo_frontpage, fetch_repos, fetch_review_status,
+        fetch_source_issues, fetch_source_prs, fetch_sources, fetch_viewer_approved,
+        fetch_viewer_permission, rerun_check,
     },
     types::{
         Column, DataMsg, DetailSection, LoadingKind, PR, PrAction, PrState, RepoId, RepoView,
@@ -885,9 +885,8 @@ impl App {
                 }
             }
             PrAction::Merge => {
-                // Fast path: if cache says auto-merge is already on, skip without loading
                 let use_auto = self.merge_uses_auto();
-                if use_auto && self.repo_ctx.pr_auto_merge.get(&pr_id.number) == Some(&true) {
+                if use_auto && self.selected_pr().is_some_and(|p| p.auto_merge) {
                     self.set_status(format!("Auto-merge already enabled #{}", pr_id.number));
                     return;
                 }
@@ -907,34 +906,19 @@ impl App {
 
         let merge_method = self.config.ui.merge_method;
         tokio::spawn(async move {
-            // Live API pre-checks for actions where the gh CLI doesn't detect idempotency
+            // Live API pre-check: skip approve if the viewer already approved
             let pr_number = pr_id.number;
-            match action {
-                PrAction::Approve => {
-                    if let Some(ref user) = current_user
-                        && fetch_viewer_approved(&pr_id.repo, pr_number, user).await
-                    {
-                        let _ = tx.send(DataMsg::PrActionDone {
-                            pr: pr_id,
-                            action,
-                            use_auto,
-                            msg: Some(format!("Already approved #{pr_number}")),
-                        });
-                        return;
-                    }
-                }
-                PrAction::Merge
-                    if use_auto && fetch_pr_auto_merge(&pr_id.repo, pr_number).await =>
-                {
-                    let _ = tx.send(DataMsg::PrActionDone {
-                        pr: pr_id,
-                        action,
-                        use_auto,
-                        msg: Some(format!("Auto-merge already enabled #{pr_number}")),
-                    });
-                    return;
-                }
-                _ => {}
+            if action == PrAction::Approve
+                && let Some(ref user) = current_user
+                && fetch_viewer_approved(&pr_id.repo, pr_number, user).await
+            {
+                let _ = tx.send(DataMsg::PrActionDone {
+                    pr: pr_id,
+                    action,
+                    use_auto,
+                    msg: Some(format!("Already approved #{pr_number}")),
+                });
+                return;
             }
 
             let result = match action {
