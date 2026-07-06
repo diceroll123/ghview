@@ -420,7 +420,7 @@ async fn fetch_issue_body_success() {
 #[tokio::test]
 async fn fetch_pr_body_success() {
     let gh = MockGh::new().on_fixture("repos/octo-org/repo-charlie/pulls/2628", "pr_body.json");
-    let (body, mergeable_state, additions, deletions, head_sha) =
+    let (body, mergeable_state, additions, deletions, head_sha, auto_merge) =
         fetch_pr_body_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 2628)
             .await
             .unwrap();
@@ -429,13 +429,14 @@ async fn fetch_pr_body_success() {
     assert_eq!(additions, 48);
     assert_eq!(deletions, 1);
     assert_eq!(head_sha, "b6589fc6ab0dc82cf12099d1c2d40ab994e8410c");
+    assert!(!auto_merge);
 }
 
 #[tokio::test]
 async fn fetch_pr_body_unknown_mergeable_state() {
-    let inline_json = r#"{"additions":1,"body":"x","deletions":1,"head_sha":"abc","mergeable_state":"some_bogus_value"}"#;
+    let inline_json = r#"{"additions":1,"auto_merge":false,"body":"x","deletions":1,"head_sha":"abc","mergeable_state":"some_bogus_value"}"#;
     let gh = MockGh::new().on("repos/octo-org/repo-charlie/pulls/999", inline_json);
-    let (_, mergeable_state, _, _, _) =
+    let (_, mergeable_state, _, _, _, _) =
         fetch_pr_body_with(&gh, &RepoId::new("octo-org", "repo-charlie"), 999)
             .await
             .unwrap();

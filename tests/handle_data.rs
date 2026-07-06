@@ -359,6 +359,7 @@ fn pr_body_sets_body_and_propagates_additions() {
         mergeable_state: MergeableState::Clean,
         additions: 10,
         deletions: 3,
+        auto_merge: false,
     });
 
     assert_eq!(app.repo_ctx.pr_body, Some("hello".to_string()));
@@ -387,6 +388,7 @@ fn pr_body_stale_repo_ignored() {
         mergeable_state: MergeableState::Clean,
         additions: 10,
         deletions: 3,
+        auto_merge: false,
     });
 
     assert!(app.repo_ctx.pr_body.is_none());
@@ -413,6 +415,7 @@ fn pr_body_updates_source_pr_in_pr_list_view() {
         mergeable_state: MergeableState::Clean,
         additions: 5,
         deletions: 2,
+        auto_merge: false,
     });
 
     assert_eq!(app.source_ctx.source_prs[0].additions, 5);

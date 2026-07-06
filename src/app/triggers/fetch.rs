@@ -8,8 +8,8 @@ use crate::{
         fetch_source_issues, fetch_source_prs, fetch_sources, fetch_viewer_permission, rerun_check,
     },
     types::{
-        Column, DataMsg, DetailSection, LoadingKind, PR, PrAction, RepoId, RepoView, ReposView,
-        Source,
+        Column, DataMsg, DetailSection, LoadingKind, PR, PrAction, PrState, RepoId, RepoView,
+        ReposView, ReviewStatus, Source,
     },
 };
 use ratatui::widgets::ListState;
@@ -326,7 +326,7 @@ impl App {
         let pr_id = rid.pr(pr_number);
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            let (body, mergeable_state, additions, deletions, sha) =
+            let (body, mergeable_state, additions, deletions, sha, auto_merge) =
                 fetch_pr_body(&pr_id.repo, pr_number)
                     .await
                     .unwrap_or_default();
@@ -336,6 +336,7 @@ impl App {
                 mergeable_state,
                 additions,
                 deletions,
+                auto_merge,
             });
             // Use the SHA from the API response; fall back to the value already in the PR
             // struct (populated for repo-list PRs but empty for source-list PRs).
@@ -565,7 +566,7 @@ impl App {
                 let pr_number = pr_id.number;
                 tokio::spawn(async move {
                     let _permit = sem.acquire_owned().await.unwrap();
-                    let (body, mergeable_state, additions, deletions, sha) =
+                    let (body, mergeable_state, additions, deletions, sha, auto_merge) =
                         fetch_pr_body(&pr_id.repo, pr_number)
                             .await
                             .unwrap_or_default();
@@ -575,6 +576,7 @@ impl App {
                         mergeable_state,
                         additions,
                         deletions,
+                        auto_merge,
                     });
                     if !sha.is_empty() {
                         let runs = fetch_check_runs(&pr_id.repo, &sha).await;
@@ -617,7 +619,7 @@ impl App {
                 let sem = sem.clone();
                 tokio::spawn(async move {
                     let _permit = sem.acquire_owned().await.unwrap();
-                    let (body, mergeable_state, additions, deletions, _) =
+                    let (body, mergeable_state, additions, deletions, _, auto_merge) =
                         fetch_pr_body(&pr_id.repo, pr_number)
                             .await
                             .unwrap_or_default();
@@ -627,6 +629,7 @@ impl App {
                         mergeable_state,
                         additions,
                         deletions,
+                        auto_merge,
                     });
                 });
             }
@@ -849,6 +852,53 @@ impl App {
             return;
         };
 
+        // In-flight guard
+        if self.loading.is_some() {
+            return;
+        }
+
+        // State-based idempotency guards
+        match action {
+            PrAction::Approve => {
+                if self.repo_ctx.review_statuses.get(&pr_id.number) == Some(&ReviewStatus::Approved)
+                {
+                    self.set_status(format!("Already approved #{}", pr_id.number));
+                    return;
+                }
+            }
+            PrAction::Merge => {
+                let use_auto = self.merge_uses_auto();
+                if use_auto && self.repo_ctx.pr_auto_merge.get(&pr_id.number) == Some(&true) {
+                    self.set_status(format!("Auto-merge already enabled #{}", pr_id.number));
+                    return;
+                }
+            }
+            PrAction::Close => {
+                if self
+                    .selected_pr()
+                    .is_some_and(|p| p.state == PrState::Closed)
+                {
+                    self.set_status(format!("Already closed #{}", pr_id.number));
+                    return;
+                }
+            }
+            PrAction::Reopen => {
+                if self
+                    .selected_pr()
+                    .is_some_and(|p| p.state != PrState::Closed)
+                {
+                    self.set_status(format!("Already open #{}", pr_id.number));
+                    return;
+                }
+            }
+            PrAction::MarkReady => {
+                if self.selected_pr().is_some_and(|p| !p.draft) {
+                    self.set_status(format!("Already ready for review #{}", pr_id.number));
+                    return;
+                }
+            }
+        }
+
         let tx = self.tx.clone();
         let use_auto = self.merge_uses_auto();
         let action_label = if action == PrAction::Merge && !use_auto {
@@ -869,7 +919,7 @@ impl App {
             }
             .map(|()| {
                 let msg = if action == PrAction::Merge && use_auto {
-                    format!("✓ Auto-merge enabled #{}", pr_id.number)
+                    format!("Auto-merge enabled #{}", pr_id.number)
                 } else {
                     action.success_msg(pr_id.number)
                 };
@@ -877,7 +927,12 @@ impl App {
             });
             match result {
                 Ok(msg) => {
-                    let _ = tx.send(DataMsg::ActionDone(msg));
+                    let _ = tx.send(DataMsg::PrActionDone {
+                        pr: pr_id,
+                        action,
+                        use_auto,
+                        msg,
+                    });
                 }
                 Err(e) => {
                     let _ = tx.send(DataMsg::Error(e.to_string()));

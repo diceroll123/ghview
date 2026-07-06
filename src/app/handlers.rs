@@ -1,7 +1,7 @@
 use super::{App, RepoCtx, SourceCtx};
 use crate::types::{
-    CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, PR, Repo, RepoView, ReposView,
-    ReviewStatus, SortKey,
+    CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, PR, PrAction, Repo, RepoView,
+    ReposView, ReviewStatus, SortKey,
 };
 use log::debug;
 
@@ -175,6 +175,7 @@ impl App {
                 mergeable_state,
                 additions,
                 deletions,
+                auto_merge,
             } => {
                 let passes = if self.repos_view == ReposView::PrList {
                     self.source_ctx.source_prs.iter().any(|p| {
@@ -191,6 +192,7 @@ impl App {
                 self.repo_ctx
                     .mergeable_states
                     .insert(pr.clone(), mergeable_state);
+                self.repo_ctx.pr_auto_merge.insert(pr.number, auto_merge);
                 if self.selected_pr().is_some_and(|p| {
                     p.number == pr.number && (p.repo.is_empty() || p.repo == pr.repo.repo)
                 }) {
@@ -357,6 +359,28 @@ impl App {
             DataMsg::ActionDone(msg) => {
                 if let Some(m) = msg {
                     self.set_status(m);
+                }
+                self.loading = None;
+            }
+            DataMsg::PrActionDone {
+                pr,
+                action,
+                use_auto,
+                msg,
+            } => {
+                if let Some(m) = msg {
+                    self.set_status(m);
+                }
+                match action {
+                    PrAction::Approve => {
+                        self.repo_ctx
+                            .review_statuses
+                            .insert(pr.number, ReviewStatus::Approved);
+                    }
+                    PrAction::Merge if use_auto => {
+                        self.repo_ctx.pr_auto_merge.insert(pr.number, true);
+                    }
+                    _ => {}
                 }
                 self.loading = None;
             }

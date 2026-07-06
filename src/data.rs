@@ -615,7 +615,7 @@ pub async fn fetch_issue_body_with<R: GhRunner>(
 pub async fn fetch_pr_body(
     repo: &RepoId,
     pr_number: u64,
-) -> Result<(String, crate::types::MergeableState, u32, u32, String)> {
+) -> Result<(String, crate::types::MergeableState, u32, u32, String, bool)> {
     fetch_pr_body_with(&GhCli, repo, pr_number).await
 }
 
@@ -623,7 +623,7 @@ pub async fn fetch_pr_body_with<R: GhRunner>(
     runner: &R,
     repo: &RepoId,
     pr_number: u64,
-) -> Result<(String, crate::types::MergeableState, u32, u32, String)> {
+) -> Result<(String, crate::types::MergeableState, u32, u32, String, bool)> {
     #[derive(serde::Deserialize)]
     struct Resp {
         body: String,
@@ -631,11 +631,12 @@ pub async fn fetch_pr_body_with<R: GhRunner>(
         additions: u32,
         deletions: u32,
         head_sha: String,
+        auto_merge: bool,
     }
 
     debug!("fetch_pr_body: {repo}#{pr_number}");
     let endpoint = format!("{}/pulls/{pr_number}", repo.api_base());
-    let raw = runner.run(&["api", &endpoint, "--jq", r#"{body: (.body // ""), mergeable_state: (.mergeable_state // "unknown"), additions: (.additions // 0), deletions: (.deletions // 0), head_sha: .head.sha}"#]).await?;
+    let raw = runner.run(&["api", &endpoint, "--jq", r#"{body: (.body // ""), mergeable_state: (.mergeable_state // "unknown"), additions: (.additions // 0), deletions: (.deletions // 0), head_sha: .head.sha, auto_merge: (.auto_merge != null)}"#]).await?;
     let resp: Resp = serde_json::from_str(&raw).context("parse pr body response")?;
     Ok((
         resp.body,
@@ -643,6 +644,7 @@ pub async fn fetch_pr_body_with<R: GhRunner>(
         resp.additions,
         resp.deletions,
         resp.head_sha,
+        resp.auto_merge,
     ))
 }
 

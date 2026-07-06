@@ -624,6 +624,7 @@ pub enum DataMsg {
         mergeable_state: MergeableState,
         additions: u32,
         deletions: u32,
+        auto_merge: bool,
     },
     RepoFrontpage {
         repo: RepoId,
@@ -675,6 +676,12 @@ pub enum DataMsg {
         has_more: bool,
     },
     ActionDone(Option<String>),
+    PrActionDone {
+        pr: PrId,
+        action: PrAction,
+        use_auto: bool,
+        msg: Option<String>,
+    },
     Error(String),
 }
 
