@@ -201,6 +201,14 @@ Key format: single character (`a`), uppercase (`A`), `ctrl+x`, or `alt+x`.
 --debug    Write debug logs to ./debug.log
 ```
 
+## Notes
+
+If pushing a branch that modifies `.github/workflows/` fails with "refusing to allow an OAuth App to create or update workflow ... without `workflow` scope", add the scope to your `gh` token:
+
+```sh
+gh auth refresh --scopes workflow
+```
+
 ## Acknowledgements
 
 Inspired by [gh-dash](https://github.com/dlvhdr/gh-dash).
