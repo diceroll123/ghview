@@ -30,6 +30,8 @@ Three columns, focus moves left/right:
 
 The status bar shows GitHub API rate limit (⚡remaining/limit), color-coded green → yellow → red. The limit is 5000 requests/hour and resets on a rolling hourly window.
 
+Run `ghview OWNER/REPO` to skip straight to a repo's workspace - the Sources and Repos columns aren't loaded and don't appear at all, so the content columns (PRs/Issues/Frontpage + detail) get the full width. `h`/Left won't back out of it since there's nothing to browse back to.
+
 ## Navigation
 
 | Key | Action |
@@ -198,7 +200,8 @@ Key format: single character (`a`), uppercase (`A`), `ctrl+x`, or `alt+x`.
 ## Flags
 
 ```
---debug    Write debug logs to ./debug.log
+OWNER/REPO    Open directly into a repo's workspace, skipping Sources/Repos browsing
+--debug       Write debug logs to ./debug.log
 ```
 
 ## Notes

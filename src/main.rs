@@ -5,14 +5,31 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ghview::app::{App, InteractiveCmd, InteractiveKind, run_event_loop};
+use ghview::types::RepoId;
 use log::debug;
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 use tokio::sync::mpsc::unbounded_channel;
 
+fn parse_repo_arg(s: &str) -> Result<RepoId, String> {
+    let mut parts = s.splitn(2, '/');
+    let owner = parts.next().unwrap_or("");
+    let Some(repo) = parts.next() else {
+        return Err(format!("invalid repo \"{s}\": expected OWNER/REPO"));
+    };
+    if owner.is_empty() || repo.is_empty() || repo.contains('/') {
+        return Err(format!("invalid repo \"{s}\": expected OWNER/REPO"));
+    }
+    Ok(RepoId::new(owner, repo))
+}
+
 #[derive(Parser)]
 #[command(name = "ghview", about = "GitHub PR browser")]
 struct Args {
+    /// Open directly into a repo's workspace (OWNER/REPO), skipping Sources/Repos browsing
+    #[arg(value_name = "OWNER/REPO", value_parser = parse_repo_arg)]
+    repo: Option<RepoId>,
+
     /// Write debug logs to ./debug.log
     #[arg(long)]
     debug: bool,
@@ -40,7 +57,7 @@ async fn main() -> Result<()> {
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(backend)?;
 
-    let result = run_app(&mut terminal).await;
+    let result = run_app(&mut terminal, args.repo).await;
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
@@ -49,11 +66,17 @@ async fn main() -> Result<()> {
     result
 }
 
-async fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
+async fn run_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    direct_repo: Option<RepoId>,
+) -> Result<()> {
     let cfg = ghview::config::load();
     let (tx, mut rx) = unbounded_channel();
     let mut app = App::new(tx, cfg);
-    app.trigger_load_sources();
+    match direct_repo {
+        Some(repo) => app.enter_direct_repo(repo),
+        None => app.trigger_load_sources(),
+    }
 
     loop {
         let (cmd, returned_app) = run_event_loop(app, rx, terminal).await?;

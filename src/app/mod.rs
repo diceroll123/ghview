@@ -109,6 +109,7 @@ pub struct SourceCtx {
 
 pub struct App {
     pub focus: Column,
+    pub direct_repo: bool,
 
     pub sources: Vec<Source>,
     pub source_state: ListState,
@@ -169,6 +170,7 @@ impl App {
     pub fn new(tx: UnboundedSender<DataMsg>, config: Config) -> Self {
         Self {
             focus: Column::Sources,
+            direct_repo: false,
             sources: vec![],
             source_state: ListState::default(),
             source_filter: String::new(),
@@ -219,6 +221,30 @@ impl App {
         self.repo_ctx.diff_view = None;
         self.should_quit = false;
         self
+    }
+
+    /// Bootstraps state for `ghview owner/repo`: seeds a single-element source/repo
+    /// selection (everything else derives the active repo from these lists) and jumps
+    /// straight into the repo workspace, skipping Sources/Repos browsing entirely.
+    pub fn enter_direct_repo(&mut self, repo: RepoId) {
+        self.direct_repo = true;
+        self.sources = vec![Source::User(repo.owner.clone())];
+        self.source_state.select(Some(0));
+        // has_issues/has_pull_requests optimistically true: the real repo-list fetch
+        // that would normally populate these is skipped in direct mode.
+        self.source_ctx.repos = vec![Repo {
+            name: repo.repo.clone(),
+            has_issues: true,
+            has_pull_requests: true,
+            ..Repo::default()
+        }];
+        self.source_ctx.repo_state.select(Some(0));
+        self.repos_view = ReposView::RepoList;
+        self.focus = Column::Repo;
+        self.repo_ctx.pr_body_scroll = 0;
+        self.repo_ctx.issue_body_scroll = 0;
+        self.repo_ctx.repo_frontpage_scroll = 0;
+        self.on_repo_changed();
     }
 
     pub fn visible_sources(&self) -> Vec<&Source> {
@@ -685,6 +711,47 @@ mod tests {
     fn no_selected_pr_not_dependabot() {
         let app = make_app();
         assert!(!app.selected_pr_is_dependabot());
+    }
+
+    #[tokio::test]
+    async fn enter_direct_repo_seeds_single_source_and_repo() {
+        let mut app = make_app();
+        app.enter_direct_repo(RepoId::new("owner", "repo"));
+        assert_eq!(app.sources.len(), 1);
+        assert_eq!(app.sources[0].owner(), "owner");
+        assert_eq!(app.source_state.selected(), Some(0));
+        assert_eq!(app.source_ctx.repos.len(), 1);
+        assert_eq!(app.source_ctx.repos[0].name, "repo");
+        assert_eq!(app.source_ctx.repo_state.selected(), Some(0));
+    }
+
+    #[tokio::test]
+    async fn enter_direct_repo_sets_flags() {
+        let mut app = make_app();
+        app.enter_direct_repo(RepoId::new("owner", "repo"));
+        assert!(app.direct_repo);
+        assert_eq!(app.focus, Column::Repo);
+        assert_eq!(app.repos_view, ReposView::RepoList);
+    }
+
+    #[tokio::test]
+    async fn enter_direct_repo_resolves_owner_repo() {
+        let mut app = make_app();
+        app.enter_direct_repo(RepoId::new("owner", "repo"));
+        assert_eq!(
+            app.selected_owner_repo(),
+            Some(RepoId::new("owner", "repo"))
+        );
+    }
+
+    #[tokio::test]
+    async fn enter_direct_repo_forces_repo_list_view_over_config_default() {
+        let mut config = Config::default();
+        config.ui.default_repos_view = ReposView::PrList;
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut app = App::new(tx, config);
+        app.enter_direct_repo(RepoId::new("owner", "repo"));
+        assert_eq!(app.repos_view, ReposView::RepoList);
     }
 
     #[test]
