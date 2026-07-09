@@ -15,6 +15,9 @@ enum DrawMode {
     DetailFrontpage,
     DetailPrs,
     DetailIssues,
+    DirectFrontpage,
+    DirectPrs,
+    DirectIssues,
     PreviewPrList,
     PreviewIssueList,
     PreviewRepoList,
@@ -26,6 +29,11 @@ impl DrawMode {
             Column::Repo | Column::Detail => match app.repos_view {
                 ReposView::PrList => Self::DetailPrList,
                 ReposView::IssueList => Self::DetailIssueList,
+                ReposView::RepoList if app.direct_repo => match app.repo_view {
+                    RepoView::Frontpage => Self::DirectFrontpage,
+                    RepoView::Prs => Self::DirectPrs,
+                    RepoView::Issues => Self::DirectIssues,
+                },
                 ReposView::RepoList => match app.repo_view {
                     RepoView::Frontpage => Self::DetailFrontpage,
                     RepoView::Prs => Self::DetailPrs,
@@ -189,6 +197,21 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             panels::draw_repos_strip(f, app, cols[1]);
             panels::draw_issues(f, app, cols[2]);
             panels::draw_issue_detail(f, app, cols[3]);
+        }
+        DrawMode::DirectFrontpage => {
+            panels::draw_repo_frontpage(f, app, main_area);
+        }
+        DrawMode::DirectPrs => {
+            let cols =
+                Layout::horizontal([Constraint::Fill(4), Constraint::Fill(3)]).split(main_area);
+            panels::draw_prs(f, app, cols[0]);
+            panels::draw_pr_detail(f, app, cols[1]);
+        }
+        DrawMode::DirectIssues => {
+            let cols =
+                Layout::horizontal([Constraint::Fill(4), Constraint::Fill(3)]).split(main_area);
+            panels::draw_issues(f, app, cols[0]);
+            panels::draw_issue_detail(f, app, cols[1]);
         }
         DrawMode::PreviewPrList => {
             let (src, repos, prs) = preview_pcts(app.focus);

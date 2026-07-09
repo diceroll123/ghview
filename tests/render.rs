@@ -70,11 +70,46 @@ async fn detail_issues() {
 }
 
 #[tokio::test]
+async fn direct_prs() {
+    let mut app = inflate::app_with_prs().await;
+    app.direct_repo = true;
+    app.focus = Column::Repo;
+    render("direct_prs", &mut app, 120, 40);
+}
+
+#[tokio::test]
+async fn direct_frontpage() {
+    let mut app = inflate::app_with_frontpage().await;
+    app.direct_repo = true;
+    app.focus = Column::Repo;
+    app.repo_view = RepoView::Frontpage;
+    render("direct_frontpage", &mut app, 120, 40);
+}
+
+#[tokio::test]
+async fn direct_issues() {
+    let mut app = inflate::app_with_issues().await;
+    app.direct_repo = true;
+    app.focus = Column::Repo;
+    app.repo_view = RepoView::Issues;
+    render("direct_issues", &mut app, 120, 40);
+}
+
+#[tokio::test]
 async fn help_overlay_shown() {
     let mut app = inflate::app_with_prs().await;
     app.focus = Column::Repo;
     app.show_help = true;
     render("help_overlay_shown", &mut app, 120, 40);
+}
+
+#[tokio::test]
+async fn help_overlay_shown_direct_repo() {
+    let mut app = inflate::app_with_prs().await;
+    app.direct_repo = true;
+    app.focus = Column::Repo;
+    app.show_help = true;
+    render("help_overlay_shown_direct_repo", &mut app, 120, 40);
 }
 
 #[tokio::test]

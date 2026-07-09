@@ -77,14 +77,17 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
             .collect()
     };
 
-    let left_sections: Vec<(&str, Vec<(String, String)>)> = vec![
-        ("\u{f14e}  Navigation", bar_entries(NAV_ACTIONS)),
-        ("\u{f0c0}  Sources", bar_entries(SOURCES_BAR)),
-        ("\u{e702}  Browse", bar_entries(REPOS_BAR)),
-        ("\u{f188}  Issues", bar_entries(ISSUES_BAR)),
-        ("\u{f407}  PRs", pr_entries),
-        ("\u{e641}  Checks", checks_entries),
-    ];
+    let mut left_sections: Vec<(&str, Vec<(String, String)>)> =
+        vec![("\u{f14e}  Navigation", bar_entries(NAV_ACTIONS))];
+    // Sources/Repos columns are never loaded in direct-repo mode, so their
+    // keybindings are unreachable and shouldn't clutter the help overlay.
+    if !app.direct_repo {
+        left_sections.push(("\u{f0c0}  Sources", bar_entries(SOURCES_BAR)));
+        left_sections.push(("\u{e702}  Browse", bar_entries(REPOS_BAR)));
+    }
+    left_sections.push(("\u{f188}  Issues", bar_entries(ISSUES_BAR)));
+    left_sections.push(("\u{f407}  PRs", pr_entries));
+    left_sections.push(("\u{e641}  Checks", checks_entries));
     let mut right_sections: Vec<(&str, Vec<(String, String)>)> = vec![];
     if !kb.universal.is_empty() {
         right_sections.push(("\u{f013}  Universal (custom)", custom_kv(&kb.universal)));

@@ -243,7 +243,11 @@ impl App {
     pub(crate) fn move_left(&mut self) {
         match self.focus {
             Column::Repos => self.focus = Column::Sources,
-            Column::Repo => self.focus = Column::Repos,
+            Column::Repo => {
+                if !self.direct_repo {
+                    self.focus = Column::Repos;
+                }
+            }
             Column::Detail => {
                 if matches!(self.repos_view, ReposView::PrList | ReposView::IssueList) {
                     self.focus = Column::Repos;
@@ -574,5 +578,29 @@ mod tests {
         state.select(Some(0));
         clamp_list_state(&mut state, 0);
         assert_eq!(state.selected(), None);
+    }
+
+    fn make_app() -> App {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        App::new(tx, crate::config::Config::default())
+    }
+
+    #[test]
+    fn move_left_noop_in_direct_repo_mode() {
+        let mut app = make_app();
+        app.direct_repo = true;
+        app.focus = Column::Repo;
+        app.move_left();
+        assert_eq!(app.focus, Column::Repo);
+    }
+
+    #[test]
+    fn move_left_from_detail_in_direct_mode_goes_to_repo() {
+        let mut app = make_app();
+        app.direct_repo = true;
+        app.repos_view = ReposView::RepoList;
+        app.focus = Column::Detail;
+        app.move_left();
+        assert_eq!(app.focus, Column::Repo);
     }
 }
