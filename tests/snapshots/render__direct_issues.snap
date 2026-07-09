@@ -1,5 +1,6 @@
 ---
 source: tests/render.rs
+assertion_line: 10
 expression: terminal.backend()
 ---
 "┌ octo-org/repo-charlie ────────────────────────────────────────────┐┌ Issue #2610 ────────────────────────────────────┐"
@@ -8,11 +9,11 @@ expression: terminal.backend()
 "│   Type: Enhancement                                             ││Loading…                                         │"
 "│  #2556 Add keyboard navigation to sidebar         @user-31     3d││                                                 │"
 "│   Type: Bug                                                     ││                                                 │"
-"│  #2547 chore(deps): bump serde from 1.0.1 to 1.0…@user-10     2w ││                                                 │"
+"│  #2547 chore(deps): bump serde from 1.0.1 to 1.0… @user-10     2w││                                                 │"
 "│  #2526 feat: add dark mode support                @user-32    6mo││                                                 │"
 "│  #2521 refactor: simplify auth flow               @user-33     2y││                                                 │"
 "│   Type: Enhancement                                             ││                                                 │"
-"│  #2502 docs: update README with installation ste…@user-06    45m ││                                                 │"
+"│  #2502 docs: update README with installation ste… @user-06    45m││                                                 │"
 "│  #2500 fix: resolve memory leak in cache          @user-16     3h││                                                 │"
 "│   Type: Enhancement                                             ││                                                 │"
 "│  #2458 test: add integration tests for API        @user-34     1d││                                                 │"

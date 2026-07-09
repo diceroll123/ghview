@@ -387,7 +387,7 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
         .repo_ctx
         .issues
         .iter()
-        .map(|i| i.author.len())
+        .map(|i| i.author.width())
         .max()
         .unwrap_or(6)
         .clamp(6, 20);
@@ -417,7 +417,7 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
             };
 
             let number_str = format!("#{} ", issue.number);
-            let num_w = number_str.len();
+            let num_w = number_str.width();
             let age = relative_time(&issue.created_at, app.now());
             let author_str = format!("@{:<acol$}", issue.author, acol = author_col);
             let age_str = format!("  {ICON_CLOCK} {age:>age_col$}");
@@ -425,7 +425,7 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
             let author_age_w = author_str.width() + 2 + 1 + 1 + age_col;
             let title_budget = inner_width.saturating_sub(num_w + author_age_w + 1);
             let title_text = truncate(&issue.title, title_budget);
-            let title_w = title_text.len();
+            let title_w = title_text.width();
             let gap = inner_width.saturating_sub(num_w + title_w + author_age_w);
 
             let line1 = Line::from(vec![
