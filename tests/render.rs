@@ -104,6 +104,15 @@ async fn help_overlay_shown() {
 }
 
 #[tokio::test]
+async fn help_overlay_shown_direct_repo() {
+    let mut app = inflate::app_with_prs().await;
+    app.direct_repo = true;
+    app.focus = Column::Repo;
+    app.show_help = true;
+    render("help_overlay_shown_direct_repo", &mut app, 120, 40);
+}
+
+#[tokio::test]
 async fn dependabot_menu_overlay_shown() {
     let mut app = inflate::app_with_prs().await;
     app.focus = Column::Repo;
