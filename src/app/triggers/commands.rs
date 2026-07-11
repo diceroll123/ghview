@@ -139,20 +139,6 @@ impl App {
         }
     }
 
-    /// Resolves the single-repo clone target for `Action::Clone`. Only applies in the
-    /// Repos-column repo list, or the Repo/Detail frontpage view; `None` (no-op)
-    /// everywhere else (PR list, issue list, PR/issue detail).
-    pub(crate) fn clone_single_target(&self) -> Option<RepoId> {
-        use crate::types::Column;
-        match self.focus {
-            Column::Repos if self.repos_view == ReposView::RepoList => self.selected_owner_repo(),
-            Column::Repo | Column::Detail if self.repo_view == RepoView::Frontpage => {
-                self.selected_owner_repo()
-            }
-            _ => None,
-        }
-    }
-
     pub(crate) fn context_open_issues(&self) {
         use crate::types::Column;
         if self.focus == Column::Repos {
@@ -317,79 +303,5 @@ impl App {
             language: lang,
         })?;
         self.dispatch_keybinding_cmd(kb, cmd, KbOutput::Silent)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        config::Config,
-        types::{Column, Repo, Source},
-    };
-
-    fn make_app() -> App {
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-        App::new(tx, Config::default())
-    }
-
-    fn setup_selected_repo(app: &mut App) {
-        app.sources = vec![Source::User("owner".into())];
-        app.source_state.select(Some(0));
-        app.source_ctx.repos = vec![Repo {
-            name: "repo".into(),
-            ..Repo::default()
-        }];
-        app.source_ctx.repo_state.select(Some(0));
-    }
-
-    #[test]
-    fn clone_single_target_repo_list_returns_selected_repo() {
-        let mut app = make_app();
-        setup_selected_repo(&mut app);
-        app.focus = Column::Repos;
-        app.repos_view = ReposView::RepoList;
-        assert_eq!(
-            app.clone_single_target(),
-            Some(RepoId::new("owner", "repo"))
-        );
-    }
-
-    #[test]
-    fn clone_single_target_frontpage_returns_selected_repo() {
-        let mut app = make_app();
-        setup_selected_repo(&mut app);
-        app.focus = Column::Repo;
-        app.repo_view = RepoView::Frontpage;
-        assert_eq!(
-            app.clone_single_target(),
-            Some(RepoId::new("owner", "repo"))
-        );
-    }
-
-    #[test]
-    fn clone_single_target_pr_list_is_none() {
-        let mut app = make_app();
-        setup_selected_repo(&mut app);
-        app.focus = Column::Repos;
-        app.repos_view = ReposView::PrList;
-        assert_eq!(app.clone_single_target(), None);
-    }
-
-    #[test]
-    fn clone_single_target_prs_view_is_none() {
-        let mut app = make_app();
-        setup_selected_repo(&mut app);
-        app.focus = Column::Repo;
-        app.repo_view = RepoView::Prs;
-        assert_eq!(app.clone_single_target(), None);
-    }
-
-    #[test]
-    fn clone_single_target_sources_focus_is_none() {
-        let mut app = make_app();
-        setup_selected_repo(&mut app);
-        app.focus = Column::Sources;
-        assert_eq!(app.clone_single_target(), None);
     }
 }

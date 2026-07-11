@@ -179,7 +179,7 @@ fn dispatch_action(action: Action, app: &mut App) -> Option<DispatchResult> {
                 Some(DispatchResult::Handled)
             }
             _ => {
-                let rid = app.clone_single_target()?;
+                let rid = app.selected_owner_repo()?;
                 Some(DispatchResult::Interactive(InteractiveCmd {
                     kind: InteractiveKind::Clone,
                     repo: rid,

@@ -48,7 +48,7 @@ Run `ghview OWNER/REPO` to skip straight to a repo's workspace - the Sources and
 | `i` | Open repo's issues page in browser (Repos column) |
 | `o` | Open in browser |
 | `y` | Copy URL |
-| `C` | Clone repo (Repos/Frontpage) or clone all repos in org/user (Sources, asks to confirm) |
+| `C` | Clone the current repo, or clone all repos in org/user (Sources, asks to confirm) |
 | `?` | Show help |
 | `q` | Quit |
 
