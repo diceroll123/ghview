@@ -21,6 +21,7 @@ pub enum Action {
     OpenBrowser,
     OpenIssues,
     CopyUrl,
+    Clone,
     // PR-only actions
     Approve,
     Merge,
@@ -126,6 +127,12 @@ pub static UNIVERSAL_BINDINGS: &[DefaultBinding] = &[
         display: "y",
         action: Action::CopyUrl,
         label: "copy URL",
+    },
+    DefaultBinding {
+        keys: &[KeyCode::Char('C')],
+        display: "C",
+        action: Action::Clone,
+        label: "clone",
     },
 ];
 
@@ -258,7 +265,12 @@ pub fn find_binding(action: Action) -> Option<&'static DefaultBinding> {
 }
 
 /// Which actions to show in the status-bar hint for each column.
-pub const SOURCES_BAR: &[Action] = &[Action::OpenBrowser, Action::CopyUrl, Action::FilterStart];
+pub const SOURCES_BAR: &[Action] = &[
+    Action::OpenBrowser,
+    Action::CopyUrl,
+    Action::Clone,
+    Action::FilterStart,
+];
 
 pub const REPOS_BAR: &[Action] = &[
     Action::ViewRepos,
@@ -266,6 +278,7 @@ pub const REPOS_BAR: &[Action] = &[
     Action::ViewIssues,
     Action::OpenBrowser,
     Action::CopyUrl,
+    Action::Clone,
     Action::FilterStart,
     Action::SortCycle,
 ];
@@ -312,7 +325,7 @@ pub const ISSUES_BAR: &[Action] = &[
     Action::SortCycle,
 ];
 
-pub const FRONTPAGE_BAR: &[Action] = &[Action::OpenBrowser, Action::CopyUrl];
+pub const FRONTPAGE_BAR: &[Action] = &[Action::OpenBrowser, Action::CopyUrl, Action::Clone];
 
 /// Navigation actions shown in the help popup navigation section.
 pub const NAV_ACTIONS: &[Action] = &[
@@ -349,6 +362,7 @@ pub fn builtin_to_action(name: &str) -> Option<Action> {
         "openBrowser" | "openGithub" => Some(Action::OpenBrowser),
         "openIssues" => Some(Action::OpenIssues),
         "copyUrl" => Some(Action::CopyUrl),
+        "clone" => Some(Action::Clone),
         "approve" => Some(Action::Approve),
         "merge" => Some(Action::Merge),
         "checkout" => Some(Action::Checkout),

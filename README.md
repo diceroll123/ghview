@@ -48,6 +48,7 @@ Run `ghview OWNER/REPO` to skip straight to a repo's workspace - the Sources and
 | `i` | Open repo's issues page in browser (Repos column) |
 | `o` | Open in browser |
 | `y` | Copy URL |
+| `C` | Clone repo (Repos/Frontpage) or clone all repos in org/user (Sources, asks to confirm) |
 | `?` | Show help |
 | `q` | Quit |
 
@@ -116,6 +117,8 @@ repo_sort = "updated"
 # merge_method = "squash"
 # Directory to cd into before running `gh pr checkout`. Supports ~.
 # checkout_dir = "~/code"
+# Directory repos are cloned into, as {clone_dir}/{owner}/{repo}. Supports ~.
+# clone_dir = "~/code"
 # Extra columns in the repos list. Default: ["stars"].
 # Supported: "stars", "forks", "issues", "visibility", "last_push"
 # repo_columns = ["stars"]

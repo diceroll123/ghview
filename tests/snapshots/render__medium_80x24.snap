@@ -25,4 +25,4 @@ expression: terminal.backend()
 "│                      ││   repo-sierra       ║│                              │"
 "│                      ││   octo-org-macros  ║│                              │"
 "└──────────────────────┘└ r·repos  p·prs  i·iss▼└ f·page  p·prs  i·issues ─────┘"
-" o open  y copy URL  / filter  ? help                                           "
+" o open  y copy URL  C clone  / filter  ? help                                  "

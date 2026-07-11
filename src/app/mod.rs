@@ -141,6 +141,7 @@ pub struct App {
     pub show_help: bool,
     pub help_scroll: u16,
     pub show_dependabot_menu: bool,
+    pub pending_clone_org: Option<String>,
     pub repo_view: RepoView,
     pub repos_view: ReposView,
 
@@ -194,6 +195,7 @@ impl App {
             show_help: false,
             help_scroll: 0,
             show_dependabot_menu: false,
+            pending_clone_org: None,
             repo_cache: HashMap::new(),
             source_prs_cache: HashMap::new(),
             source_issues_cache: HashMap::new(),
@@ -218,6 +220,7 @@ impl App {
         self.show_help = false;
         self.help_scroll = 0;
         self.show_dependabot_menu = false;
+        self.pending_clone_org = None;
         self.repo_ctx.diff_view = None;
         self.should_quit = false;
         self
@@ -623,7 +626,7 @@ impl App {
             Action::CheckOpen => self.open_selected_check(),
             Action::CheckRerun => self.rerun_selected_check(),
 
-            Action::Checkout | Action::Comment => {}
+            Action::Checkout | Action::Comment | Action::Clone => {}
         }
     }
 

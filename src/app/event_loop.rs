@@ -172,6 +172,21 @@ fn dispatch_action(action: Action, app: &mut App) -> Option<DispatchResult> {
                 pr_number: pr.number,
             }))
         }
+        Action::Clone => match app.focus {
+            Column::Sources => {
+                let owner = app.selected_source_owner()?;
+                app.pending_clone_org = Some(owner);
+                Some(DispatchResult::Handled)
+            }
+            _ => {
+                let rid = app.clone_single_target()?;
+                Some(DispatchResult::Interactive(InteractiveCmd {
+                    kind: InteractiveKind::Clone,
+                    repo: rid,
+                    pr_number: 0,
+                }))
+            }
+        },
         _ => {
             app.handle_action(action);
             Some(if app.should_quit {
@@ -227,6 +242,21 @@ fn dispatch_key(key: KeyEvent, app: &mut App) -> Option<DispatchResult> {
     }
 }
 
+/// Handles a keypress while `app.pending_clone_org` is set (the bulk-clone confirm
+/// overlay is showing). Always clears `pending_clone_org`. Returns `Some` only when
+/// the user confirmed with 'y'/'Y'; any other key cancels and returns `None`.
+fn handle_pending_clone_confirm(key: KeyEvent, app: &mut App) -> Option<InteractiveCmd> {
+    let owner = app.pending_clone_org.take()?;
+    if !matches!(key.code, KeyCode::Char('y' | 'Y')) {
+        return None;
+    }
+    Some(InteractiveCmd {
+        kind: InteractiveKind::CloneOrg(owner.clone()),
+        repo: RepoId::new(owner, String::new()),
+        pr_number: 0,
+    })
+}
+
 pub struct InteractiveCmd {
     pub kind: InteractiveKind,
     pub repo: RepoId,
@@ -237,6 +267,8 @@ pub enum InteractiveKind {
     Checkout,
     Comment,
     Custom(String),
+    Clone,
+    CloneOrg(String), // owner
 }
 
 pub async fn run_event_loop(
@@ -261,6 +293,13 @@ pub async fn run_event_loop(
 
                 if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
                     return Ok((None, app));
+                }
+
+                if app.pending_clone_org.is_some() {
+                    if let Some(cmd) = handle_pending_clone_confirm(key, &mut app) {
+                        return Ok((Some(cmd), app));
+                    }
+                    continue;
                 }
 
                 if app.filter_active {
@@ -351,5 +390,61 @@ pub async fn run_event_loop(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+
+    fn make_app() -> App {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        App::new(tx, Config::default())
+    }
+
+    #[test]
+    fn pending_clone_confirm_non_confirm_key_cancels_and_clears() {
+        let mut app = make_app();
+        app.pending_clone_org = Some("acme".into());
+        let key = KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE);
+        assert!(handle_pending_clone_confirm(key, &mut app).is_none());
+        assert!(app.pending_clone_org.is_none());
+    }
+
+    #[test]
+    fn pending_clone_confirm_esc_cancels_and_clears() {
+        let mut app = make_app();
+        app.pending_clone_org = Some("acme".into());
+        let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        assert!(handle_pending_clone_confirm(key, &mut app).is_none());
+        assert!(app.pending_clone_org.is_none());
+    }
+
+    #[test]
+    fn pending_clone_confirm_lowercase_y_confirms() {
+        let mut app = make_app();
+        app.pending_clone_org = Some("acme".into());
+        let key = KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE);
+        let cmd = handle_pending_clone_confirm(key, &mut app).expect("should confirm");
+        assert!(matches!(cmd.kind, InteractiveKind::CloneOrg(ref o) if o == "acme"));
+        assert!(app.pending_clone_org.is_none());
+    }
+
+    #[test]
+    fn pending_clone_confirm_uppercase_y_confirms() {
+        let mut app = make_app();
+        app.pending_clone_org = Some("acme".into());
+        let key = KeyEvent::new(KeyCode::Char('Y'), KeyModifiers::SHIFT);
+        let cmd = handle_pending_clone_confirm(key, &mut app).expect("should confirm");
+        assert!(matches!(cmd.kind, InteractiveKind::CloneOrg(ref o) if o == "acme"));
+    }
+
+    #[test]
+    fn pending_clone_confirm_none_pending_returns_none() {
+        let mut app = make_app();
+        app.pending_clone_org = None;
+        let key = KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE);
+        assert!(handle_pending_clone_confirm(key, &mut app).is_none());
     }
 }

@@ -262,6 +262,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.show_dependabot_menu {
         overlays::draw_dependabot_menu(f, area);
     }
+    if let Some(owner) = app.pending_clone_org.clone() {
+        overlays::draw_clone_confirm(f, app, area, &owner);
+    }
     if app.repo_ctx.diff_view.is_some() {
         overlays::draw_diff(f, app, area);
     }
