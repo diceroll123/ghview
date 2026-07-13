@@ -23,6 +23,9 @@ use ratatui::{
 use std::fmt::Write as _;
 use unicode_width::UnicodeWidthStr;
 
+// Import shared issue-list builder from prs module
+use super::prs::build_issue_list_items;
+
 // Always 4 chars wide.
 fn fmt_count(n: u32) -> String {
     match n {
@@ -382,7 +385,6 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
     );
 
     let inner_width = area.width.saturating_sub(4) as usize;
-    let age_col = 4usize;
     let author_col = app
         .repo_ctx
         .issues
@@ -392,63 +394,20 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
         .unwrap_or(6)
         .clamp(6, 20);
 
+    // Build immutable reference slice before calling the shared function
+    // which takes &App (not &mut App)
+    let issues_ref: Vec<&crate::types::Issue> = app.repo_ctx.issues.iter().collect();
+
     let selected_idx = app.repo_ctx.issue_state.selected();
-    let items: Vec<ListItem> = app
-        .repo_ctx
-        .issues
-        .iter()
-        .enumerate()
-        .map(|(i, issue)| {
-            let is_selected = selected_idx == Some(i);
-            let hl = if is_selected {
-                list_highlight_style(focused)
-            } else {
-                Style::default()
-            };
-            let cap_bg = if focused && is_selected {
-                Color::Rgb(50, 60, 80)
-            } else {
-                Color::Reset
-            };
-            let meta_fg = if is_selected {
-                Color::Gray
-            } else {
-                Color::DarkGray
-            };
-
-            let number_str = format!("#{} ", issue.number);
-            let num_w = number_str.width();
-            let age = relative_time(&issue.created_at, app.now());
-            let author_str = format!("@{:<acol$}", issue.author, acol = author_col);
-            let age_str = format!("  {ICON_CLOCK} {age:>age_col$}");
-            // 2 sep + 1 icon (display) + 1 space + age_col
-            let author_age_w = author_str.width() + 2 + 1 + 1 + age_col;
-            let title_budget = inner_width.saturating_sub(num_w + author_age_w + 1);
-            let title_text = truncate(&issue.title, title_budget);
-            let title_w = title_text.width();
-            let gap = inner_width.saturating_sub(num_w + title_w + author_age_w);
-
-            let line1 = Line::from(vec![
-                Span::styled(number_str, Style::new().add_modifier(Modifier::BOLD)),
-                Span::styled(title_text, item_style(focused)),
-                gap_span(gap),
-                Span::styled(
-                    author_str,
-                    Style::new().fg(meta_fg).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(age_str, Style::new().fg(meta_fg)),
-            ])
-            .style(hl);
-
-            let mut text_lines = vec![line1];
-            text_lines.extend(
-                wrap_label_lines(&issue.labels, inner_width, cap_bg)
-                    .into_iter()
-                    .map(|line| line.style(hl)),
-            );
-            ListItem::new(Text::from(text_lines))
-        })
-        .collect();
+    let items = build_issue_list_items(
+        app,
+        &issues_ref,
+        inner_width,
+        focused,
+        selected_idx,
+        author_col,
+        Some(app.selected_repo().unwrap_or("")),
+    );
 
     if items.is_empty() && !matches!(app.loading, Some(LoadingKind::Issues)) {
         let msg = if owner_repo.is_some() {

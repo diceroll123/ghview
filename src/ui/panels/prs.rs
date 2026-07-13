@@ -5,6 +5,7 @@ use super::{
     pr_state_icon, relative_time, render_list_scrollbar, repos_tab_line, review_icon, truncate,
     view_tab_line, wrap_label_lines,
 };
+use crate::types::Issue;
 use crate::{
     app::App,
     types::{Column, LoadingKind, PR, PrColumn, PrState, RepoView, ReposView},
@@ -282,6 +283,104 @@ fn build_pr_list_items(
         .collect()
 }
 
+/// Build list items shared by both the repo issue list and the source issue list.
+///
+/// `repo_override`: `Some(repo_name)` for the per-repo list (all issues share the same repo,
+/// prefix shows `#N`); `None` for the source-level list (each issue carries its own `issue.repo`,
+/// prefix shows `repo #N`).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn build_issue_list_items(
+    app: &App,
+    issues: &[&Issue],
+    inner_width: usize,
+    focused: bool,
+    selected_idx: Option<usize>,
+    author_col: usize,
+    repo_override: Option<&str>,
+) -> Vec<ListItem<'static>> {
+    let age_col = 4usize;
+    issues
+        .iter()
+        .enumerate()
+        .map(|(i, issue)| {
+            let is_selected = selected_idx == Some(i);
+            let hl = if is_selected {
+                list_highlight_style(focused)
+            } else {
+                Style::default()
+            };
+            let cap_bg = if focused && is_selected {
+                Color::Rgb(50, 60, 80)
+            } else {
+                Color::Reset
+            };
+            let meta_fg = if is_selected {
+                Color::Gray
+            } else {
+                Color::DarkGray
+            };
+
+            let (number_prefix, num_w) = if repo_override.is_some() {
+                let number_str = format!("#{} ", issue.number);
+                let w = number_str.width();
+                (number_str, w)
+            } else {
+                let repo_num = format!("{} #{} ", issue.repo, issue.number);
+                let w = repo_num.len();
+                (repo_num, w)
+            };
+
+            let age = relative_time(&issue.created_at, app.now());
+            let author_str = format!("@{:<acol$}", issue.author, acol = author_col);
+            let age_str = format!("  {ICON_CLOCK} {age:>age_col$}");
+            let author_age_w = author_str.width() + 2 + 1 + 1 + age_col;
+            let title_budget = inner_width.saturating_sub(num_w + author_age_w + 1);
+            let title_text = truncate(&issue.title, title_budget);
+            let gap = inner_width.saturating_sub(num_w + title_text.width() + author_age_w);
+
+            let line1_spans: Vec<Span> = if repo_override.is_some() {
+                vec![
+                    Span::styled(
+                        number_prefix.clone(),
+                        Style::new().add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(title_text, item_style(focused)),
+                    gap_span(gap),
+                    Span::styled(
+                        author_str,
+                        Style::new().fg(meta_fg).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(age_str, Style::new().fg(meta_fg)),
+                ]
+            } else {
+                vec![
+                    Span::styled(
+                        number_prefix.clone(),
+                        item_style(focused).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(title_text, item_style(focused)),
+                    gap_span(gap),
+                    Span::styled(
+                        author_str,
+                        Style::new().fg(meta_fg).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(age_str, Style::new().fg(meta_fg)),
+                ]
+            };
+
+            let line1 = Line::from(line1_spans).style(hl);
+
+            let mut text_lines = vec![line1];
+            text_lines.extend(
+                wrap_label_lines(&issue.labels, inner_width, cap_bg)
+                    .into_iter()
+                    .map(|line| line.style(hl)),
+            );
+            ListItem::new(Text::from(text_lines))
+        })
+        .collect()
+}
+
 pub(crate) fn draw_prs(f: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Column::Repo;
     let border_style = panel_focus(focused);
@@ -532,7 +631,6 @@ pub(crate) fn draw_source_issues(f: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
 
-    let age_col = 4usize;
     let author_col = visible_issues
         .iter()
         .map(|i| i.author.len())
@@ -541,59 +639,15 @@ pub(crate) fn draw_source_issues(f: &mut Frame, app: &mut App, area: Rect) {
         .clamp(6, 20);
 
     let selected_idx = app.source_ctx.source_issue_state.selected();
-    let items: Vec<ListItem> = visible_issues
-        .iter()
-        .enumerate()
-        .map(|(i, issue)| {
-            let is_selected = selected_idx == Some(i);
-            let hl = if is_selected {
-                list_highlight_style(focused)
-            } else {
-                Style::default()
-            };
-            let cap_bg = if focused && is_selected {
-                Color::Rgb(50, 60, 80)
-            } else {
-                Color::Reset
-            };
-            let meta_fg = if is_selected {
-                Color::Gray
-            } else {
-                Color::DarkGray
-            };
-
-            let repo_num = format!("{} #{} ", issue.repo, issue.number);
-            let repo_num_w = repo_num.len();
-            let age = relative_time(&issue.created_at, app.now());
-            let author_str = format!("@{:<acol$}", issue.author, acol = author_col);
-            let age_str = format!("  {ICON_CLOCK} {age:>age_col$}");
-            let author_age_w = author_str.width() + 2 + 1 + 1 + age_col;
-            let title_budget = inner_width.saturating_sub(repo_num_w + author_age_w + 1);
-            let title_text = truncate(&issue.title, title_budget);
-            let title_w = title_text.width();
-            let gap = inner_width.saturating_sub(repo_num_w + title_w + author_age_w);
-
-            let line1 = Line::from(vec![
-                Span::styled(repo_num, item_style(focused).add_modifier(Modifier::BOLD)),
-                Span::styled(title_text, item_style(focused)),
-                gap_span(gap),
-                Span::styled(
-                    author_str,
-                    Style::new().fg(meta_fg).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(age_str, Style::new().fg(meta_fg)),
-            ])
-            .style(hl);
-
-            let mut text_lines = vec![line1];
-            text_lines.extend(
-                wrap_label_lines(&issue.labels, inner_width, cap_bg)
-                    .into_iter()
-                    .map(|line| line.style(hl)),
-            );
-            ListItem::new(Text::from(text_lines))
-        })
-        .collect();
+    let items = build_issue_list_items(
+        app,
+        &visible_issues,
+        inner_width,
+        focused,
+        selected_idx,
+        author_col,
+        None,
+    );
 
     let total = items.len();
     let list = List::new(items).highlight_symbol("▶ ");
