@@ -91,51 +91,29 @@ impl App {
         None
     }
 
-    pub(crate) fn context_open_browser(&self) {
-        use crate::types::{Column, ReposView};
+    fn selected_context_url(&self) -> Option<String> {
+        use crate::types::Column;
         match self.focus {
             Column::Sources => {
-                let Some(owner) = self.selected_source_owner() else {
-                    return;
-                };
-                self.spawn_open_url(&format!("https://github.com/{owner}"));
+                let owner = self.selected_source_owner()?;
+                Some(format!("https://github.com/{owner}"))
             }
             Column::Repos => match self.repos_view {
-                ReposView::PrList => {
-                    if let Some(pr) = self.selected_pr() {
-                        self.spawn_open_url(&pr.url);
-                    }
-                }
-                ReposView::IssueList => {
-                    if let Some(issue) = self.selected_issue() {
-                        self.spawn_open_url(&issue.url);
-                    }
-                }
-                ReposView::RepoList => {
-                    let Some(rid) = self.selected_owner_repo() else {
-                        return;
-                    };
-                    self.spawn_open_url(&rid.url());
-                }
+                ReposView::PrList => self.selected_pr().map(|pr| pr.url.clone()),
+                ReposView::IssueList => self.selected_issue().map(|i| i.url.clone()),
+                ReposView::RepoList => self.selected_owner_repo().map(|rid| rid.url()),
             },
             Column::Repo | Column::Detail => match self.repo_view {
-                RepoView::Frontpage => {
-                    let Some(rid) = self.selected_owner_repo() else {
-                        return;
-                    };
-                    self.spawn_open_url(&rid.url());
-                }
-                RepoView::Issues => {
-                    if let Some(issue) = self.selected_issue() {
-                        self.spawn_open_url(&issue.url);
-                    }
-                }
-                RepoView::Prs => {
-                    if let Some(pr) = self.selected_pr() {
-                        self.spawn_open_url(&pr.url);
-                    }
-                }
+                RepoView::Frontpage => self.selected_owner_repo().map(|rid| rid.url()),
+                RepoView::Issues => self.selected_issue().map(|i| i.url.clone()),
+                RepoView::Prs => self.selected_pr().map(|pr| pr.url.clone()),
             },
+        }
+    }
+
+    pub(crate) fn context_open_browser(&self) {
+        if let Some(url) = self.selected_context_url() {
+            self.spawn_open_url(&url);
         }
     }
 
@@ -150,51 +128,8 @@ impl App {
     }
 
     pub(crate) fn context_copy_url(&mut self) {
-        use crate::types::Column;
-        match self.focus {
-            Column::Sources => {
-                let Some(owner) = self.selected_source_owner() else {
-                    return;
-                };
-                let url = format!("https://github.com/{owner}");
-                copy_to_clipboard(&url);
-            }
-            Column::Repos => match self.repos_view {
-                ReposView::PrList => {
-                    if let Some(url) = self.selected_pr().map(|pr| pr.url.clone()) {
-                        self.copy_and_notify(&url);
-                    }
-                }
-                ReposView::IssueList => {
-                    if let Some(url) = self.selected_issue().map(|i| i.url.clone()) {
-                        self.copy_and_notify(&url);
-                    }
-                }
-                ReposView::RepoList => {
-                    let Some(rid) = self.selected_owner_repo() else {
-                        return;
-                    };
-                    self.copy_and_notify(&rid.url());
-                }
-            },
-            Column::Repo | Column::Detail => match self.repo_view {
-                RepoView::Frontpage => {
-                    let Some(rid) = self.selected_owner_repo() else {
-                        return;
-                    };
-                    self.copy_and_notify(&rid.url());
-                }
-                RepoView::Prs => {
-                    if let Some((_, pr)) = self.selected_pr_context() {
-                        self.copy_and_notify(&pr.url);
-                    }
-                }
-                RepoView::Issues => {
-                    if let Some((_, issue)) = self.selected_issue_context() {
-                        self.copy_and_notify(&issue.url);
-                    }
-                }
-            },
+        if let Some(url) = self.selected_context_url() {
+            self.copy_and_notify(&url);
         }
     }
 
