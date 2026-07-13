@@ -6,6 +6,29 @@ use anyhow::{Context, Result, bail};
 use log::debug;
 use serde::Deserialize;
 
+/// Parse newline-delimited JSON from raw string output.
+/// Returns a vector of successfully parsed items and reports the first parse error
+/// if no items could be parsed (to distinguish empty result from malformed data).
+fn parse_ndjson_lines<T: serde::de::DeserializeOwned>(raw: &str) -> Result<Vec<T>> {
+    let mut results = Vec::new();
+    let mut first_err: Option<String> = None;
+    for line in raw.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str::<T>(line) {
+            Ok(item) => results.push(item),
+            Err(e) if first_err.is_none() => {
+                first_err = Some(format!("parse error: {e}\nraw: {line}"));
+            }
+            _ => {}
+        }
+    }
+    if results.is_empty()
+        && let Some(err) = first_err
+    {
+        bail!("{err}");
+    }
+    Ok(results)
+}
+
 #[derive(Deserialize)]
 struct RepoRaw {
     name: String,
@@ -234,22 +257,7 @@ pub async fn fetch_prs_with<R: GhRunner>(
     );
     let jq = r#".[] | {number, title, author: (.user.login // "ghost"), draft, state, created_at, updated_at, url: .html_url, requested_reviewers: ([.requested_reviewers[] | .login] + [.requested_teams[] | .slug]), labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], head_ref: .head.ref, base_ref: .base.ref, head_sha: .head.sha, comments: ((.comments // 0) + (.review_comments // 0)), auto_merge: (.auto_merge != null)}"#;
     let raw = runner.run(&["api", &endpoint, "--jq", jq]).await?;
-    let mut prs = Vec::new();
-    let mut first_err: Option<String> = None;
-    for line in raw.lines().filter(|l| !l.trim().is_empty()) {
-        match serde_json::from_str::<PR>(line) {
-            Ok(pr) => prs.push(pr),
-            Err(e) if first_err.is_none() => {
-                first_err = Some(format!("parse error: {e}\nraw: {line}"));
-            }
-            _ => {}
-        }
-    }
-    if prs.is_empty()
-        && let Some(err) = first_err
-    {
-        bail!("{err}");
-    }
+    let prs: Vec<PR> = parse_ndjson_lines(&raw)?;
     debug!("fetch_prs: {repo} page={page} -> {} prs", prs.len());
     Ok(prs)
 }
@@ -282,22 +290,7 @@ pub async fn fetch_source_prs_with<R: GhRunner>(
     );
     let jq = r#".items[] | {number, title, author: (.user.login // "ghost"), state, created_at, updated_at, url: .html_url, labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], comments: ((.comments // 0)), repo: (.repository_url | split("/") | .[-1]), repo_owner: (.repository_url | split("/") | .[-2])}"#;
     let raw = runner.run(&["api", &endpoint, "--jq", jq]).await?;
-    let mut prs = Vec::new();
-    let mut first_err: Option<String> = None;
-    for line in raw.lines().filter(|l| !l.trim().is_empty()) {
-        match serde_json::from_str::<PR>(line) {
-            Ok(pr) => prs.push(pr),
-            Err(e) if first_err.is_none() => {
-                first_err = Some(format!("parse error: {e}\nraw: {line}"));
-            }
-            _ => {}
-        }
-    }
-    if prs.is_empty()
-        && let Some(err) = first_err
-    {
-        bail!("{err}");
-    }
+    let prs: Vec<PR> = parse_ndjson_lines(&raw)?;
     debug!("fetch_source_prs: {owner} page={page} -> {} prs", prs.len());
     Ok(prs)
 }
@@ -602,22 +595,7 @@ pub async fn fetch_source_issues_with<R: GhRunner>(
     );
     let jq = r#".items[] | {number, title, author: (.user.login // "ghost"), created_at, labels: [.labels[] | {name: .name, color: (.color // "8b949e")}], url: .html_url, repo: (.repository_url | split("/") | .[-1]), repo_owner: (.repository_url | split("/") | .[-2])}"#;
     let raw = runner.run(&["api", &endpoint, "--jq", jq]).await?;
-    let mut issues = Vec::new();
-    let mut first_err: Option<String> = None;
-    for line in raw.lines().filter(|l| !l.trim().is_empty()) {
-        match serde_json::from_str::<Issue>(line) {
-            Ok(issue) => issues.push(issue),
-            Err(e) if first_err.is_none() => {
-                first_err = Some(format!("parse error: {e}\nraw: {line}"));
-            }
-            _ => {}
-        }
-    }
-    if issues.is_empty()
-        && let Some(err) = first_err
-    {
-        bail!("{err}");
-    }
+    let issues: Vec<Issue> = parse_ndjson_lines(&raw)?;
     debug!(
         "fetch_source_issues: {owner} page={page} -> {} issues",
         issues.len()
