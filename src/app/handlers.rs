@@ -1,7 +1,7 @@
 use super::{App, RepoCtx, SourceCtx};
 use crate::types::{
-    CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, PR, PrAction, Repo, RepoView,
-    ReposView, ReviewStatus, SortKey,
+    CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, PR, PrAction, PrId, Repo,
+    RepoView, ReposView, ReviewStatus, SortKey,
 };
 use log::debug;
 
@@ -115,19 +115,7 @@ impl App {
                 if is_current {
                     self.repo_ctx.review_statuses.insert(pr.number, status);
                 }
-                for list in [&mut self.repo_ctx.prs_raw, &mut self.repo_ctx.prs] {
-                    if let Some(p) = list.iter_mut().find(|p| p.number == pr.number) {
-                        p.viewer_approved = viewer_approved;
-                    }
-                }
-                if let Some(spr) = self
-                    .source_ctx
-                    .source_prs
-                    .iter_mut()
-                    .find(|p| p.number == pr.number)
-                {
-                    spr.viewer_approved = viewer_approved;
-                }
+                self.update_pr_by_id(&pr, |p| p.viewer_approved = viewer_approved);
             }
             DataMsg::CheckRuns { pr, mut runs } => {
                 let passes = if self.repos_view == ReposView::PrList {
@@ -217,23 +205,11 @@ impl App {
                         self.repo_ctx.detail_section = DetailSection::Checks;
                     }
                 }
-                for list in [&mut self.repo_ctx.prs_raw, &mut self.repo_ctx.prs] {
-                    if let Some(p) = list.iter_mut().find(|p| p.number == pr.number) {
-                        p.additions = additions;
-                        p.deletions = deletions;
-                        p.auto_merge = auto_merge;
-                    }
-                }
-                if let Some(spr) = self
-                    .source_ctx
-                    .source_prs
-                    .iter_mut()
-                    .find(|p| p.repo == pr.repo.repo && p.number == pr.number)
-                {
-                    spr.additions = additions;
-                    spr.deletions = deletions;
-                    spr.auto_merge = auto_merge;
-                }
+                self.update_pr_by_id(&pr, |p| {
+                    p.additions = additions;
+                    p.deletions = deletions;
+                    p.auto_merge = auto_merge;
+                });
             }
             DataMsg::RepoFrontpage {
                 repo,
@@ -394,34 +370,10 @@ impl App {
                         self.repo_ctx
                             .review_statuses
                             .insert(pr.number, ReviewStatus::Approved);
-                        for list in [&mut self.repo_ctx.prs_raw, &mut self.repo_ctx.prs] {
-                            if let Some(p) = list.iter_mut().find(|p| p.number == pr.number) {
-                                p.viewer_approved = true;
-                            }
-                        }
-                        if let Some(spr) = self
-                            .source_ctx
-                            .source_prs
-                            .iter_mut()
-                            .find(|p| p.number == pr.number)
-                        {
-                            spr.viewer_approved = true;
-                        }
+                        self.update_pr_by_id(&pr, |p| p.viewer_approved = true);
                     }
                     PrAction::Merge if use_auto => {
-                        for list in [&mut self.repo_ctx.prs_raw, &mut self.repo_ctx.prs] {
-                            if let Some(p) = list.iter_mut().find(|p| p.number == pr.number) {
-                                p.auto_merge = true;
-                            }
-                        }
-                        if let Some(spr) = self
-                            .source_ctx
-                            .source_prs
-                            .iter_mut()
-                            .find(|p| p.number == pr.number)
-                        {
-                            spr.auto_merge = true;
-                        }
+                        self.update_pr_by_id(&pr, |p| p.auto_merge = true);
                     }
                     _ => {}
                 }
@@ -432,6 +384,26 @@ impl App {
                 self.set_error(format!("Error: {e}"));
                 self.loading = None;
             }
+        }
+    }
+
+    /// Apply `f` to the PR identified by `pr` in every list that tracks it:
+    /// `repo_ctx.prs_raw`/`repo_ctx.prs` (matched by number - always scoped to
+    /// a single repo) and `source_ctx.source_prs` (matched by repo+number,
+    /// since source PR lists span multiple repos).
+    fn update_pr_by_id(&mut self, pr: &PrId, mut f: impl FnMut(&mut PR)) {
+        for list in [&mut self.repo_ctx.prs_raw, &mut self.repo_ctx.prs] {
+            if let Some(p) = list.iter_mut().find(|p| p.number == pr.number) {
+                f(p);
+            }
+        }
+        if let Some(spr) = self
+            .source_ctx
+            .source_prs
+            .iter_mut()
+            .find(|p| p.repo == pr.repo.repo && p.number == pr.number)
+        {
+            f(spr);
         }
     }
 
