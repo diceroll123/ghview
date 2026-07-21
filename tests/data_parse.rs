@@ -20,20 +20,6 @@ async fn fetch_user_error() {
 }
 
 #[tokio::test]
-async fn fetch_owner_kind_organization() {
-    let gh = MockGh::new().on("users/octo-org", "Organization");
-    let result = fetch_owner_kind_with(&gh, "octo-org").await.unwrap();
-    assert!(matches!(result, Source::Org(ref s) if s == "octo-org"));
-}
-
-#[tokio::test]
-async fn fetch_owner_kind_user() {
-    let gh = MockGh::new().on("users/octocat", "User");
-    let result = fetch_owner_kind_with(&gh, "octocat").await.unwrap();
-    assert!(matches!(result, Source::User(ref s) if s == "octocat"));
-}
-
-#[tokio::test]
 async fn fetch_sources_small_orgs() {
     let cfg = SourcesConfig {
         auto_fetch_orgs: true,

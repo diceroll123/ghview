@@ -82,19 +82,6 @@ pub async fn fetch_user_with<R: GhRunner>(runner: &R) -> Result<String> {
     Ok(login)
 }
 
-pub async fn fetch_owner_kind(owner: &str) -> Result<Source> {
-    fetch_owner_kind_with(&GhCli, owner).await
-}
-
-pub async fn fetch_owner_kind_with<R: GhRunner>(runner: &R, owner: &str) -> Result<Source> {
-    let endpoint = format!("users/{owner}");
-    let stdout = runner.run(&["api", &endpoint, "--jq", ".type"]).await?;
-    Ok(match stdout.trim() {
-        "Organization" => Source::Org(owner.to_string()),
-        _ => Source::User(owner.to_string()),
-    })
-}
-
 async fn fetch_orgs_with<R: GhRunner>(runner: &R) -> Result<Vec<String>> {
     let mut all_orgs: Vec<String> = Vec::new();
     let mut page = 1u32;

@@ -110,7 +110,6 @@ pub struct SourceCtx {
 pub struct App {
     pub focus: Column,
     pub direct_repo: bool,
-    pub direct_source: bool,
 
     pub sources: Vec<Source>,
     pub source_state: ListState,
@@ -173,7 +172,6 @@ impl App {
         Self {
             focus: Column::Sources,
             direct_repo: false,
-            direct_source: false,
             sources: vec![],
             source_state: ListState::default(),
             source_filter: String::new(),
@@ -233,7 +231,6 @@ impl App {
     /// straight into the repo workspace, skipping Sources/Repos browsing entirely.
     pub fn enter_direct_repo(&mut self, repo: RepoId) {
         self.direct_repo = true;
-        self.direct_source = true;
         self.sources = vec![Source::User(repo.owner.clone())];
         self.source_state.select(Some(0));
         // has_issues/has_pull_requests optimistically true: the real repo-list fetch
@@ -251,29 +248,6 @@ impl App {
         self.repo_ctx.issue_body_scroll = 0;
         self.repo_ctx.repo_frontpage_scroll = 0;
         self.on_repo_changed();
-    }
-
-    /// Bootstraps state for `ghview OWNER`: resolves whether OWNER is an org
-    /// or a user via the API, then seeds a single-element source and jumps
-    /// straight into its Repos list (a real fetch), skipping Sources browsing.
-    pub fn enter_direct_owner(&mut self, owner: String) {
-        self.direct_source = true;
-        self.focus = Column::Repos;
-        self.loading = Some(LoadingKind::Sources);
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            match crate::data::fetch_owner_kind(&owner).await {
-                Ok(source) => {
-                    let _ = tx.send(DataMsg::Sources {
-                        sources: vec![source],
-                        current_user: String::new(),
-                    });
-                }
-                Err(e) => {
-                    let _ = tx.send(DataMsg::Error(e.to_string()));
-                }
-            }
-        });
     }
 
     pub fn visible_sources(&self) -> Vec<&Source> {
@@ -761,16 +735,6 @@ mod tests {
         assert!(app.direct_repo);
         assert_eq!(app.focus, Column::Repo);
         assert_eq!(app.repos_view, ReposView::RepoList);
-    }
-
-    #[tokio::test]
-    async fn enter_direct_owner_sets_flags() {
-        let mut app = make_app();
-        app.enter_direct_owner("someowner".to_string());
-        assert!(app.direct_source);
-        assert!(!app.direct_repo);
-        assert_eq!(app.focus, Column::Repos);
-        assert_eq!(app.loading, Some(LoadingKind::Sources));
     }
 
     #[tokio::test]

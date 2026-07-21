@@ -242,13 +242,7 @@ impl App {
 
     pub(crate) fn move_left(&mut self) {
         match self.focus {
-            Column::Repos => {
-                // Gated for consistency with hiding the Sources help-bar in direct
-                // modes, not because the Sources data itself is fake here.
-                if !self.direct_source {
-                    self.focus = Column::Sources;
-                }
-            }
+            Column::Repos => self.focus = Column::Sources,
             Column::Repo => {
                 if !self.direct_repo {
                     self.focus = Column::Repos;
@@ -598,15 +592,6 @@ mod tests {
         app.focus = Column::Repo;
         app.move_left();
         assert_eq!(app.focus, Column::Repo);
-    }
-
-    #[test]
-    fn move_left_noop_in_direct_source_mode() {
-        let mut app = make_app();
-        app.direct_source = true;
-        app.focus = Column::Repos;
-        app.move_left();
-        assert_eq!(app.focus, Column::Repos);
     }
 
     #[test]

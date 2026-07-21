@@ -107,7 +107,6 @@ async fn help_overlay_shown() {
 async fn help_overlay_shown_direct_repo() {
     let mut app = inflate::app_with_prs().await;
     app.direct_repo = true;
-    app.direct_source = true;
     app.focus = Column::Repo;
     app.show_help = true;
     render("help_overlay_shown_direct_repo", &mut app, 120, 40);

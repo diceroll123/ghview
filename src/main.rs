@@ -11,31 +11,24 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 use tokio::sync::mpsc::unbounded_channel;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum LaunchTarget {
-    Repo(RepoId),
-    Owner(String),
-}
-
-fn parse_launch_arg(s: &str) -> Result<LaunchTarget, String> {
-    if let Some((owner, repo)) = s.split_once('/') {
-        if owner.is_empty() || repo.is_empty() || repo.contains('/') {
-            return Err(format!("invalid repo \"{s}\": expected OWNER/REPO"));
-        }
-        return Ok(LaunchTarget::Repo(RepoId::new(owner, repo)));
+fn parse_repo_arg(s: &str) -> Result<RepoId, String> {
+    let mut parts = s.splitn(2, '/');
+    let owner = parts.next().unwrap_or("");
+    let Some(repo) = parts.next() else {
+        return Err(format!("invalid repo \"{s}\": expected OWNER/REPO"));
+    };
+    if owner.is_empty() || repo.is_empty() || repo.contains('/') {
+        return Err(format!("invalid repo \"{s}\": expected OWNER/REPO"));
     }
-    if s.is_empty() {
-        return Err("expected OWNER/REPO or OWNER, got empty string".to_string());
-    }
-    Ok(LaunchTarget::Owner(s.to_string()))
+    Ok(RepoId::new(owner, repo))
 }
 
 #[derive(Parser)]
 #[command(name = "ghview", about = "GitHub PR browser")]
 struct Args {
-    /// Open directly into a repo's workspace (OWNER/REPO) or an owner's repo list (OWNER), skipping Sources/Repos browsing
-    #[arg(value_name = "OWNER/REPO|OWNER", value_parser = parse_launch_arg)]
-    target: Option<LaunchTarget>,
+    /// Open directly into a repo's workspace (OWNER/REPO), skipping Sources/Repos browsing
+    #[arg(value_name = "OWNER/REPO", value_parser = parse_repo_arg)]
+    repo: Option<RepoId>,
 
     /// Write debug logs to ./debug.log
     #[arg(long)]
@@ -64,7 +57,7 @@ async fn main() -> Result<()> {
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(backend)?;
 
-    let result = run_app(&mut terminal, args.target).await;
+    let result = run_app(&mut terminal, args.repo).await;
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
@@ -75,14 +68,13 @@ async fn main() -> Result<()> {
 
 async fn run_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    direct_target: Option<LaunchTarget>,
+    direct_repo: Option<RepoId>,
 ) -> Result<()> {
     let cfg = ghview::config::load();
     let (tx, mut rx) = unbounded_channel();
     let mut app = App::new(tx, cfg);
-    match direct_target {
-        Some(LaunchTarget::Repo(repo)) => app.enter_direct_repo(repo),
-        Some(LaunchTarget::Owner(owner)) => app.enter_direct_owner(owner),
+    match direct_repo {
+        Some(repo) => app.enter_direct_repo(repo),
         None => app.trigger_load_sources(),
     }
 
@@ -172,45 +164,4 @@ async fn run_app(
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_launch_arg_owner_repo() {
-        assert_eq!(
-            parse_launch_arg("owner/repo"),
-            Ok(LaunchTarget::Repo(RepoId::new("owner", "repo")))
-        );
-    }
-
-    #[test]
-    fn parse_launch_arg_bare_owner() {
-        assert_eq!(
-            parse_launch_arg("owner"),
-            Ok(LaunchTarget::Owner("owner".to_string()))
-        );
-    }
-
-    #[test]
-    fn parse_launch_arg_empty() {
-        assert!(parse_launch_arg("").is_err());
-    }
-
-    #[test]
-    fn parse_launch_arg_empty_repo_part() {
-        assert!(parse_launch_arg("owner/").is_err());
-    }
-
-    #[test]
-    fn parse_launch_arg_empty_owner_part() {
-        assert!(parse_launch_arg("/repo").is_err());
-    }
-
-    #[test]
-    fn parse_launch_arg_repo_part_has_slash() {
-        assert!(parse_launch_arg("owner/repo/extra").is_err());
-    }
 }

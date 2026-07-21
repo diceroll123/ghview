@@ -284,7 +284,7 @@ pub struct CheckRun {
     pub status: CheckStatus,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum LoadingKind {
     Sources,
     Repos,
