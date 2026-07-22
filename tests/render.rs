@@ -17,6 +17,13 @@ async fn preview_repo_list() {
 }
 
 #[tokio::test]
+async fn preview_repo_list_direct_source() {
+    let mut app = inflate::app_with_repo_list().await;
+    app.direct_source = true;
+    render("preview_repo_list_direct_source", &mut app, 120, 40);
+}
+
+#[tokio::test]
 async fn preview_pr_list() {
     let mut app = inflate::app_with_source_prs().await;
     app.repos_view = ReposView::PrList;
