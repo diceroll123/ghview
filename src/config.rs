@@ -54,6 +54,8 @@ pub struct UiConfig {
     pub repo_sort: crate::types::RepoSortKey,
     /// Directory to cd into before running `gh pr checkout`. Supports ~.
     pub checkout_dir: Option<String>,
+    /// Directory repos are cloned into, as `{clone_dir}/{owner}/{repo}`. Supports ~.
+    pub clone_dir: Option<String>,
     /// Extra columns shown in the repos list. Supported: "stars", "forks", "issues", "visibility", "`last_push`", "created".
     pub repo_columns: Vec<crate::types::RepoColumn>,
     /// Extra columns shown in the PR list. Supported: "`diff_stats`".
@@ -244,6 +246,7 @@ impl Default for UiConfig {
             tick_ms: DEFAULT_TICK_MS,
             repo_sort: crate::types::RepoSortKey::default(),
             checkout_dir: None,
+            clone_dir: None,
             repo_columns: vec![crate::types::RepoColumn::LastPush],
             pr_columns: vec![
                 crate::types::PrColumn::Comments,

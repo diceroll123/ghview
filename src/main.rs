@@ -101,7 +101,7 @@ async fn run_app(
         disable_raw_mode()?;
         execute!(io::stdout(), LeaveAlternateScreen)?;
 
-        let mut child = match kind {
+        let child: Option<std::process::Child> = match kind {
             InteractiveKind::Checkout => {
                 debug!("gh pr checkout {pr_number} -R {repo} (interactive)");
                 let mut cmd = std::process::Command::new("gh");
@@ -116,24 +116,50 @@ async fn run_app(
                     let expanded = shellexpand::tilde(dir).into_owned();
                     cmd.current_dir(&expanded);
                 }
-                cmd.spawn()?
+                Some(cmd.spawn()?)
             }
-            InteractiveKind::Comment => ghview::actions::spawn_interactive(&[
+            InteractiveKind::Comment => Some(ghview::actions::spawn_interactive(&[
                 "pr",
                 "comment",
                 &pr_number.to_string(),
                 "-R",
                 &repo.to_string(),
-            ])?,
+            ])?),
             InteractiveKind::Custom(cmd) => {
                 debug!("sh -c {cmd} (interactive)");
-                std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(&cmd)
-                    .spawn()?
+                Some(
+                    std::process::Command::new("sh")
+                        .arg("-c")
+                        .arg(&cmd)
+                        .spawn()?,
+                )
+            }
+            InteractiveKind::Clone => {
+                let base = ghview::actions::clone_base_dir(
+                    returned_app.config.ui.clone_dir.as_deref(),
+                    &repo.owner,
+                )?;
+                debug!("gh repo clone {repo} (interactive)");
+                Some(
+                    std::process::Command::new("gh")
+                        .args(["repo", "clone", &repo.to_string()])
+                        .current_dir(&base)
+                        .spawn()?,
+                )
+            }
+            InteractiveKind::CloneOrg(owner) => {
+                let base = ghview::actions::clone_base_dir(
+                    returned_app.config.ui.clone_dir.as_deref(),
+                    &owner,
+                )?;
+                ghview::actions::run_clone_org(&owner, &base)
+                    .map_err(|e| color_eyre::eyre::eyre!(e.to_string()))?;
+                None
             }
         };
-        let _ = child.wait();
+        if let Some(mut child) = child {
+            let _ = child.wait();
+        }
 
         execute!(io::stdout(), EnterAlternateScreen)?;
         enable_raw_mode()?;

@@ -41,4 +41,4 @@ expression: terminal.backend()
 "│                                  ││  repo-oscar #168 @user-50     1d││                                              │"
 "│                                  ││  octo-org-textarea #9 @user-51  ││                                              │"
 "└──────────────────────────────────┘└ r·repos  p·prs  i·issues (30) ───┘└──────────────────────────────────────────────┘"
-" o open  y copy URL  / filter  ? help                                                                                   "
+" o open  y copy URL  C clone  / filter  ? help                                                                          "

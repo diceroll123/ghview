@@ -16,6 +16,8 @@ repo_sort = "updated"
 # merge_auto = true
 # Directory to cd into before running `gh pr checkout`. Supports ~.
 # checkout_dir = "~/code"
+# Directory repos are cloned into, as {clone_dir}/{owner}/{repo}. Supports ~.
+# clone_dir = "~/code"
 # Extra columns in the repos list. Default: ["stars"].
 # Supported: "stars", "forks", "issues", "visibility", "last_push", "created"
 # repo_columns = ["last_push"]
@@ -57,7 +59,7 @@ users = []
 # Built-in action names
 # ─────────────────────
 # Universal:   up, down, left, right, top, bottom, quit, help, refresh,
-#              filter, sort, openBrowser, openIssues, copyUrl
+#              filter, sort, openBrowser, openIssues, copyUrl, clone
 # PRs only:    approve, merge, checkout, comment, diff, close, reopen,
 #              ready, dependabot
 #

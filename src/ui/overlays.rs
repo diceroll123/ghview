@@ -197,6 +197,34 @@ pub(super) fn draw_dependabot_menu(f: &mut Frame, area: Rect) {
     f.render_widget(para, popup_area);
 }
 
+pub(super) fn draw_clone_confirm(f: &mut Frame, app: &App, area: Rect, owner: &str) {
+    let base_dir = crate::actions::resolve_clone_dir(app.config.ui.clone_dir.as_deref(), owner);
+    let text = format!(
+        "Clone all repos from {owner} into {}?\n\ny = yes, any other key = cancel",
+        base_dir.display()
+    );
+    let popup_width = 60u16;
+    let popup_height = 7u16;
+    let x = area.width.saturating_sub(popup_width) / 2;
+    let y = area.height.saturating_sub(popup_height) / 2;
+    let popup_area = Rect::new(
+        x,
+        y,
+        popup_width.min(area.width),
+        popup_height.min(area.height),
+    );
+    f.render_widget(Clear, popup_area);
+    let block = Block::default()
+        .title(" Clone org ")
+        .borders(Borders::ALL)
+        .border_style(Style::new().fg(Color::Yellow));
+    let para = Paragraph::new(text)
+        .block(block)
+        .wrap(Wrap { trim: false })
+        .style(Style::new().fg(Color::White));
+    f.render_widget(para, popup_area);
+}
+
 pub(super) fn draw_diff(f: &mut Frame, app: &App, area: Rect) {
     use ratatui::text::Line;
     let Some(diff) = &app.repo_ctx.diff_view else {
