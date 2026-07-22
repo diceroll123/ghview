@@ -56,6 +56,18 @@ fn preview_pcts(focus: Column) -> (u16, u16, u16) {
         Column::Repo | Column::Detail => unreachable!(),
     }
 }
+
+fn draw_prs_pane(f: &mut Frame, app: &mut App, area: Rect) {
+    let cols = Layout::horizontal([Constraint::Fill(4), Constraint::Fill(3)]).split(area);
+    panels::draw_prs(f, app, cols[0]);
+    panels::draw_pr_detail(f, app, cols[1]);
+}
+
+fn draw_issues_pane(f: &mut Frame, app: &mut App, area: Rect) {
+    let cols = Layout::horizontal([Constraint::Fill(4), Constraint::Fill(3)]).split(area);
+    panels::draw_issues(f, app, cols[0]);
+    panels::draw_issue_detail(f, app, cols[1]);
+}
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -162,95 +174,131 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             panels::draw_issue_detail(f, app, cols[2]);
         }
         DrawMode::DetailFrontpage => {
-            let cols = Layout::horizontal([
-                Constraint::Length(4),
-                Constraint::Length(4),
-                Constraint::Fill(1),
-            ])
-            .split(main_area);
-            panels::draw_sources_strip(f, app, cols[0]);
-            panels::draw_repos_strip(f, app, cols[1]);
-            panels::draw_repo_frontpage(f, app, cols[2]);
+            if app.direct_source {
+                let cols = Layout::horizontal([Constraint::Length(4), Constraint::Fill(1)])
+                    .split(main_area);
+                panels::draw_repos_strip(f, app, cols[0]);
+                panels::draw_repo_frontpage(f, app, cols[1]);
+            } else {
+                let cols = Layout::horizontal([
+                    Constraint::Length(4),
+                    Constraint::Length(4),
+                    Constraint::Fill(1),
+                ])
+                .split(main_area);
+                panels::draw_sources_strip(f, app, cols[0]);
+                panels::draw_repos_strip(f, app, cols[1]);
+                panels::draw_repo_frontpage(f, app, cols[2]);
+            }
         }
         DrawMode::DetailPrs => {
-            let cols = Layout::horizontal([
-                Constraint::Length(4),
-                Constraint::Length(4),
-                Constraint::Fill(4),
-                Constraint::Fill(3),
-            ])
-            .split(main_area);
-            panels::draw_sources_strip(f, app, cols[0]);
-            panels::draw_repos_strip(f, app, cols[1]);
-            panels::draw_prs(f, app, cols[2]);
-            panels::draw_pr_detail(f, app, cols[3]);
+            if app.direct_source {
+                let cols = Layout::horizontal([Constraint::Length(4), Constraint::Fill(1)])
+                    .split(main_area);
+                panels::draw_repos_strip(f, app, cols[0]);
+                draw_prs_pane(f, app, cols[1]);
+            } else {
+                let cols = Layout::horizontal([
+                    Constraint::Length(4),
+                    Constraint::Length(4),
+                    Constraint::Fill(1),
+                ])
+                .split(main_area);
+                panels::draw_sources_strip(f, app, cols[0]);
+                panels::draw_repos_strip(f, app, cols[1]);
+                draw_prs_pane(f, app, cols[2]);
+            }
         }
         DrawMode::DetailIssues => {
-            let cols = Layout::horizontal([
-                Constraint::Length(4),
-                Constraint::Length(4),
-                Constraint::Fill(4),
-                Constraint::Fill(3),
-            ])
-            .split(main_area);
-            panels::draw_sources_strip(f, app, cols[0]);
-            panels::draw_repos_strip(f, app, cols[1]);
-            panels::draw_issues(f, app, cols[2]);
-            panels::draw_issue_detail(f, app, cols[3]);
+            if app.direct_source {
+                let cols = Layout::horizontal([Constraint::Length(4), Constraint::Fill(1)])
+                    .split(main_area);
+                panels::draw_repos_strip(f, app, cols[0]);
+                draw_issues_pane(f, app, cols[1]);
+            } else {
+                let cols = Layout::horizontal([
+                    Constraint::Length(4),
+                    Constraint::Length(4),
+                    Constraint::Fill(1),
+                ])
+                .split(main_area);
+                panels::draw_sources_strip(f, app, cols[0]);
+                panels::draw_repos_strip(f, app, cols[1]);
+                draw_issues_pane(f, app, cols[2]);
+            }
         }
         DrawMode::DirectFrontpage => {
             panels::draw_repo_frontpage(f, app, main_area);
         }
         DrawMode::DirectPrs => {
-            let cols =
-                Layout::horizontal([Constraint::Fill(4), Constraint::Fill(3)]).split(main_area);
-            panels::draw_prs(f, app, cols[0]);
-            panels::draw_pr_detail(f, app, cols[1]);
+            draw_prs_pane(f, app, main_area);
         }
         DrawMode::DirectIssues => {
-            let cols =
-                Layout::horizontal([Constraint::Fill(4), Constraint::Fill(3)]).split(main_area);
-            panels::draw_issues(f, app, cols[0]);
-            panels::draw_issue_detail(f, app, cols[1]);
+            draw_issues_pane(f, app, main_area);
         }
         DrawMode::PreviewPrList => {
-            let (src, repos, prs) = preview_pcts(app.focus);
-            let cols = Layout::horizontal([
-                Constraint::Percentage(src),
-                Constraint::Percentage(repos),
-                Constraint::Percentage(prs),
-            ])
-            .split(main_area);
-            panels::draw_sources(f, app, cols[0]);
-            panels::draw_source_prs(f, app, cols[1]);
-            panels::draw_pr_detail(f, app, cols[2]);
+            if app.direct_source {
+                let cols = Layout::horizontal([Constraint::Fill(38), Constraint::Fill(47)])
+                    .split(main_area);
+                panels::draw_source_prs(f, app, cols[0]);
+                panels::draw_pr_detail(f, app, cols[1]);
+            } else {
+                let (src, repos, prs) = preview_pcts(app.focus);
+                let cols = Layout::horizontal([
+                    Constraint::Percentage(src),
+                    Constraint::Percentage(repos),
+                    Constraint::Percentage(prs),
+                ])
+                .split(main_area);
+                panels::draw_sources(f, app, cols[0]);
+                panels::draw_source_prs(f, app, cols[1]);
+                panels::draw_pr_detail(f, app, cols[2]);
+            }
         }
         DrawMode::PreviewIssueList => {
-            let (src, repos, issues) = preview_pcts(app.focus);
-            let cols = Layout::horizontal([
-                Constraint::Percentage(src),
-                Constraint::Percentage(repos),
-                Constraint::Percentage(issues),
-            ])
-            .split(main_area);
-            panels::draw_sources(f, app, cols[0]);
-            panels::draw_source_issues(f, app, cols[1]);
-            panels::draw_issue_detail(f, app, cols[2]);
+            if app.direct_source {
+                let cols = Layout::horizontal([Constraint::Fill(38), Constraint::Fill(47)])
+                    .split(main_area);
+                panels::draw_source_issues(f, app, cols[0]);
+                panels::draw_issue_detail(f, app, cols[1]);
+            } else {
+                let (src, repos, issues) = preview_pcts(app.focus);
+                let cols = Layout::horizontal([
+                    Constraint::Percentage(src),
+                    Constraint::Percentage(repos),
+                    Constraint::Percentage(issues),
+                ])
+                .split(main_area);
+                panels::draw_sources(f, app, cols[0]);
+                panels::draw_source_issues(f, app, cols[1]);
+                panels::draw_issue_detail(f, app, cols[2]);
+            }
         }
         DrawMode::PreviewRepoList => {
-            let (src, repos, prs) = preview_pcts(app.focus);
-            let cols = Layout::horizontal([
-                Constraint::Percentage(src),
-                Constraint::Percentage(repos),
-                Constraint::Percentage(prs),
-            ])
-            .split(main_area);
-            panels::draw_sources(f, app, cols[0]);
-            panels::draw_repos(f, app, cols[1]);
-            match app.repo_view {
-                RepoView::Frontpage => panels::draw_repo_frontpage(f, app, cols[2]),
-                RepoView::Issues => panels::draw_issues(f, app, cols[2]),
-                RepoView::Prs => panels::draw_prs(f, app, cols[2]),
+            if app.direct_source {
+                let cols = Layout::horizontal([Constraint::Fill(38), Constraint::Fill(47)])
+                    .split(main_area);
+                panels::draw_repos(f, app, cols[0]);
+                match app.repo_view {
+                    RepoView::Frontpage => panels::draw_repo_frontpage(f, app, cols[1]),
+                    RepoView::Issues => panels::draw_issues(f, app, cols[1]),
+                    RepoView::Prs => panels::draw_prs(f, app, cols[1]),
+                }
+            } else {
+                let (src, repos, prs) = preview_pcts(app.focus);
+                let cols = Layout::horizontal([
+                    Constraint::Percentage(src),
+                    Constraint::Percentage(repos),
+                    Constraint::Percentage(prs),
+                ])
+                .split(main_area);
+                panels::draw_sources(f, app, cols[0]);
+                panels::draw_repos(f, app, cols[1]);
+                match app.repo_view {
+                    RepoView::Frontpage => panels::draw_repo_frontpage(f, app, cols[2]),
+                    RepoView::Issues => panels::draw_issues(f, app, cols[2]),
+                    RepoView::Prs => panels::draw_prs(f, app, cols[2]),
+                }
             }
         }
     }

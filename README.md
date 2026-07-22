@@ -32,6 +32,8 @@ The status bar shows GitHub API rate limit (⚡remaining/limit), color-coded gre
 
 Run `ghview OWNER/REPO` to skip straight to a repo's workspace - the Sources and Repos columns aren't loaded and don't appear at all, so the content columns (PRs/Issues/Frontpage + detail) get the full width. `h`/Left won't back out of it since there's nothing to browse back to.
 
+Run `ghview OWNER` (no slash) to skip straight to that owner's repo list instead - OWNER is resolved at launch via the GitHub API to figure out whether it's an org or a user account, then the Repos column loads for real. The Sources column is skipped, but Repos browsing works normally.
+
 ## Navigation
 
 | Key | Action |
@@ -204,6 +206,7 @@ Key format: single character (`a`), uppercase (`A`), `ctrl+x`, or `alt+x`.
 
 ```
 OWNER/REPO    Open directly into a repo's workspace, skipping Sources/Repos browsing
+OWNER         Open directly into an owner's repo list (org or user, auto-detected), skipping Sources browsing
 --debug       Write debug logs to ./debug.log
 ```
 

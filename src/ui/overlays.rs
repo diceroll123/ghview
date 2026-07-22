@@ -79,10 +79,13 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
 
     let mut left_sections: Vec<(&str, Vec<(String, String)>)> =
         vec![("\u{f14e}  Navigation", bar_entries(NAV_ACTIONS))];
-    // Sources/Repos columns are never loaded in direct-repo mode, so their
-    // keybindings are unreachable and shouldn't clutter the help overlay.
-    if !app.direct_repo {
+    // Sources column is unreachable whenever a direct launch mode seeded a
+    // synthetic single-element source list; Repos is additionally unreachable
+    // only in direct-repo mode (single fabricated repo, no real list to browse).
+    if !app.direct_source {
         left_sections.push(("\u{f0c0}  Sources", bar_entries(SOURCES_BAR)));
+    }
+    if !app.direct_repo {
         left_sections.push(("\u{e702}  Browse", bar_entries(REPOS_BAR)));
     }
     left_sections.push(("\u{f188}  Issues", bar_entries(ISSUES_BAR)));

@@ -15,6 +15,28 @@ use crate::{
 use ratatui::widgets::ListState;
 
 impl App {
+    fn spawn_page_fetch<T>(
+        &self,
+        per_page: u32,
+        fetch: impl std::future::Future<Output = anyhow::Result<Vec<T>>> + Send + 'static,
+        on_msg: impl FnOnce(Vec<T>, bool) -> DataMsg + Send + 'static,
+    ) where
+        T: Send + 'static,
+    {
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            match fetch.await {
+                Ok(items) => {
+                    let has_more = items.len() == per_page as usize;
+                    let _ = tx.send(on_msg(items, has_more));
+                }
+                Err(e) => {
+                    let _ = tx.send(DataMsg::Error(e.to_string()));
+                }
+            }
+        });
+    }
+
     pub fn trigger_fetch_rate_limit(&self) {
         let tx = self.tx.clone();
         tokio::spawn(async move {
@@ -79,22 +101,15 @@ impl App {
         let sort_key = self.repo_sort_key;
         self.loading = Some(LoadingKind::Repos);
         self.source_ctx.repos_pagination.fetching_more = false;
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            match fetch_repos(&source, &current_user, per_page, 1, sort_key).await {
-                Ok(repos) => {
-                    let has_more = repos.len() == per_page as usize;
-                    let _ = tx.send(DataMsg::Repos {
-                        owner,
-                        repos,
-                        has_more,
-                    });
-                }
-                Err(e) => {
-                    let _ = tx.send(DataMsg::Error(e.to_string()));
-                }
-            }
-        });
+        self.spawn_page_fetch(
+            per_page,
+            async move { fetch_repos(&source, &current_user, per_page, 1, sort_key).await },
+            move |repos, has_more| DataMsg::Repos {
+                owner,
+                repos,
+                has_more,
+            },
+        );
     }
 
     pub(crate) fn force_load_repos(&mut self) {
@@ -131,22 +146,15 @@ impl App {
         let sort_key = self.repo_sort_key;
         self.loading = Some(LoadingKind::Repos);
         let page = self.source_ctx.repos_pagination.begin_fetch();
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            match fetch_repos(&source, &current_user, per_page, page, sort_key).await {
-                Ok(repos) => {
-                    let has_more = repos.len() == per_page as usize;
-                    let _ = tx.send(DataMsg::MoreRepos {
-                        owner,
-                        repos,
-                        has_more,
-                    });
-                }
-                Err(e) => {
-                    let _ = tx.send(DataMsg::Error(e.to_string()));
-                }
-            }
-        });
+        self.spawn_page_fetch(
+            per_page,
+            async move { fetch_repos(&source, &current_user, per_page, page, sort_key).await },
+            move |repos, has_more| DataMsg::MoreRepos {
+                owner,
+                repos,
+                has_more,
+            },
+        );
     }
 
     pub(crate) fn trigger_load_source_prs(&mut self) {
@@ -169,22 +177,16 @@ impl App {
         }
 
         self.loading = Some(LoadingKind::Prs);
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            match fetch_source_prs(&owner, is_org, per_page, 1).await {
-                Ok(prs) => {
-                    let has_more = prs.len() == per_page as usize;
-                    let _ = tx.send(DataMsg::SourcePrs {
-                        owner,
-                        prs,
-                        has_more,
-                    });
-                }
-                Err(e) => {
-                    let _ = tx.send(DataMsg::Error(e.to_string()));
-                }
-            }
-        });
+        let owner_msg = owner.clone();
+        self.spawn_page_fetch(
+            per_page,
+            async move { fetch_source_prs(&owner, is_org, per_page, 1).await },
+            move |prs, has_more| DataMsg::SourcePrs {
+                owner: owner_msg,
+                prs,
+                has_more,
+            },
+        );
     }
 
     pub(crate) fn trigger_load_more_source_prs(&mut self) {
@@ -199,22 +201,16 @@ impl App {
         let per_page = self.per_page();
         let page = self.source_ctx.source_prs_pagination.begin_fetch();
         self.loading = Some(LoadingKind::Prs);
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            match fetch_source_prs(&owner, is_org, per_page, page).await {
-                Ok(prs) => {
-                    let has_more = prs.len() == per_page as usize;
-                    let _ = tx.send(DataMsg::MoreSourcePrs {
-                        owner,
-                        prs,
-                        has_more,
-                    });
-                }
-                Err(e) => {
-                    let _ = tx.send(DataMsg::Error(e.to_string()));
-                }
-            }
-        });
+        let owner_msg = owner.clone();
+        self.spawn_page_fetch(
+            per_page,
+            async move { fetch_source_prs(&owner, is_org, per_page, page).await },
+            move |prs, has_more| DataMsg::MoreSourcePrs {
+                owner: owner_msg,
+                prs,
+                has_more,
+            },
+        );
     }
 
     pub(crate) fn trigger_load_source_issues(&mut self) {
@@ -237,22 +233,16 @@ impl App {
         }
 
         self.loading = Some(LoadingKind::Issues);
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            match fetch_source_issues(&owner, is_org, per_page, 1).await {
-                Ok(issues) => {
-                    let has_more = issues.len() == per_page as usize;
-                    let _ = tx.send(DataMsg::SourceIssues {
-                        owner,
-                        issues,
-                        has_more,
-                    });
-                }
-                Err(e) => {
-                    let _ = tx.send(DataMsg::Error(e.to_string()));
-                }
-            }
-        });
+        let owner_msg = owner.clone();
+        self.spawn_page_fetch(
+            per_page,
+            async move { fetch_source_issues(&owner, is_org, per_page, 1).await },
+            move |issues, has_more| DataMsg::SourceIssues {
+                owner: owner_msg,
+                issues,
+                has_more,
+            },
+        );
     }
 
     pub(crate) fn trigger_load_more_source_issues(&mut self) {
@@ -267,22 +257,16 @@ impl App {
         let per_page = self.per_page();
         let page = self.source_ctx.source_issues_pagination.begin_fetch();
         self.loading = Some(LoadingKind::Issues);
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            match fetch_source_issues(&owner, is_org, per_page, page).await {
-                Ok(issues) => {
-                    let has_more = issues.len() == per_page as usize;
-                    let _ = tx.send(DataMsg::MoreSourceIssues {
-                        owner,
-                        issues,
-                        has_more,
-                    });
-                }
-                Err(e) => {
-                    let _ = tx.send(DataMsg::Error(e.to_string()));
-                }
-            }
-        });
+        let owner_msg = owner.clone();
+        self.spawn_page_fetch(
+            per_page,
+            async move { fetch_source_issues(&owner, is_org, per_page, page).await },
+            move |issues, has_more| DataMsg::MoreSourceIssues {
+                owner: owner_msg,
+                issues,
+                has_more,
+            },
+        );
     }
 
     pub(crate) fn trigger_load_source_issue_body(&mut self) {
@@ -391,23 +375,17 @@ impl App {
             self.apply_prs(cached);
             self.loading = None;
             let per_page = self.per_page();
-            let tx = self.tx.clone();
             let rid2 = rid;
-            tokio::spawn(async move {
-                match fetch_prs(&rid2, per_page, 1).await {
-                    Ok(prs) => {
-                        let has_more = prs.len() == per_page as usize;
-                        let _ = tx.send(DataMsg::Prs {
-                            repo: rid2,
-                            prs,
-                            has_more,
-                        });
-                    }
-                    Err(e) => {
-                        let _ = tx.send(DataMsg::Error(e.to_string()));
-                    }
-                }
-            });
+            let rid_msg = rid2.clone();
+            self.spawn_page_fetch(
+                per_page,
+                async move { fetch_prs(&rid2, per_page, 1).await },
+                move |prs, has_more| DataMsg::Prs {
+                    repo: rid_msg,
+                    prs,
+                    has_more,
+                },
+            );
             return;
         }
 
@@ -416,22 +394,16 @@ impl App {
         }
         self.repo_ctx.prs_pagination.fetching_more = false;
         let per_page = self.per_page();
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            match fetch_prs(&rid, per_page, 1).await {
-                Ok(prs) => {
-                    let has_more = prs.len() == per_page as usize;
-                    let _ = tx.send(DataMsg::Prs {
-                        repo: rid,
-                        prs,
-                        has_more,
-                    });
-                }
-                Err(e) => {
-                    let _ = tx.send(DataMsg::Error(e.to_string()));
-                }
-            }
-        });
+        let rid_msg = rid.clone();
+        self.spawn_page_fetch(
+            per_page,
+            async move { fetch_prs(&rid, per_page, 1).await },
+            move |prs, has_more| DataMsg::Prs {
+                repo: rid_msg,
+                prs,
+                has_more,
+            },
+        );
     }
 
     pub(crate) fn trigger_load_more_prs(&mut self) {
@@ -447,22 +419,16 @@ impl App {
         let per_page = self.per_page();
         let page = self.repo_ctx.prs_pagination.begin_fetch();
         self.loading = Some(LoadingKind::Prs);
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            match fetch_prs(&rid, per_page, page).await {
-                Ok(prs) => {
-                    let has_more = prs.len() == per_page as usize;
-                    let _ = tx.send(DataMsg::MorePrs {
-                        repo: rid,
-                        prs,
-                        has_more,
-                    });
-                }
-                Err(e) => {
-                    let _ = tx.send(DataMsg::Error(e.to_string()));
-                }
-            }
-        });
+        let rid_msg = rid.clone();
+        self.spawn_page_fetch(
+            per_page,
+            async move { fetch_prs(&rid, per_page, page).await },
+            move |prs, has_more| DataMsg::MorePrs {
+                repo: rid_msg,
+                prs,
+                has_more,
+            },
+        );
     }
 
     pub(crate) fn trigger_review_and_check_fetches(&self) {
