@@ -152,13 +152,16 @@ pub async fn fetch_sources_with<R: GhRunner>(
 ) -> Result<(Vec<Source>, String)> {
     let mut sources: Vec<Source> = Vec::with_capacity(1 + cfg.orgs.len() + cfg.users.len());
     let mut current_user = String::new();
+    let is_excluded = |name: &str| cfg.exclude.iter().any(|e| e.eq_ignore_ascii_case(name));
 
     if cfg.include_self || cfg.auto_fetch_orgs {
         match fetch_user_with(runner).await {
             Ok(login) if !login.is_empty() => {
                 if cfg.include_self {
                     current_user.clone_from(&login);
-                    sources.push(Source::User(login));
+                    if !is_excluded(&login) {
+                        sources.push(Source::User(login));
+                    }
                 } else {
                     current_user = login;
                 }
@@ -171,7 +174,7 @@ pub async fn fetch_sources_with<R: GhRunner>(
         && let Ok(orgs) = fetch_orgs_with(runner).await
     {
         for org in orgs {
-            if !sources.iter().any(|s| s.owner() == org) {
+            if !is_excluded(&org) && !sources.iter().any(|s| s.owner() == org) {
                 sources.push(Source::Org(org));
             }
         }
@@ -179,14 +182,14 @@ pub async fn fetch_sources_with<R: GhRunner>(
 
     for org in &cfg.orgs {
         let org = org.trim();
-        if !org.is_empty() && !sources.iter().any(|s| s.owner() == org) {
+        if !org.is_empty() && !is_excluded(org) && !sources.iter().any(|s| s.owner() == org) {
             sources.push(Source::Org(org.to_string()));
         }
     }
 
     for user in &cfg.users {
         let user = user.trim();
-        if !user.is_empty() && !sources.iter().any(|s| s.owner() == user) {
+        if !user.is_empty() && !is_excluded(user) && !sources.iter().any(|s| s.owner() == user) {
             sources.push(Source::User(user.to_string()));
         }
     }

@@ -139,6 +139,9 @@ include_self = true
 orgs = ["my-org", "another-org"]
 # Additional users to always show.
 users = ["some-user"]
+# Orgs/users to exclude from the sources list (case-insensitive). Applies to
+# auto-fetched orgs as well as the include_self/orgs/users entries above.
+exclude = []
 ```
 
 ### Keybindings

@@ -273,6 +273,7 @@ impl Default for SourcesConfig {
             include_self: true,
             orgs: vec![],
             users: vec![],
+            exclude: vec![],
         }
     }
 }
@@ -284,6 +285,7 @@ pub struct SourcesConfig {
     pub include_self: bool,
     pub orgs: Vec<String>,
     pub users: Vec<String>,
+    pub exclude: Vec<String>,
 }
 
 impl Config {

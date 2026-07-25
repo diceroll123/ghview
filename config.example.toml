@@ -43,6 +43,9 @@ auto_fetch_orgs = true
 orgs = []
 # Additional users to always show.
 users = []
+# Orgs/users to exclude from the sources list (case-insensitive). Applies to
+# auto-fetched orgs as well as the include_self/orgs/users entries above.
+exclude = []
 
 # ── Keybindings ────────────────────────────────────────────────────────────────
 #

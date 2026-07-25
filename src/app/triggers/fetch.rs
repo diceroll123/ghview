@@ -54,6 +54,7 @@ impl App {
             include_self: self.config.sources.include_self,
             orgs: self.config.sources.orgs.clone(),
             users: self.config.sources.users.clone(),
+            exclude: self.config.sources.exclude.clone(),
         };
         tokio::spawn(async move {
             match fetch_sources(&cfg_sources).await {
