@@ -72,6 +72,24 @@ async fn fetch_sources_pagination() {
 }
 
 #[tokio::test]
+async fn fetch_sources_excludes_case_insensitive() {
+    let cfg = SourcesConfig {
+        auto_fetch_orgs: true,
+        include_self: true,
+        exclude: vec!["Acme-Tools".to_string(), "octocat".to_string()],
+        ..Default::default()
+    };
+    let gh = MockGh::new()
+        .on("user", "octocat\n")
+        .on_fixture("user/memberships/orgs?per_page=100&page=1", "orgs.txt");
+    let (sources, current_user) = fetch_sources_with(&gh, &cfg).await.unwrap();
+    assert_eq!(current_user, "octocat");
+    assert_eq!(sources.len(), 2);
+    assert!(matches!(sources[0], Source::Org(ref s) if s == "example-labs"));
+    assert!(matches!(sources[1], Source::Org(ref s) if s == "octo-org"));
+}
+
+#[tokio::test]
 async fn fetch_repos_org() {
     let gh = MockGh::new().on_fixture(
         "orgs/octo-org/repos?per_page=30&page=1&sort=pushed&direction=desc",
