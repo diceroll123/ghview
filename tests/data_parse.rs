@@ -357,7 +357,7 @@ async fn fetch_check_runs_fixture_joined() {
 #[tokio::test]
 async fn fetch_check_runs_status_mapping() {
     let sha = "def456";
-    let runs_json = r#"[{"id":1,"name":"a","url":"","suite_id":1,"s":"failing"},{"id":2,"name":"b","url":"","suite_id":1,"s":"pending"},{"id":3,"name":"c","url":"","suite_id":1,"s":"unknown"},{"id":4,"name":"d","url":"","suite_id":1,"s":"passing"}]"#;
+    let runs_json = r#"[{"id":1,"name":"a","url":"","suite_id":1,"s":"failing"},{"id":2,"name":"b","url":"","suite_id":1,"s":"pending"},{"id":3,"name":"c","url":"","suite_id":1,"s":"unknown"},{"id":4,"name":"d","url":"","suite_id":1,"s":"passing"},{"id":5,"name":"e","url":"","suite_id":1,"s":"cancelled"}]"#;
     let workflows_json = "[]";
     let gh = MockGh::new()
         .on(
@@ -370,11 +370,12 @@ async fn fetch_check_runs_status_mapping() {
         );
     let check_runs =
         fetch_check_runs_with(&gh, &RepoId::new("octo-org", "repo-charlie"), sha).await;
-    assert_eq!(check_runs.len(), 4);
+    assert_eq!(check_runs.len(), 5);
     assert_eq!(check_runs[0].status, CheckStatus::Failing);
     assert_eq!(check_runs[1].status, CheckStatus::Pending);
     assert_eq!(check_runs[2].status, CheckStatus::Unknown);
     assert_eq!(check_runs[3].status, CheckStatus::Passing);
+    assert_eq!(check_runs[4].status, CheckStatus::Cancelled);
 }
 
 #[tokio::test]

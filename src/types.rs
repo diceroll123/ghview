@@ -306,6 +306,7 @@ pub enum ReviewStatus {
 pub enum CheckStatus {
     Passing,
     Failing,
+    Cancelled,
     Pending,
     Unknown,
 }

@@ -391,7 +391,7 @@ pub async fn fetch_check_runs_with<R: GhRunner>(
     }
     let base = repo.api_base();
     let runs_endpoint = format!("{base}/commits/{sha}/check-runs");
-    let runs_jq = r#"[.check_runs[] | {id: .id, name: .name, url: .html_url, suite_id: .check_suite.id, s: (if .conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required" then "failing" elif .status == "in_progress" or .status == "queued" then "pending" elif .conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped" then "passing" else "unknown" end)}]"#;
+    let runs_jq = r#"[.check_runs[] | {id: .id, name: .name, url: .html_url, suite_id: .check_suite.id, s: (if .conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "action_required" then "failing" elif .conclusion == "cancelled" then "cancelled" elif .status == "in_progress" or .status == "queued" then "pending" elif .conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped" then "passing" else "unknown" end)}]"#;
     let workflows_endpoint = format!("{base}/actions/runs?head_sha={sha}");
     let workflows_jq = r"[.workflow_runs[] | {name, event, suite_id: .check_suite_id}]";
 
@@ -440,6 +440,7 @@ pub async fn fetch_check_runs_with<R: GhRunner>(
             let status = match item["s"].as_str()? {
                 "passing" => CheckStatus::Passing,
                 "failing" => CheckStatus::Failing,
+                "cancelled" => CheckStatus::Cancelled,
                 "pending" => CheckStatus::Pending,
                 _ => CheckStatus::Unknown,
             };
