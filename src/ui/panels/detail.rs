@@ -24,24 +24,32 @@ fn checks_bar_spans(runs: &[crate::types::CheckRun], width: usize) -> Vec<Span<'
     if runs.is_empty() || width == 0 {
         return vec![];
     }
-    let mut counts = [0usize; 4]; // [failing, pending, unknown, passing]
+    let mut counts = [0usize; 5]; // [failing, cancelled, pending, unknown, passing]
     for r in runs {
         match r.status {
             CheckStatus::Failing => counts[0] += 1,
-            CheckStatus::Pending => counts[1] += 1,
-            CheckStatus::Unknown => counts[2] += 1,
-            CheckStatus::Passing => counts[3] += 1,
+            CheckStatus::Cancelled => counts[1] += 1,
+            CheckStatus::Pending => counts[2] += 1,
+            CheckStatus::Unknown => counts[3] += 1,
+            CheckStatus::Passing => counts[4] += 1,
         }
     }
     let total = runs.len();
-    let colors = [Color::Red, Color::Yellow, Color::DarkGray, Color::Green];
+    let colors = [
+        Color::Red,
+        Color::Gray,
+        Color::Yellow,
+        Color::DarkGray,
+        Color::Green,
+    ];
+    let last = counts.len() - 1;
     let mut spans = Vec::new();
     let mut used = 0usize;
     for (i, (&count, &color)) in counts.iter().zip(colors.iter()).enumerate() {
         if count == 0 {
             continue;
         }
-        let cols = if i == 3 {
+        let cols = if i == last {
             // last bucket: fill remainder to avoid rounding gaps
             width.saturating_sub(used)
         } else {

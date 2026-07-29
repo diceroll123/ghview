@@ -130,11 +130,15 @@ impl App {
                 if !passes {
                     return;
                 }
-                runs.sort_by_key(|r| r.status != CheckStatus::Failing);
+                runs.sort_by_key(|r| {
+                    !matches!(r.status, CheckStatus::Failing | CheckStatus::Cancelled)
+                });
                 let summary = if runs.is_empty() {
                     CheckStatus::Unknown
                 } else if runs.iter().any(|r| r.status == CheckStatus::Failing) {
                     CheckStatus::Failing
+                } else if runs.iter().any(|r| r.status == CheckStatus::Cancelled) {
+                    CheckStatus::Cancelled
                 } else if runs.iter().any(|r| r.status == CheckStatus::Pending) {
                     CheckStatus::Pending
                 } else if runs.iter().all(|r| r.status == CheckStatus::Passing) {

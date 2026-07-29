@@ -227,6 +227,31 @@ fn check_runs_failing_precedence_and_sorted_first() {
 }
 
 #[test]
+fn check_runs_cancelled_precedence() {
+    let mut app = make_app();
+    setup_selected_repo(&mut app);
+    app.repo_ctx.prs_raw = vec![make_pr_numbered(1)];
+    app.repo_ctx.prs = vec![make_pr_numbered(1)];
+    app.repo_ctx.pr_state.select(Some(0));
+
+    app.handle_data(DataMsg::CheckRuns {
+        pr: RepoId::new("owner", "repo").pr(1),
+        runs: vec![run(CheckStatus::Passing), run(CheckStatus::Cancelled)],
+    });
+
+    assert_eq!(
+        app.repo_ctx
+            .check_summary_cache
+            .get(&RepoId::new("owner", "repo").pr(1)),
+        Some(&CheckStatus::Cancelled)
+    );
+    assert_eq!(
+        app.repo_ctx.check_runs.as_ref().unwrap()[0].status,
+        CheckStatus::Cancelled
+    );
+}
+
+#[test]
 fn check_runs_pending_precedence() {
     let mut app = make_app();
     setup_selected_repo(&mut app);

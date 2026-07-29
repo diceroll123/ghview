@@ -412,6 +412,7 @@ impl StatusLike for crate::types::CheckStatus {
         match self {
             CheckStatus::Passing => ICON_CHECK_PASS,
             CheckStatus::Failing => ICON_CHECK_FAIL,
+            CheckStatus::Cancelled => ICON_CHECK_FAIL,
             CheckStatus::Pending => ICON_CHECK_PENDING,
             CheckStatus::Unknown => ICON_DOT,
         }
@@ -422,6 +423,7 @@ impl StatusLike for crate::types::CheckStatus {
         match self {
             CheckStatus::Passing => Color::Green,
             CheckStatus::Failing => Color::Red,
+            CheckStatus::Cancelled => Color::Gray,
             CheckStatus::Pending => Color::Yellow,
             CheckStatus::Unknown => Color::DarkGray,
         }
