@@ -77,9 +77,63 @@ async fn detail_tab_overview() {
     app.focus = Column::Detail;
     app.repo_ctx.detail_section = DetailSection::Overview;
     app.repo_ctx.pr_body = Some(
-        "## Summary\n\nFixes a panic when the PR list is empty by adding a guard clause.\n\n- [x] Tests added\n- [ ] Docs updated".to_string(),
+        "Fixes a panic when the PR list is empty by adding a guard clause.\n\n- [x] Tests added\n- [ ] Docs updated".to_string(),
     );
+    if let Some(pr) = app.repo_ctx.prs.first_mut() {
+        pr.additions = 42;
+        pr.deletions = 5;
+    }
+    app.repo_ctx.pr_files = Some(vec![
+        PrFile {
+            filename: "src/app/nav.rs".into(),
+            additions: 30,
+            deletions: 5,
+            status: "modified".into(),
+        },
+        PrFile {
+            filename: "src/app/nav_test.rs".into(),
+            additions: 12,
+            deletions: 0,
+            status: "added".into(),
+        },
+    ]);
+    app.repo_ctx.pr_commits = Some(vec![
+        PrCommit {
+            sha: "a1b2c3d4e5f6".into(),
+            message: "Fix panic when list is empty".into(),
+            author: "user-01".into(),
+            date: "2026-01-13T08:00:00Z".into(),
+        },
+        PrCommit {
+            sha: "f6e5d4c3b2a1".into(),
+            message: "Add regression test".into(),
+            author: "user-01".into(),
+            date: "2026-01-15T11:00:00Z".into(),
+        },
+    ]);
+    app.repo_ctx.check_runs = Some(vec![
+        CheckRun {
+            id: 1,
+            name: "build".into(),
+            url: "https://github.com/octo-org/repo-charlie/runs/1".into(),
+            status: CheckStatus::Passing,
+        },
+        CheckRun {
+            id: 2,
+            name: "test".into(),
+            url: "https://github.com/octo-org/repo-charlie/runs/2".into(),
+            status: CheckStatus::Pending,
+        },
+    ]);
     render("detail_tab_overview", &mut app, 120, 40);
+}
+
+#[tokio::test]
+async fn detail_tab_overview_loading() {
+    let mut app = inflate::app_with_prs().await;
+    app.focus = Column::Detail;
+    app.repo_ctx.detail_section = DetailSection::Overview;
+    render("detail_tab_overview_loading", &mut app, 120, 40);
 }
 
 #[tokio::test]

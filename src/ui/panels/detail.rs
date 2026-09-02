@@ -245,14 +245,123 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
             let overview_inner = block.inner(content_area);
             f.render_widget(block, content_area);
 
-            draw_scrollable_body(
-                f,
-                app.repo_ctx.pr_body.as_ref(),
-                "(no description)",
-                app.repo_ctx.pr_body_scroll,
+            let heading = |text: &'static str| {
+                Line::from(Span::styled(
+                    text,
+                    Style::new()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                ))
+            };
+            let dim = || Style::new().fg(Color::DarkGray);
+            let dim_italic_style = || {
+                Style::new()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC)
+            };
+
+            let mut lines: Vec<Line> = vec![heading("Summary"), Line::raw("")];
+            match &app.repo_ctx.pr_body {
+                None => lines.push(Line::styled("Loading…", dim())),
+                Some(b) if b.is_empty() => {
+                    lines.push(Line::styled("(no description)", dim_italic_style()));
+                }
+                Some(b) => lines.extend(super::render_markdown(b).lines),
+            }
+
+            lines.push(Line::raw(""));
+            lines.push(heading("Changes"));
+            lines.push(Line::raw(""));
+            match (&app.repo_ctx.pr_files, &app.repo_ctx.pr_commits) {
+                (None, _) | (_, None) => lines.push(Line::styled("Loading…", dim())),
+                (Some(files), Some(commits)) => {
+                    let mut spans = vec![Span::raw(format!(
+                        "{} file{} changed  ",
+                        files.len(),
+                        if files.len() == 1 { "" } else { "s" }
+                    ))];
+                    if let Some((add, del)) = diff_stat_spans(pr) {
+                        spans.push(add);
+                        spans.push(Span::raw(" "));
+                        spans.push(del);
+                    }
+                    lines.push(Line::from(spans));
+                    lines.push(Line::from(vec![
+                        Span::raw(format!(
+                            "{} commit{}",
+                            commits.len(),
+                            if commits.len() == 1 { "" } else { "s" }
+                        )),
+                        Span::styled(
+                            format!("  updated {}", relative_time(&pr.updated_at, app.now())),
+                            dim(),
+                        ),
+                    ]));
+                }
+            }
+
+            lines.push(Line::raw(""));
+            lines.push(heading("Checks"));
+            lines.push(Line::raw(""));
+            match &app.repo_ctx.check_runs {
+                None => lines.push(Line::styled("Loading…", dim())),
+                Some(runs) if runs.is_empty() => {
+                    lines.push(Line::styled("(no checks)", dim_italic_style()));
+                }
+                Some(runs) => {
+                    let (mut failing, mut pending, mut passing) = (0usize, 0usize, 0usize);
+                    for run in runs {
+                        match run.status.category() {
+                            CheckCategory::Failing => failing += 1,
+                            CheckCategory::Pending => pending += 1,
+                            CheckCategory::Passing => passing += 1,
+                        }
+                    }
+                    let (headline, color) = if failing > 0 {
+                        ("Some checks were not successful", Color::Red)
+                    } else if pending > 0 {
+                        ("Some checks haven't completed yet", Color::Yellow)
+                    } else {
+                        ("All checks have passed", Color::Green)
+                    };
+                    lines.push(Line::styled(headline, Style::new().fg(color)));
+                    let mut parts = Vec::with_capacity(3);
+                    if failing > 0 {
+                        parts.push(format!("{failing} failing"));
+                    }
+                    if pending > 0 {
+                        parts.push(format!("{pending} in progress"));
+                    }
+                    if passing > 0 {
+                        parts.push(format!("{passing} successful"));
+                    }
+                    lines.push(Line::styled(parts.join(", "), dim()));
+                    lines.push(Line::from(checks_bar_spans(
+                        runs,
+                        overview_inner.width as usize,
+                    )));
+                }
+            }
+
+            let text = Text::from(lines);
+            let total_lines = Paragraph::new(text.clone())
+                .wrap(Wrap { trim: false })
+                .line_count(overview_inner.width);
+            f.render_widget(
+                Paragraph::new(text)
+                    .wrap(Wrap { trim: false })
+                    .scroll((app.repo_ctx.pr_body_scroll, 0)),
                 overview_inner,
-                content_area,
             );
+            if total_lines > overview_inner.height as usize {
+                let mut sb =
+                    ScrollbarState::new(total_lines).position(app.repo_ctx.pr_body_scroll as usize);
+                f.render_stateful_widget(
+                    Scrollbar::new(ScrollbarOrientation::VerticalRight),
+                    content_area,
+                    &mut sb,
+                );
+            }
         }
 
         DetailSection::Activity => {

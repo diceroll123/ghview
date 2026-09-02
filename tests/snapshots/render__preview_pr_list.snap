@@ -1,6 +1,6 @@
 ---
 source: tests/render.rs
-assertion_line: 10
+assertion_line: 13
 expression: terminal.backend()
 ---
 "┌ Sources ─────────────────────────┐┌  @octocat  ──────────────────────┐┌ repo-zulu-2 #3460 ───────────────────────────┐"
@@ -8,17 +8,17 @@ expression: terminal.backend()
 "│                                  ││▶     0  · ·                45m   ││@octocat                                      │"
 "│                                  ││      chore: remove unused depen…││ Overview  Activity  Commits  Checks  Files Ch│"
 "│                                  ││      0  · ·                 1d   ││┌ Overview ──────────────────────────────────┐│"
-"│                                  ││      feat: implement search fun…│││Loading…                                    ││"
+"│                                  ││      feat: implement search fun…│││Summary                                     ││"
 "│                                  ││      1  · ·                 2w   │││                                            ││"
-"│                                  ││      bugfix: handle null pointe…│││                                            ││"
+"│                                  ││      bugfix: handle null pointe…│││Loading…                                    ││"
 "│                                  ││      0  · ·                6mo   │││                                            ││"
-"│                                  ││      refactor: extract service …│││                                            ││"
+"│                                  ││      refactor: extract service …│││Changes                                     ││"
 "│                                  ││      0  · ·                 2y   │││                                            ││"
-"│                                  ││      docs: add contributing gui…│││                                            ││"
+"│                                  ││      docs: add contributing gui…│││Loading…                                    ││"
 "│                                  ││      2  · ·                 3h   │││                                            ││"
-"│                                  ││      test: fix flaky unit tests │││                                            ││"
+"│                                  ││      test: fix flaky unit tests │││Checks                                      ││"
 "│                                  ││      0  · ·                 1d   │││                                            ││"
-"│                                  ││      feat: add logging middlewa…│││                                            ││"
+"│                                  ││      feat: add logging middlewa…│││Loading…                                    ││"
 "│                                  ││      0  · ·                 2w   │││                                            ││"
 "│                                  ││      fix: correct timezone hand…│││                                            ││"
 "│                                  ││      2  · ·                 2y   │││                                            ││"
