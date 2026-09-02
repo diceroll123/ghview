@@ -1,8 +1,8 @@
 mod common;
 use common::{builders, inflate};
 use ghview::types::{
-    CheckRun, CheckStatus, Column, DetailSection, DiffView, PrComment, PrCommit, PrFile, RepoView,
-    ReposView,
+    CheckRun, CheckStatus, Column, DetailSection, DiffView, PrComment, PrCommit, PrFile, RepoId,
+    RepoView, ReposView,
 };
 use ratatui::{Terminal, backend::TestBackend};
 
@@ -243,6 +243,22 @@ async fn detail_tab_files_changed() {
         },
     ]);
     render("detail_tab_files_changed", &mut app, 120, 40);
+}
+
+#[tokio::test]
+async fn detail_prs_selection() {
+    let mut app = inflate::app_with_prs().await;
+    app.focus = Column::Repo;
+    // Select the top two PRs and park the cursor on the second so the snapshot
+    // shows both a tinted selected row (non-cursor) and a highlighted cursor row.
+    let pr1 = app.repo_ctx.prs[0].number;
+    let pr2 = app.repo_ctx.prs[1].number;
+    app.selected_prs
+        .insert(RepoId::new("octo-org", "repo-charlie").pr(pr1));
+    app.selected_prs
+        .insert(RepoId::new("octo-org", "repo-charlie").pr(pr2));
+    app.repo_ctx.pr_state.select(Some(1));
+    render("detail_prs_selection", &mut app, 120, 40);
 }
 
 #[tokio::test]

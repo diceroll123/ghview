@@ -111,8 +111,30 @@ impl App {
         }
     }
 
-    pub(crate) fn context_open_browser(&self) {
-        if let Some(url) = self.selected_context_url() {
+    /// URLs of every PR in the active selection, in screen order. `None` when no
+    /// selection is active (cursor-only context). Used to fan out open/copy actions.
+    fn selected_pr_urls(&self) -> Option<Vec<String>> {
+        if !self.pr_list_focused() || self.selected_prs.is_empty() {
+            return None;
+        }
+        let visible = self.active_visible_prs();
+        Some(
+            visible
+                .iter()
+                .filter(|pr| self.selected_prs.contains(&self.pr_id_of(pr)))
+                .map(|pr| pr.url.clone())
+                .collect(),
+        )
+    }
+
+    pub(crate) fn context_open_browser(&mut self) {
+        if let Some(urls) = self.selected_pr_urls() {
+            for url in &urls {
+                self.spawn_open_url(url);
+            }
+            let n = urls.len();
+            self.set_status(format!("Opened {n} PRs in browser"));
+        } else if let Some(url) = self.selected_context_url() {
             self.spawn_open_url(&url);
         }
     }
@@ -128,7 +150,14 @@ impl App {
     }
 
     pub(crate) fn context_copy_url(&mut self) {
-        if let Some(url) = self.selected_context_url() {
+        if let Some(urls) = self.selected_pr_urls() {
+            if urls.is_empty() {
+                return;
+            }
+            let joined = urls.join("\n");
+            self.set_status(format!("Copied {} PR URLs", urls.len()));
+            copy_to_clipboard(&joined);
+        } else if let Some(url) = self.selected_context_url() {
             self.copy_and_notify(&url);
         }
     }

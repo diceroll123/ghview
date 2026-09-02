@@ -19,6 +19,9 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
+/// Background tint for rows in the multi-PR selection (rows not under the cursor).
+const SELECTION_BG: Color = Color::Rgb(35, 48, 62);
+
 pub(crate) struct PrListCols {
     pub(super) show_comments: bool,
     pub(super) show_check_summary: bool,
@@ -112,6 +115,21 @@ fn pr_state_color(pr: &PR) -> Color {
         Color::Red
     } else {
         Color::Green
+    }
+}
+
+/// Tint every span in a row with the selection background and pad it to `inner_width`
+/// so the highlight fills the whole row, not just the glyphs. Applied to both lines of a
+/// selected (non-cursor) PR so it is obvious which rows are in the multi-PR selection.
+fn tint_selection_row(spans: &mut Vec<Span<'static>>, inner_width: usize, color: Color) {
+    for span in spans.iter_mut() {
+        span.style.bg = Some(color);
+    }
+    let w: usize = spans.iter().map(Span::width).sum();
+    if w < inner_width {
+        let mut pad = gap_span(inner_width - w);
+        pad.style.bg = Some(color);
+        spans.push(pad);
     }
 }
 
@@ -262,6 +280,13 @@ fn build_pr_list_items(
                     meta_style,
                 ));
             }
+            // Multi-PR selection: tint the whole row background for selected rows that are
+            // not under the cursor (the cursor row keeps list_highlight_style's own bg).
+            let sel_tint = is_selected && selected_idx != Some(i);
+
+            if sel_tint {
+                tint_selection_row(&mut line1_spans, inner_width, SELECTION_BG);
+            }
             let line1 = Line::from(line1_spans);
 
             let state_icon = pr_state_icon(pr.draft, pr.state);
@@ -289,6 +314,9 @@ fn build_pr_list_items(
                 line2_spans.push(s);
             }
             line2_spans.push(Span::styled(title2_text, base_style));
+            if sel_tint {
+                tint_selection_row(&mut line2_spans, inner_width, SELECTION_BG);
+            }
             ListItem::new(Text::from(vec![line1, Line::from(line2_spans)]))
         })
         .collect()

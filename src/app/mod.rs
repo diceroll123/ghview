@@ -816,7 +816,16 @@ impl App {
                     }
                 }
             }
-            Action::Diff => self.trigger_load_diff(),
+            Action::Diff => {
+                // Single-serving action: blocked while a multi-PR selection is active.
+                if self.pr_list_focused() && !self.selected_prs.is_empty() {
+                    self.set_status(
+                        "diff targets one PR - clear the selection (Esc) to use it".to_string(),
+                    );
+                } else {
+                    self.trigger_load_diff();
+                }
+            }
 
             Action::CheckOpen => self.open_selected_check(),
             Action::CheckRerun => self.rerun_selected_check(),
