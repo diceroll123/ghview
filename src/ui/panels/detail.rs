@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     app::App,
-    types::{CheckStatus, Column, DetailSection, RepoId},
+    types::{CheckCategory, CheckStatus, Column, DetailSection, RepoId},
 };
 use ratatui::{
     Frame,
@@ -14,8 +14,8 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{
-        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
-        ScrollbarState, Wrap,
+        Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
+        ScrollbarOrientation, ScrollbarState, Wrap,
     },
 };
 use unicode_width::UnicodeWidthStr;
@@ -394,24 +394,46 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
                     f.render_widget(dim_italic("(no checks)"), list_area);
                 }
                 Some(runs) => {
-                    let items: Vec<ListItem> = runs
-                        .iter()
-                        .map(|run| {
-                            let (icon, color) = (run.status.icon(), run.status.color());
+                    // `runs` is already grouped by category (handlers.rs sorts on arrival), so a
+                    // single pass can insert a header whenever the category changes and, in the
+                    // same pass, translate the persisted raw check-runs index into this
+                    // header-inclusive display index for highlighting.
+                    let selected_raw = app.repo_ctx.check_runs_state.selected();
+                    let mut items: Vec<ListItem> = Vec::with_capacity(runs.len() + 3);
+                    let mut last_category: Option<CheckCategory> = None;
+                    let mut display_selected: Option<usize> = None;
+                    for (i, run) in runs.iter().enumerate() {
+                        let category = run.status.category();
+                        if last_category != Some(category) {
+                            items.push(ListItem::new(Line::from(Span::styled(
+                                category.label(),
+                                Style::new()
+                                    .fg(Color::DarkGray)
+                                    .add_modifier(Modifier::BOLD),
+                            ))));
+                            last_category = Some(category);
+                        }
+                        if selected_raw == Some(i) {
+                            display_selected = Some(items.len());
+                        }
+                        let (icon, color) = (run.status.icon(), run.status.color());
+                        items.push(
                             Line::from(vec![
                                 Span::styled(format!("{icon} "), Style::new().fg(color)),
                                 Span::styled(run.name.clone(), Style::new().fg(Color::White)),
                             ])
-                            .into()
-                        })
-                        .collect();
+                            .into(),
+                        );
+                    }
+                    let total = items.len();
                     let list = List::new(items)
                         .highlight_style(list_highlight_style(in_detail))
                         .highlight_symbol("▶ ");
-                    f.render_stateful_widget(list, list_area, &mut app.repo_ctx.check_runs_state);
-                    if runs.len() > list_area.height as usize {
-                        let mut sb = ScrollbarState::new(runs.len())
-                            .position(app.repo_ctx.check_runs_state.offset());
+                    let mut render_state = ListState::default();
+                    render_state.select(display_selected);
+                    f.render_stateful_widget(list, list_area, &mut render_state);
+                    if total > list_area.height as usize {
+                        let mut sb = ScrollbarState::new(total).position(render_state.offset());
                         f.render_stateful_widget(
                             Scrollbar::new(ScrollbarOrientation::VerticalRight),
                             content_area,

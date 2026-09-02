@@ -130,9 +130,11 @@ impl App {
                 if !passes {
                     return;
                 }
-                runs.sort_by_key(|r| {
-                    !matches!(r.status, CheckStatus::Failing | CheckStatus::Cancelled)
-                });
+                // The Checks tab (ui/panels/detail.rs) assumes `check_runs` already arrives
+                // grouped by category so it can insert section headers with a single pass and
+                // keep its stored `check_runs_state` index (used by nav/open/rerun) aligned with
+                // this same order - resorting there would desync the two.
+                runs.sort_by_key(|r| r.status.category() as u8);
                 let summary = if runs.is_empty() {
                     CheckStatus::Unknown
                 } else if runs.iter().any(|r| r.status == CheckStatus::Failing) {

@@ -138,13 +138,9 @@ async fn detail_tab_checks() {
     let mut app = inflate::app_with_prs().await;
     app.focus = Column::Detail;
     app.repo_ctx.detail_section = DetailSection::Checks;
+    // Pre-sorted by category (Failing, then Pending, then Passing), matching what
+    // handlers.rs's DataMsg::CheckRuns arm always produces before this is ever displayed.
     app.repo_ctx.check_runs = Some(vec![
-        CheckRun {
-            id: 1,
-            name: "build".into(),
-            url: "https://github.com/octo-org/repo-charlie/runs/1".into(),
-            status: CheckStatus::Passing,
-        },
         CheckRun {
             id: 2,
             name: "test".into(),
@@ -156,6 +152,12 @@ async fn detail_tab_checks() {
             name: "lint".into(),
             url: "https://github.com/octo-org/repo-charlie/runs/3".into(),
             status: CheckStatus::Pending,
+        },
+        CheckRun {
+            id: 1,
+            name: "build".into(),
+            url: "https://github.com/octo-org/repo-charlie/runs/1".into(),
+            status: CheckStatus::Passing,
         },
     ]);
     render("detail_tab_checks", &mut app, 120, 40);

@@ -359,6 +359,35 @@ pub enum CheckStatus {
     Unknown,
 }
 
+/// Groups check runs into sections for the Checks tab: failing checks
+/// surfaced first, still-running ones in the middle, passing ones last.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckCategory {
+    Failing,
+    Pending,
+    Passing,
+}
+
+impl CheckCategory {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Failing => "Failing",
+            Self::Pending => "In Progress",
+            Self::Passing => "Passing",
+        }
+    }
+}
+
+impl CheckStatus {
+    pub const fn category(self) -> CheckCategory {
+        match self {
+            Self::Failing | Self::Cancelled => CheckCategory::Failing,
+            Self::Pending | Self::Unknown => CheckCategory::Pending,
+            Self::Passing => CheckCategory::Passing,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortKey {
     Newest,
@@ -566,6 +595,23 @@ mod tests {
     #[test]
     fn detail_section_default_is_overview() {
         assert_eq!(DetailSection::default(), DetailSection::Overview);
+    }
+
+    #[test]
+    fn check_status_category_groups_failing_and_cancelled() {
+        assert_eq!(CheckStatus::Failing.category(), CheckCategory::Failing);
+        assert_eq!(CheckStatus::Cancelled.category(), CheckCategory::Failing);
+    }
+
+    #[test]
+    fn check_status_category_groups_pending_and_unknown() {
+        assert_eq!(CheckStatus::Pending.category(), CheckCategory::Pending);
+        assert_eq!(CheckStatus::Unknown.category(), CheckCategory::Pending);
+    }
+
+    #[test]
+    fn check_status_category_passing() {
+        assert_eq!(CheckStatus::Passing.category(), CheckCategory::Passing);
     }
 
     #[test]
