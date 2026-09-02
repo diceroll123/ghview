@@ -1,6 +1,9 @@
 mod common;
 use common::{builders, inflate};
-use ghview::types::{Column, DiffView, RepoView, ReposView};
+use ghview::types::{
+    CheckRun, CheckStatus, Column, DetailSection, DiffView, PrComment, PrCommit, PrFile, RepoView,
+    ReposView,
+};
 use ratatui::{Terminal, backend::TestBackend};
 
 fn render(name: &str, app: &mut ghview::app::App, width: u16, height: u16) {
@@ -66,6 +69,124 @@ async fn detail_prs() {
     let mut app = inflate::app_with_prs().await;
     app.focus = Column::Repo;
     render("detail_prs", &mut app, 120, 40);
+}
+
+#[tokio::test]
+async fn detail_tab_overview() {
+    let mut app = inflate::app_with_prs().await;
+    app.focus = Column::Detail;
+    app.repo_ctx.detail_section = DetailSection::Overview;
+    app.repo_ctx.pr_body = Some(
+        "## Summary\n\nFixes a panic when the PR list is empty by adding a guard clause.\n\n- [x] Tests added\n- [ ] Docs updated".to_string(),
+    );
+    render("detail_tab_overview", &mut app, 120, 40);
+}
+
+#[tokio::test]
+async fn detail_tab_activity() {
+    let mut app = inflate::app_with_prs().await;
+    app.focus = Column::Detail;
+    app.repo_ctx.detail_section = DetailSection::Activity;
+    app.repo_ctx.pr_activity = Some(vec![
+        PrComment {
+            author: "user-02".into(),
+            created_at: "2026-01-14T09:00:00Z".into(),
+            body: "Looks good, just one nit below.".into(),
+        },
+        PrComment {
+            author: "user-01".into(),
+            created_at: "2026-01-15T11:30:00Z".into(),
+            body: "Fixed, thanks for the review!".into(),
+        },
+    ]);
+    render("detail_tab_activity", &mut app, 120, 40);
+}
+
+#[tokio::test]
+async fn detail_tab_activity_empty() {
+    let mut app = inflate::app_with_prs().await;
+    app.focus = Column::Detail;
+    app.repo_ctx.detail_section = DetailSection::Activity;
+    app.repo_ctx.pr_activity = Some(vec![]);
+    render("detail_tab_activity_empty", &mut app, 120, 40);
+}
+
+#[tokio::test]
+async fn detail_tab_commits() {
+    let mut app = inflate::app_with_prs().await;
+    app.focus = Column::Detail;
+    app.repo_ctx.detail_section = DetailSection::Commits;
+    app.repo_ctx.pr_commits = Some(vec![
+        PrCommit {
+            sha: "a1b2c3d4e5f6".into(),
+            message: "Fix panic when list is empty".into(),
+            author: "user-01".into(),
+            date: "2026-01-13T08:00:00Z".into(),
+        },
+        PrCommit {
+            sha: "f6e5d4c3b2a1".into(),
+            message: "Add regression test".into(),
+            author: "user-01".into(),
+            date: "2026-01-15T11:00:00Z".into(),
+        },
+    ]);
+    render("detail_tab_commits", &mut app, 120, 40);
+}
+
+#[tokio::test]
+async fn detail_tab_checks() {
+    let mut app = inflate::app_with_prs().await;
+    app.focus = Column::Detail;
+    app.repo_ctx.detail_section = DetailSection::Checks;
+    app.repo_ctx.check_runs = Some(vec![
+        CheckRun {
+            id: 1,
+            name: "build".into(),
+            url: "https://github.com/octo-org/repo-charlie/runs/1".into(),
+            status: CheckStatus::Passing,
+        },
+        CheckRun {
+            id: 2,
+            name: "test".into(),
+            url: "https://github.com/octo-org/repo-charlie/runs/2".into(),
+            status: CheckStatus::Failing,
+        },
+        CheckRun {
+            id: 3,
+            name: "lint".into(),
+            url: "https://github.com/octo-org/repo-charlie/runs/3".into(),
+            status: CheckStatus::Pending,
+        },
+    ]);
+    render("detail_tab_checks", &mut app, 120, 40);
+}
+
+#[tokio::test]
+async fn detail_tab_files_changed() {
+    let mut app = inflate::app_with_prs().await;
+    app.focus = Column::Detail;
+    app.repo_ctx.detail_section = DetailSection::FilesChanged;
+    app.repo_ctx.pr_files = Some(vec![
+        PrFile {
+            filename: "src/app/nav.rs".into(),
+            additions: 42,
+            deletions: 5,
+            status: "modified".into(),
+        },
+        PrFile {
+            filename: "src/app/triggers/activity.rs".into(),
+            additions: 30,
+            deletions: 0,
+            status: "added".into(),
+        },
+        PrFile {
+            filename: "src/legacy/old_diff_view.rs".into(),
+            additions: 0,
+            deletions: 88,
+            status: "removed".into(),
+        },
+    ]);
+    render("detail_tab_files_changed", &mut app, 120, 40);
 }
 
 #[tokio::test]
