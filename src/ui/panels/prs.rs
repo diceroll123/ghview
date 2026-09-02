@@ -130,6 +130,7 @@ fn build_pr_list_items(
     focused: bool,
     selected_idx: Option<usize>,
     cols: &PrListCols,
+    selection_active: bool,
 ) -> Vec<ListItem<'static>> {
     use crate::types::RepoId;
     prs.iter()
@@ -139,6 +140,11 @@ fn build_pr_list_items(
             let dimmed = pr.is_dimmed();
             let repo_name = repo_override.unwrap_or(&pr.repo);
             let pr_id = RepoId::new(owner, repo_name).pr(pr.number);
+            // Multi-PR selection: mark the number cyan. Use pr_id_of so the marker key
+            // matches exactly how selections are stored and targeted (source-level lists
+            // may carry a repo_owner distinct from the source owner). Layout is unchanged
+            // so existing snapshots (rendered with no selection) stay valid.
+            let is_selected = selection_active && app.selected_prs.contains(&app.pr_id_of(pr));
             let base_style = if dimmed {
                 Style::new().fg(Color::DarkGray)
             } else {
@@ -167,8 +173,13 @@ fn build_pr_list_items(
                     left_budget.saturating_sub(num_w),
                 );
                 let gap = left_budget.saturating_sub(num_w + by_str.width());
+                let num_style = if is_selected {
+                    Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::new().add_modifier(Modifier::BOLD)
+                };
                 vec![
-                    Span::styled(number_str, Style::new().add_modifier(Modifier::BOLD)),
+                    Span::styled(number_str, num_style),
                     Span::styled(by_str, meta_style),
                     gap_span(gap),
                 ]
@@ -432,6 +443,7 @@ pub(crate) fn draw_prs(f: &mut Frame, app: &mut App, area: Rect) {
         focused,
         app.repo_ctx.pr_state.selected(),
         &cols,
+        !app.selected_prs.is_empty(),
     );
 
     let inner = block.inner(area);
@@ -526,6 +538,7 @@ pub(crate) fn draw_source_prs(f: &mut Frame, app: &mut App, area: Rect) {
         focused,
         app.source_ctx.source_pr_state.selected(),
         &cols,
+        !app.selected_prs.is_empty(),
     );
 
     let inner = block.inner(area);

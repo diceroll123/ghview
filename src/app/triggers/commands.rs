@@ -2,7 +2,7 @@ use super::super::App;
 use crate::{
     actions,
     config::{CheckContext, IssueContext, Keybinding, PrContext, RepoContext},
-    types::{DataMsg, RepoId, RepoView, ReposView},
+    types::{DataMsg, PrId, RepoId, RepoView, ReposView},
 };
 use log::debug;
 
@@ -144,10 +144,8 @@ impl App {
         }
     }
 
-    pub(crate) fn post_dependabot_comment(&mut self, body: &str) {
-        let Some(pr_id) = self.selected_pr_id() else {
-            return;
-        };
+    pub(crate) fn post_dependabot_comment(&mut self, pr_id: &PrId, body: &str) {
+        let pr_id = pr_id.clone();
         let body = body.to_string();
         let tx = self.tx.clone();
         use crate::types::LoadingKind;
@@ -163,6 +161,37 @@ impl App {
                 }
             }
         });
+    }
+
+    /// Post the same comment to every PR in `targets`, concurrently. Holds loading and
+    /// the pending counter until all complete; per-PR failures surface individually.
+    /// `summary_ok` is the status shown when every target succeeds (e.g. "Sent rebase to 3 PRs").
+    pub(crate) fn post_batch_comment(
+        &mut self,
+        targets: Vec<PrId>,
+        body: &str,
+        summary_ok: String,
+    ) {
+        if targets.is_empty() {
+            return;
+        }
+        let body = body.to_string();
+        let tx = self.tx.clone();
+        use crate::types::LoadingKind;
+        self.loading = Some(LoadingKind::Action("comment".into()));
+        let n = targets.len() as u32;
+        self.pending_pr_actions += n;
+        self.batch_total = n;
+        self.batch_failed = 0;
+        self.batch_summary_ok = Some(summary_ok);
+        for pr_id in targets {
+            let tx = tx.clone();
+            let body = body.clone();
+            tokio::spawn(async move {
+                let ok = actions::post_comment(&pr_id, &body).await.is_ok();
+                let _ = tx.send(DataMsg::CommentDone { pr: pr_id, ok });
+            });
+        }
     }
 
     pub(crate) fn open_selected_check(&mut self) {

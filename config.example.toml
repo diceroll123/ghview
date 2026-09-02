@@ -64,7 +64,7 @@ exclude = []
 # Universal:   up, down, left, right, top, bottom, quit, help, refresh,
 #              filter, sort, openBrowser, openIssues, copyUrl, clone
 # PRs only:    approve, merge, checkout, comment, diff, close, reopen,
-#              ready, dependabot
+#              ready, dependabot, toggleSelect, selectAll, clearSelection
 #
 # Universal keybindings are checked before defaults, so they can override them.
 #

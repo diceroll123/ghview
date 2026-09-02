@@ -83,6 +83,16 @@ Available when focused on the PRs column:
 | `W` | Mark ready (remove draft) |
 | `b` | Dependabot commands (if PR is from dependabot) |
 
+### Multi-PR selection
+
+| Key | Action |
+|-----|--------|
+| `space` | Toggle the cursor PR in/out of the selection |
+| `A` | Select all visible PRs (press again to clear) |
+| `Esc` | Clear the selection (when not in filter mode) |
+
+Selected PRs are marked with a cyan number and a count is shown in the status bar. While a selection is active, `v`, `m`, `x`/`X`, and `W` apply to every selected PR (already-done PRs are skipped), and `b` opens the Dependabot menu to send a command to all selected dependabot PRs. `C`/`c`/`d` always target only the cursor PR.
+
 ## Detail Panel
 
 Press `l` / `→` / `Enter` while focused on the PRs column to enter the detail panel. Press `Tab` to switch between sections (Body / Checks). Press `h` / `←` to return to the PRs column.

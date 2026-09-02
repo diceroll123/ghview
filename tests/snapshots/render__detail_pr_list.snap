@@ -42,4 +42,4 @@ expression: terminal.backend()
 "│  ││                                                                │││                                              ││"
 "│  ││                                                                ││└──────────────────────────────────────────────┘│"
 "└──┘└ r·repos  p·prs (10)  i·issues ─────────────────────────────────┘└────────────────────────────────────────────────┘"
-" v approve  m merge  C checkout  c comment  d diff  o open  y copy URL  / filter  S sort  ? help                        "
+" space select  A select all  v approve  m merge  C checkout  c comment  d diff  o open  y copy URL  / filter  ? help    "

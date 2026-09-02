@@ -22,6 +22,10 @@ pub enum Action {
     OpenIssues,
     CopyUrl,
     Clone,
+    // PR multi-select (PR list columns only)
+    ToggleSelect,
+    SelectAll,
+    ClearSelection,
     // PR-only actions
     Approve,
     Merge,
@@ -137,6 +141,24 @@ pub static UNIVERSAL_BINDINGS: &[DefaultBinding] = &[
 ];
 
 pub static PRS_BINDINGS: &[DefaultBinding] = &[
+    DefaultBinding {
+        keys: &[KeyCode::Char(' ')],
+        display: "space",
+        action: Action::ToggleSelect,
+        label: "select",
+    },
+    DefaultBinding {
+        keys: &[KeyCode::Char('A')],
+        display: "A",
+        action: Action::SelectAll,
+        label: "select all",
+    },
+    DefaultBinding {
+        keys: &[KeyCode::Esc],
+        display: "esc",
+        action: Action::ClearSelection,
+        label: "clear selection",
+    },
     DefaultBinding {
         keys: &[KeyCode::Char('v')],
         display: "v",
@@ -293,6 +315,8 @@ pub const SOURCE_ISSUES_BAR: &[Action] = &[
 ];
 
 pub const SOURCE_PRS_BAR: &[Action] = &[
+    Action::ToggleSelect,
+    Action::SelectAll,
     Action::ViewRepos,
     Action::ViewPrs,
     Action::ViewIssues,
@@ -307,6 +331,8 @@ pub const SOURCE_PRS_BAR: &[Action] = &[
 ];
 
 pub const PRS_BAR: &[Action] = &[
+    Action::ToggleSelect,
+    Action::SelectAll,
     Action::Approve,
     Action::Merge,
     Action::Checkout,
@@ -363,6 +389,9 @@ pub fn builtin_to_action(name: &str) -> Option<Action> {
         "openIssues" => Some(Action::OpenIssues),
         "copyUrl" => Some(Action::CopyUrl),
         "clone" => Some(Action::Clone),
+        "toggleSelect" => Some(Action::ToggleSelect),
+        "selectAll" => Some(Action::SelectAll),
+        "clearSelection" => Some(Action::ClearSelection),
         "approve" => Some(Action::Approve),
         "merge" => Some(Action::Merge),
         "checkout" => Some(Action::Checkout),

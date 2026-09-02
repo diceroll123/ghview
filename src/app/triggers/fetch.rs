@@ -9,7 +9,7 @@ use crate::{
         fetch_source_prs, fetch_sources, fetch_viewer_permission, rerun_check,
     },
     types::{
-        Column, DataMsg, DetailSection, LoadingKind, PR, PrAction, PrState, RepoId, RepoView,
+        Column, DataMsg, DetailSection, LoadingKind, PR, PrAction, PrId, PrState, RepoId, RepoView,
         ReposView, Source,
     },
 };
@@ -851,97 +851,152 @@ impl App {
         });
     }
 
-    pub(crate) fn do_pr_action(&mut self, action: PrAction) {
-        let Some(pr_id) = self.selected_pr_id() else {
+    /// Run a PR action against the whole selection when it is active, otherwise just the
+    /// cursor PR. Each target spawns its own task so a batch runs concurrently; loading
+    /// and the pending counter are held until every target reports back. Per-PR fast-path
+    /// guards (already closed/open/draft/approved/auto_merge) skip work and, for a
+    /// single-PR action, still surface the "already ..." status as before.
+    pub(crate) fn do_pr_action_batch(&mut self, action: PrAction) {
+        // In-flight guard: don't stack a new batch on top of one already running.
+        if self.loading.is_some() || self.pending_pr_actions > 0 {
             return;
+        }
+
+        let visible = self.active_visible_prs();
+        let targets: Vec<(PrId, PR)> = if self.pr_selection_active() {
+            self.selected_prs
+                .iter()
+                .filter_map(|id| {
+                    visible
+                        .iter()
+                        .find(|pr| &self.pr_id_of(pr) == id)
+                        .map(|pr| (id.clone(), (*pr).clone()))
+                })
+                .collect()
+        } else {
+            self.active_pr_id()
+                .and_then(|id| {
+                    visible
+                        .iter()
+                        .find(|pr| self.pr_id_of(pr) == id)
+                        .map(|pr| (id, (*pr).clone()))
+                })
+                .into_iter()
+                .collect()
         };
 
-        // In-flight guard
-        if self.loading.is_some() {
+        if targets.is_empty() {
             return;
         }
 
-        // Fast-path local guards for actions where PR list state is authoritative
-        match action {
-            PrAction::Close => {
-                if self
-                    .selected_pr()
-                    .is_some_and(|p| p.state == PrState::Closed)
-                {
-                    self.set_status(format!("Already closed #{}", pr_id.number));
-                    return;
-                }
+        // Per-PR fast-path: skip targets where the action is already a no-op.
+        let actionable: Vec<(PrId, PR)> = targets
+            .iter()
+            .filter(|t| !self.pr_action_already_done(action, &t.1))
+            .cloned()
+            .collect();
+
+        if actionable.is_empty() {
+            // Single-PR action where the only target was a no-op: keep the old status.
+            if targets.len() == 1 {
+                self.set_status(self.already_done_msg(action, &targets[0]));
             }
-            PrAction::Reopen => {
-                if self
-                    .selected_pr()
-                    .is_some_and(|p| p.state != PrState::Closed)
-                {
-                    self.set_status(format!("Already open #{}", pr_id.number));
-                    return;
-                }
-            }
-            PrAction::MarkReady => {
-                if self.selected_pr().is_some_and(|p| !p.draft) {
-                    self.set_status(format!("Already ready for review #{}", pr_id.number));
-                    return;
-                }
-            }
-            PrAction::Merge => {
-                let use_auto = self.merge_uses_auto();
-                if use_auto && self.selected_pr().is_some_and(|p| p.auto_merge) {
-                    self.set_status(format!("Auto-merge already enabled #{}", pr_id.number));
-                    return;
-                }
-            }
-            PrAction::Approve => {
-                if self.selected_pr().is_some_and(|p| p.viewer_approved) {
-                    self.set_status(format!("Already approved #{}", pr_id.number));
-                    return;
-                }
-            }
+            return;
         }
+
+        let n = actionable.len() as u32;
+        self.pending_pr_actions += n;
+
+        let single = n == 1 && targets.len() == 1;
+        // A batch (more than one target, or any selection) shows a single summary when
+        // it completes; a lone cursor-PR action keeps the per-action status as before.
+        let is_batch = !single;
+        if is_batch {
+            self.batch_total = n;
+            self.batch_failed = 0;
+            self.batch_summary_ok = Some(action.batch_success_msg(n));
+        } else {
+            self.batch_total = 0;
+            self.batch_failed = 0;
+            self.batch_summary_ok = None;
+        }
+
+        let action_label = match (action, self.merge_uses_auto_for(&actionable[0].1)) {
+            (PrAction::Merge, false) => "merge",
+            _ => action.label(),
+        };
+        let label = if single {
+            action_label.to_string()
+        } else {
+            format!("{action_label} x{n}")
+        };
 
         let tx = self.tx.clone();
-        let use_auto = self.merge_uses_auto();
-        let action_label = if action == PrAction::Merge && !use_auto {
-            "merge"
-        } else {
-            action.label()
-        };
-        self.loading = Some(LoadingKind::Action(action_label.into()));
-
         let merge_method = self.config.ui.merge_method;
-        tokio::spawn(async move {
-            let result = match action {
-                PrAction::Approve => actions::approve(&pr_id).await,
-                PrAction::Merge => actions::merge(&pr_id, merge_method, use_auto).await,
-                PrAction::Close => actions::close_pr(&pr_id).await,
-                PrAction::Reopen => actions::reopen_pr(&pr_id).await,
-                PrAction::MarkReady => actions::mark_ready(&pr_id).await,
-            }
-            .map(|()| {
-                let msg = if action == PrAction::Merge && use_auto {
-                    format!("Auto-merge enabled #{}", pr_id.number)
-                } else {
-                    action.success_msg(pr_id.number)
+        self.loading = Some(LoadingKind::Action(label));
+
+        for (pr_id, pr) in actionable {
+            let use_auto = action == PrAction::Merge && self.merge_uses_auto_for(&pr);
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let result = match action {
+                    PrAction::Approve => actions::approve(&pr_id).await,
+                    PrAction::Merge => actions::merge(&pr_id, merge_method, use_auto).await,
+                    PrAction::Close => actions::close_pr(&pr_id).await,
+                    PrAction::Reopen => actions::reopen_pr(&pr_id).await,
+                    PrAction::MarkReady => actions::mark_ready(&pr_id).await,
                 };
-                Some(msg)
+                match result {
+                    Ok(()) => {
+                        // Single-PR action shows its own status; a batch suppresses it in
+                        // favor of one summary shown when the counter reaches zero.
+                        let msg = single.then(|| {
+                            if action == PrAction::Merge && use_auto {
+                                format!("Auto-merge enabled #{}", pr_id.number)
+                            } else {
+                                action.success_msg(pr_id.number)
+                            }
+                        });
+                        let _ = tx.send(DataMsg::PrActionDone {
+                            pr: pr_id,
+                            action,
+                            use_auto,
+                            msg,
+                        });
+                    }
+                    Err(e) => {
+                        // Always route through PrActionError so the pending counter is
+                        // decremented (the generic Error arm does not touch it). Single
+                        // actions show the message directly; batches count and summarize.
+                        let _ = tx.send(DataMsg::PrActionError {
+                            pr: pr_id,
+                            msg: e.to_string(),
+                        });
+                    }
+                }
             });
-            match result {
-                Ok(msg) => {
-                    let _ = tx.send(DataMsg::PrActionDone {
-                        pr: pr_id,
-                        action,
-                        use_auto,
-                        msg,
-                    });
-                }
-                Err(e) => {
-                    let _ = tx.send(DataMsg::Error(e.to_string()));
-                }
-            }
-        });
+        }
+    }
+
+    /// True when `action` is already a no-op for this PR (list state is authoritative).
+    fn pr_action_already_done(&self, action: PrAction, pr: &PR) -> bool {
+        match action {
+            PrAction::Close => pr.state == PrState::Closed,
+            PrAction::Reopen => pr.state != PrState::Closed,
+            PrAction::MarkReady => !pr.draft,
+            PrAction::Merge => self.merge_uses_auto_for(pr) && pr.auto_merge,
+            PrAction::Approve => pr.viewer_approved,
+        }
+    }
+
+    fn already_done_msg(&self, action: PrAction, (id, _): &(PrId, PR)) -> String {
+        match action {
+            PrAction::Close => format!("Already closed #{}", id.number),
+            PrAction::Reopen => format!("Already open #{}", id.number),
+            PrAction::MarkReady => format!("Already ready for review #{}", id.number),
+            PrAction::Merge => format!("Auto-merge already enabled #{}", id.number),
+            PrAction::Approve => format!("Already approved #{}", id.number),
+        }
     }
 
     pub(crate) fn diff_scroll(&mut self, n: u16) {
