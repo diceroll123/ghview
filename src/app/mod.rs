@@ -40,8 +40,8 @@ use crate::{
     keys::Action,
     types::{
         CheckRun, CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, LoadingKind,
-        MergeableState, PR, PrAction, PrId, Repo, RepoId, RepoSortKey, RepoView, ReposView,
-        ReviewStatus, SortKey, Source,
+        MergeableState, PR, PrAction, PrComment, PrCommit, PrFile, PrId, Repo, RepoId, RepoSortKey,
+        RepoView, ReposView, ReviewStatus, SortKey, Source,
     },
 };
 use crossterm::event::{KeyCode, KeyEvent};
@@ -76,6 +76,12 @@ pub struct RepoCtx {
     pub check_runs_state: ListState,
     pub pr_body_scroll: u16,
     pub detail_section: DetailSection,
+    pub pr_activity: Option<Vec<PrComment>>,
+    pub pr_activity_scroll: u16,
+    pub pr_commits: Option<Vec<PrCommit>>,
+    pub pr_commits_state: ListState,
+    pub pr_files: Option<Vec<PrFile>>,
+    pub pr_files_state: ListState,
     pub diff_view: Option<DiffView>,
     pub review_statuses: HashMap<u64, ReviewStatus>,
     pub mergeable_states: HashMap<PrId, MergeableState>,
@@ -417,17 +423,6 @@ impl App {
             .issue_state
             .selected()
             .and_then(|i| self.repo_ctx.issues.get(i))
-    }
-
-    pub fn pr_body_focusable(&self) -> bool {
-        self.repo_ctx.pr_body.as_deref() != Some("")
-    }
-
-    pub fn checks_focusable(&self) -> bool {
-        self.repo_ctx
-            .check_runs
-            .as_ref()
-            .is_none_or(|runs| !runs.is_empty())
     }
 
     pub fn action_permitted(&self, action: Action) -> bool {

@@ -272,8 +272,56 @@ pub struct Issue {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DetailSection {
     #[default]
-    Body,
+    Overview,
+    Activity,
+    Commits,
     Checks,
+    FilesChanged,
+}
+
+impl DetailSection {
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Overview => Self::Activity,
+            Self::Activity => Self::Commits,
+            Self::Commits => Self::Checks,
+            Self::Checks => Self::FilesChanged,
+            Self::FilesChanged => Self::Overview,
+        }
+    }
+
+    pub const fn prev(self) -> Self {
+        match self {
+            Self::Overview => Self::FilesChanged,
+            Self::Activity => Self::Overview,
+            Self::Commits => Self::Activity,
+            Self::Checks => Self::Commits,
+            Self::FilesChanged => Self::Checks,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PrComment {
+    pub author: String,
+    pub created_at: String,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PrCommit {
+    pub sha: String,
+    pub message: String,
+    pub author: String,
+    pub date: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PrFile {
+    pub filename: String,
+    pub additions: u32,
+    pub deletions: u32,
+    pub status: String,
 }
 
 #[derive(Debug, Clone)]
@@ -472,6 +520,55 @@ mod tests {
     }
 
     #[test]
+    fn detail_section_next_cycles_all_variants() {
+        let s = DetailSection::Overview;
+        let s = s.next();
+        assert_eq!(s, DetailSection::Activity);
+        let s = s.next();
+        assert_eq!(s, DetailSection::Commits);
+        let s = s.next();
+        assert_eq!(s, DetailSection::Checks);
+        let s = s.next();
+        assert_eq!(s, DetailSection::FilesChanged);
+        let s = s.next();
+        assert_eq!(s, DetailSection::Overview);
+    }
+
+    #[test]
+    fn detail_section_prev_cycles_all_variants() {
+        let s = DetailSection::Overview;
+        let s = s.prev();
+        assert_eq!(s, DetailSection::FilesChanged);
+        let s = s.prev();
+        assert_eq!(s, DetailSection::Checks);
+        let s = s.prev();
+        assert_eq!(s, DetailSection::Commits);
+        let s = s.prev();
+        assert_eq!(s, DetailSection::Activity);
+        let s = s.prev();
+        assert_eq!(s, DetailSection::Overview);
+    }
+
+    #[test]
+    fn detail_section_prev_is_inverse_of_next() {
+        for s in [
+            DetailSection::Overview,
+            DetailSection::Activity,
+            DetailSection::Commits,
+            DetailSection::Checks,
+            DetailSection::FilesChanged,
+        ] {
+            assert_eq!(s.next().prev(), s);
+            assert_eq!(s.prev().next(), s);
+        }
+    }
+
+    #[test]
+    fn detail_section_default_is_overview() {
+        assert_eq!(DetailSection::default(), DetailSection::Overview);
+    }
+
+    #[test]
     fn pr_action_labels_all_variants() {
         assert_eq!(PrAction::Approve.label(), "approve");
         assert_eq!(PrAction::Merge.label(), "auto-merge");
@@ -623,6 +720,18 @@ pub enum DataMsg {
     CheckRuns {
         pr: PrId,
         runs: Vec<CheckRun>,
+    },
+    PrActivity {
+        pr: PrId,
+        comments: Vec<PrComment>,
+    },
+    PrCommits {
+        pr: PrId,
+        commits: Vec<PrCommit>,
+    },
+    PrFiles {
+        pr: PrId,
+        files: Vec<PrFile>,
     },
     PrBody {
         pr: PrId,

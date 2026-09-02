@@ -498,6 +498,7 @@ pub(crate) fn draw_issue_detail(f: &mut Frame, app: &mut App, area: Rect) {
     draw_scrollable_body(
         f,
         app.repo_ctx.issue_body.as_ref(),
+        "(no description)",
         app.repo_ctx.issue_body_scroll,
         body_area,
         area,

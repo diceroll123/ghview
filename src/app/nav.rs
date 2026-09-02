@@ -138,13 +138,25 @@ impl App {
                         self.repo_ctx.issue_body_scroll.saturating_sub(1);
                 }
                 RepoView::Prs | RepoView::Frontpage => match self.repo_ctx.detail_section {
-                    DetailSection::Body => {
+                    DetailSection::Overview => {
                         self.repo_ctx.pr_body_scroll =
                             self.repo_ctx.pr_body_scroll.saturating_sub(1);
+                    }
+                    DetailSection::Activity => {
+                        self.repo_ctx.pr_activity_scroll =
+                            self.repo_ctx.pr_activity_scroll.saturating_sub(1);
+                    }
+                    DetailSection::Commits => {
+                        let len = self.repo_ctx.pr_commits.as_ref().map_or(0, Vec::len);
+                        self.repo_ctx.pr_commits_state.nav_prev(len);
                     }
                     DetailSection::Checks => {
                         let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
                         self.repo_ctx.check_runs_state.nav_prev(len);
+                    }
+                    DetailSection::FilesChanged => {
+                        let len = self.repo_ctx.pr_files.as_ref().map_or(0, Vec::len);
+                        self.repo_ctx.pr_files_state.nav_prev(len);
                     }
                 },
             },
@@ -227,13 +239,25 @@ impl App {
                         self.repo_ctx.issue_body_scroll.saturating_add(1);
                 }
                 RepoView::Prs | RepoView::Frontpage => match self.repo_ctx.detail_section {
-                    DetailSection::Body => {
+                    DetailSection::Overview => {
                         self.repo_ctx.pr_body_scroll =
                             self.repo_ctx.pr_body_scroll.saturating_add(1);
+                    }
+                    DetailSection::Activity => {
+                        self.repo_ctx.pr_activity_scroll =
+                            self.repo_ctx.pr_activity_scroll.saturating_add(1);
+                    }
+                    DetailSection::Commits => {
+                        let len = self.repo_ctx.pr_commits.as_ref().map_or(0, Vec::len);
+                        self.repo_ctx.pr_commits_state.nav_next(len);
                     }
                     DetailSection::Checks => {
                         let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
                         self.repo_ctx.check_runs_state.nav_next(len);
+                    }
+                    DetailSection::FilesChanged => {
+                        let len = self.repo_ctx.pr_files.as_ref().map_or(0, Vec::len);
+                        self.repo_ctx.pr_files_state.nav_next(len);
                     }
                 },
             },
@@ -301,7 +325,7 @@ impl App {
                     {
                         self.focus = Column::Detail;
                         self.repo_view = crate::types::RepoView::Prs;
-                        self.repo_ctx.detail_section = DetailSection::Body;
+                        self.repo_ctx.detail_section = DetailSection::Overview;
                         self.repo_ctx.pr_body_scroll = 0;
                         self.repo_ctx.check_runs_state = ListState::default();
                         self.trigger_load_pr_body();
@@ -321,13 +345,7 @@ impl App {
                 RepoView::Prs => {
                     if self.selected_pr().is_some() {
                         self.focus = Column::Detail;
-                        self.repo_ctx.detail_section = if self.pr_body_focusable() {
-                            DetailSection::Body
-                        } else if self.checks_focusable() {
-                            DetailSection::Checks
-                        } else {
-                            DetailSection::Body
-                        };
+                        self.repo_ctx.detail_section = DetailSection::Overview;
                         self.repo_ctx.pr_body_scroll = 0;
                         self.repo_ctx.check_runs_state = ListState::default();
                     }
@@ -343,19 +361,12 @@ impl App {
         }
     }
 
-    pub(crate) fn detail_tab(&mut self) {
-        if self.focus != Column::Detail {
-            return;
-        }
-        match self.repo_ctx.detail_section {
-            DetailSection::Body if self.checks_focusable() => {
-                self.repo_ctx.detail_section = DetailSection::Checks;
-            }
-            DetailSection::Checks if self.pr_body_focusable() => {
-                self.repo_ctx.detail_section = DetailSection::Body;
-            }
-            _ => {}
-        }
+    pub(crate) fn detail_next_tab(&mut self) {
+        self.repo_ctx.detail_section = self.repo_ctx.detail_section.next();
+    }
+
+    pub(crate) fn detail_prev_tab(&mut self) {
+        self.repo_ctx.detail_section = self.repo_ctx.detail_section.prev();
     }
 
     pub(crate) fn move_top(&mut self) {
@@ -402,11 +413,20 @@ impl App {
                     self.repo_ctx.issue_body_scroll = 0;
                 }
                 RepoView::Prs | RepoView::Frontpage => match self.repo_ctx.detail_section {
-                    DetailSection::Body => {
+                    DetailSection::Overview => {
                         self.repo_ctx.pr_body_scroll = 0;
+                    }
+                    DetailSection::Activity => {
+                        self.repo_ctx.pr_activity_scroll = 0;
+                    }
+                    DetailSection::Commits => {
+                        self.repo_ctx.pr_commits_state.select(Some(0));
                     }
                     DetailSection::Checks => {
                         self.repo_ctx.check_runs_state.select(Some(0));
+                    }
+                    DetailSection::FilesChanged => {
+                        self.repo_ctx.pr_files_state.select(Some(0));
                     }
                 },
             },
@@ -467,13 +487,28 @@ impl App {
                     self.repo_ctx.issue_body_scroll = u16::MAX;
                 }
                 RepoView::Prs | RepoView::Frontpage => match self.repo_ctx.detail_section {
-                    DetailSection::Body => {
+                    DetailSection::Overview => {
                         self.repo_ctx.pr_body_scroll = u16::MAX;
+                    }
+                    DetailSection::Activity => {
+                        self.repo_ctx.pr_activity_scroll = u16::MAX;
+                    }
+                    DetailSection::Commits => {
+                        let len = self.repo_ctx.pr_commits.as_ref().map_or(0, Vec::len);
+                        if len > 0 {
+                            self.repo_ctx.pr_commits_state.select(Some(len - 1));
+                        }
                     }
                     DetailSection::Checks => {
                         let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
                         if len > 0 {
                             self.repo_ctx.check_runs_state.select(Some(len - 1));
+                        }
+                    }
+                    DetailSection::FilesChanged => {
+                        let len = self.repo_ctx.pr_files.as_ref().map_or(0, Vec::len);
+                        if len > 0 {
+                            self.repo_ctx.pr_files_state.select(Some(len - 1));
                         }
                     }
                 },

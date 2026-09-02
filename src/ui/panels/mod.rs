@@ -74,13 +74,14 @@ pub(crate) fn loading_placeholder() -> Paragraph<'static> {
 pub(crate) fn draw_scrollable_body(
     f: &mut Frame,
     body: Option<&String>,
+    empty_msg: &'static str,
     scroll: u16,
     content_area: Rect,
     sb_area: Rect,
 ) {
     match body {
         None => f.render_widget(loading_placeholder(), content_area),
-        Some(b) if b.is_empty() => f.render_widget(dim_italic("(no description)"), content_area),
+        Some(b) if b.is_empty() => f.render_widget(dim_italic(empty_msg), content_area),
         Some(b) => {
             let md = super::markdown::render(b);
             let total_lines = Paragraph::new(md.clone())
@@ -319,6 +320,53 @@ pub(crate) fn repos_tab_line(
         Span::raw("  "),
         Span::styled("i", ik),
         Span::styled(issue_label, il),
+        Span::raw(" "),
+    ])
+}
+
+pub(crate) fn detail_tab_line(
+    current: crate::types::DetailSection,
+    checks_count: usize,
+    activity_count: usize,
+    commits_count: usize,
+) -> Line<'static> {
+    use crate::types::DetailSection;
+
+    let style = |section: DetailSection| {
+        if section == current {
+            active_style()
+        } else {
+            inactive_style()
+        }
+    };
+
+    let activity_label = if activity_count > 0 {
+        format!("Activity ({activity_count})")
+    } else {
+        "Activity".to_string()
+    };
+    let commits_label = if commits_count > 0 {
+        format!("Commits ({commits_count})")
+    } else {
+        "Commits".to_string()
+    };
+    let checks_label = if checks_count > 0 {
+        format!("Checks ({checks_count})")
+    } else {
+        "Checks".to_string()
+    };
+
+    Line::from(vec![
+        Span::raw(" "),
+        Span::styled("Overview", style(DetailSection::Overview)),
+        Span::raw("  "),
+        Span::styled(activity_label, style(DetailSection::Activity)),
+        Span::raw("  "),
+        Span::styled(commits_label, style(DetailSection::Commits)),
+        Span::raw("  "),
+        Span::styled(checks_label, style(DetailSection::Checks)),
+        Span::raw("  "),
+        Span::styled("Files Changed", style(DetailSection::FilesChanged)),
         Span::raw(" "),
     ])
 }

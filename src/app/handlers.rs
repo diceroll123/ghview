@@ -1,7 +1,7 @@
 use super::{App, RepoCtx, SourceCtx};
 use crate::types::{
-    CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, PR, PrAction, PrId, Repo,
-    RepoView, ReposView, ReviewStatus, SortKey,
+    CheckStatus, DataMsg, DiffView, Issue, PR, PrAction, PrId, Repo, RepoView, ReposView,
+    ReviewStatus, SortKey,
 };
 use log::debug;
 
@@ -153,12 +153,6 @@ impl App {
                     p.number == pr.number && (p.repo.is_empty() || p.repo == pr.repo.repo)
                 }) {
                     self.repo_ctx.check_runs = Some(runs);
-                    if !self.checks_focusable()
-                        && self.focus == Column::Detail
-                        && self.repo_ctx.detail_section == DetailSection::Checks
-                    {
-                        self.repo_ctx.detail_section = DetailSection::Body;
-                    }
                 }
             }
             DataMsg::DiffContent { pr, title, content } => {
@@ -205,15 +199,69 @@ impl App {
                     p.number == pr.number && (p.repo.is_empty() || p.repo == pr.repo.repo)
                 }) {
                     self.repo_ctx.pr_body = Some(body);
-                    if !self.pr_body_focusable() && self.focus == Column::Detail {
-                        self.repo_ctx.detail_section = DetailSection::Checks;
-                    }
                 }
                 self.update_pr_by_id(&pr, |p| {
                     p.additions = additions;
                     p.deletions = deletions;
                     p.auto_merge = auto_merge;
                 });
+            }
+            DataMsg::PrActivity { pr, comments } => {
+                let passes = if self.repos_view == ReposView::PrList {
+                    self.source_ctx.source_prs.iter().any(|p| {
+                        p.number == pr.number
+                            && p.repo == pr.repo.repo
+                            && (p.repo_owner.is_empty() || p.repo_owner == pr.repo.owner)
+                    })
+                } else {
+                    self.current_repo_key().as_deref() == Some(pr.repo.key().as_str())
+                };
+                if !passes {
+                    return;
+                }
+                if self.selected_pr().is_some_and(|p| {
+                    p.number == pr.number && (p.repo.is_empty() || p.repo == pr.repo.repo)
+                }) {
+                    self.repo_ctx.pr_activity = Some(comments);
+                }
+            }
+            DataMsg::PrCommits { pr, commits } => {
+                let passes = if self.repos_view == ReposView::PrList {
+                    self.source_ctx.source_prs.iter().any(|p| {
+                        p.number == pr.number
+                            && p.repo == pr.repo.repo
+                            && (p.repo_owner.is_empty() || p.repo_owner == pr.repo.owner)
+                    })
+                } else {
+                    self.current_repo_key().as_deref() == Some(pr.repo.key().as_str())
+                };
+                if !passes {
+                    return;
+                }
+                if self.selected_pr().is_some_and(|p| {
+                    p.number == pr.number && (p.repo.is_empty() || p.repo == pr.repo.repo)
+                }) {
+                    self.repo_ctx.pr_commits = Some(commits);
+                }
+            }
+            DataMsg::PrFiles { pr, files } => {
+                let passes = if self.repos_view == ReposView::PrList {
+                    self.source_ctx.source_prs.iter().any(|p| {
+                        p.number == pr.number
+                            && p.repo == pr.repo.repo
+                            && (p.repo_owner.is_empty() || p.repo_owner == pr.repo.owner)
+                    })
+                } else {
+                    self.current_repo_key().as_deref() == Some(pr.repo.key().as_str())
+                };
+                if !passes {
+                    return;
+                }
+                if self.selected_pr().is_some_and(|p| {
+                    p.number == pr.number && (p.repo.is_empty() || p.repo == pr.repo.repo)
+                }) {
+                    self.repo_ctx.pr_files = Some(files);
+                }
             }
             DataMsg::RepoFrontpage {
                 repo,
