@@ -118,6 +118,16 @@ pub(super) const ICON_REVIEW_PENDING: &str = "\u{f444}";
 // Middle dot — used for "none" / unknown states
 pub(super) const ICON_DOT: &str = "\u{b7}";
 
+// Detail-pane tab icons
+pub(super) const ICON_COMMIT: &str = "\u{f417}";
+pub(super) const ICON_FILE_DIFF: &str = "\u{f440}";
+
+// Files Changed status icons
+pub(super) const ICON_FILE_ADDED: &str = "\u{f457}";
+pub(super) const ICON_FILE_MODIFIED: &str = "\u{f459}";
+pub(super) const ICON_FILE_REMOVED: &str = "\u{f458}";
+pub(super) const ICON_FILE_RENAMED: &str = "\u{f45a}";
+
 // Language icons (trailing space for inline use before repo names)
 pub(super) const LANG_RUST: &str = "\u{e7a8} ";
 pub(super) const LANG_PYTHON: &str = "\u{e73c} ";

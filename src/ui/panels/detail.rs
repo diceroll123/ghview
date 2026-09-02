@@ -1,6 +1,8 @@
 use super::ICON_PR_DRAFT;
 use super::{
-    StatusLike, active_style, detail_tab_line, diff_stat_spans, dim_italic, draw_scrollable_body,
+    ICON_CHECKLIST, ICON_COMMENT, ICON_COMMIT, ICON_DOT, ICON_FILE_ADDED, ICON_FILE_DIFF,
+    ICON_FILE_MODIFIED, ICON_FILE_REMOVED, ICON_FILE_RENAMED, ICON_PR_HEADER, StatusLike,
+    active_style, detail_tab_line, diff_stat_spans, dim_italic, draw_scrollable_body,
     inactive_style, label_pill_spans, label_pill_w, list_highlight_style, loading_placeholder,
     mergeable_state_span, pad_to_width, relative_time, truncate,
 };
@@ -238,7 +240,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
     match app.repo_ctx.detail_section {
         DetailSection::Overview => {
             let block = Block::default()
-                .title(" Overview ")
+                .title(format!(" {ICON_PR_HEADER} Overview "))
                 .title_style(section_style)
                 .borders(Borders::ALL)
                 .border_style(section_style);
@@ -366,7 +368,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
 
         DetailSection::Activity => {
             let block = Block::default()
-                .title(" Activity ")
+                .title(format!(" {ICON_COMMENT} Activity "))
                 .title_style(section_style)
                 .borders(Borders::ALL)
                 .border_style(section_style);
@@ -399,7 +401,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
 
         DetailSection::Commits => {
             let block = Block::default()
-                .title(" Commits ")
+                .title(format!(" {ICON_COMMIT} Commits "))
                 .title_style(section_style)
                 .borders(Borders::ALL)
                 .border_style(section_style);
@@ -424,10 +426,10 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
                                 commit.author,
                                 relative_time(&commit.date, now)
                             );
-                            let prefix_w = short_sha.width() + 1;
+                            let prefix_w = ICON_COMMIT.width() + 1 + short_sha.width() + 1;
                             let trailing_w = trailing.width() + 2;
                             let mut spans = vec![Span::styled(
-                                format!("{short_sha} "),
+                                format!("{ICON_COMMIT} {short_sha} "),
                                 Style::new().fg(Color::Cyan),
                             )];
                             if prefix_w + first_line.width().min(1) + trailing_w <= width {
@@ -477,7 +479,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
 
         DetailSection::Checks => {
             let checks_block = Block::default()
-                .title(" Checks ")
+                .title(format!(" {ICON_CHECKLIST} Checks "))
                 .title_style(section_style)
                 .borders(Borders::ALL)
                 .border_style(section_style);
@@ -555,7 +557,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
 
         DetailSection::FilesChanged => {
             let block = Block::default()
-                .title(" Files Changed ")
+                .title(format!(" {ICON_FILE_DIFF} Files Changed "))
                 .title_style(section_style)
                 .borders(Borders::ALL)
                 .border_style(section_style);
@@ -572,12 +574,12 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
                     let items: Vec<ListItem> = files
                         .iter()
                         .map(|file| {
-                            let (letter, color) = match file.status.as_str() {
-                                "added" => ("A", Color::Green),
-                                "modified" | "changed" => ("M", Color::Yellow),
-                                "removed" | "deleted" => ("D", Color::Red),
-                                "renamed" => ("R", Color::Blue),
-                                _ => ("?", Color::Gray),
+                            let (icon, color) = match file.status.as_str() {
+                                "added" => (ICON_FILE_ADDED, Color::Green),
+                                "modified" | "changed" => (ICON_FILE_MODIFIED, Color::Yellow),
+                                "removed" | "deleted" => (ICON_FILE_REMOVED, Color::Red),
+                                "renamed" => (ICON_FILE_RENAMED, Color::Blue),
+                                _ => (ICON_DOT, Color::Gray),
                             };
                             let add_span = Span::styled(
                                 format!("+{}", file.additions),
@@ -588,7 +590,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
                                 Style::new().fg(Color::Red),
                             );
                             let trailing_w = add_span.width() + del_span.width();
-                            let prefix_w = 2; // letter + space
+                            let prefix_w = icon.width() + 1;
                             let name_budget = width
                                 .saturating_sub(prefix_w)
                                 .saturating_sub(trailing_w.saturating_add(1));
@@ -596,7 +598,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
                             let used = prefix_w + name.width();
                             let pad = width.saturating_sub(used + trailing_w);
                             let mut spans = vec![
-                                Span::styled(format!("{letter} "), Style::new().fg(color)),
+                                Span::styled(format!("{icon} "), Style::new().fg(color)),
                                 Span::styled(name, Style::new().fg(Color::White)),
                             ];
                             if pad > 0 {

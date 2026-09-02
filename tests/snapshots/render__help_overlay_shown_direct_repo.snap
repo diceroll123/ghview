@@ -1,12 +1,12 @@
 ---
 source: tests/render.rs
-assertion_line: 10
+assertion_line: 13
 expression: terminal.backend()
 ---
 "┌ octo-org/repo-charlie  newest ────────────────────────────────────▲┌ repo-charlie #2628 ─────────────────────────────┐"
 "│                   ┌ Help ────────────────────────────────────────────────────────────────────────▲                   │"
 "│▶ #2628 by @user-01│        Navigation                                                           █-missing-config → …│"
-"│      Fix panic wh│j/↓   move down                                                               █Checks  Files Chang│"
+"│      Fix panic wh│j/↓   move down                                                               █mits   Checks   F│"
 "│  #2625 by @user-02│k/↑   move up                                                                 █──────────────────┐│"
 "│      Add keyboard│h/←   focus left                                                              █                  ││"
 "│  #2621 by @user-03│l/→   focus right                                                             █                  ││"

@@ -14,11 +14,12 @@ pub(super) use sources::{draw_sources, draw_sources_strip};
 
 // Re-export ui/mod.rs items for sub-modules.
 pub(crate) use super::{
-    ICON_ARCHIVE, ICON_BUG, ICON_CHECKLIST, ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_COMMENT, ICON_DOT,
-    ICON_FORK, ICON_LOCK, ICON_ORG, ICON_ORG_GLYPH, ICON_PR_DRAFT, ICON_PR_HEADER, ICON_REPO_GLYPH,
-    ICON_STAR, ICON_USER, ICON_USER_GLYPH, StatusLike, active_style, filter_title, inactive_style,
-    item_style, lang_icon, panel_focus, pr_state_icon, relative_time, render_list_scrollbar,
-    review_icon, truncate,
+    ICON_ARCHIVE, ICON_BUG, ICON_CHECKLIST, ICON_CLOCK, ICON_CLOCK_UPDATED, ICON_COMMENT,
+    ICON_COMMIT, ICON_DOT, ICON_FILE_ADDED, ICON_FILE_DIFF, ICON_FILE_MODIFIED, ICON_FILE_REMOVED,
+    ICON_FILE_RENAMED, ICON_FORK, ICON_LOCK, ICON_ORG, ICON_ORG_GLYPH, ICON_PR_DRAFT,
+    ICON_PR_HEADER, ICON_REPO_GLYPH, ICON_STAR, ICON_USER, ICON_USER_GLYPH, StatusLike,
+    active_style, filter_title, inactive_style, item_style, lang_icon, panel_focus, pr_state_icon,
+    relative_time, render_list_scrollbar, review_icon, truncate,
 };
 
 use crate::types::{Label, MergeableState, PR, RepoView, ReposView};
@@ -341,24 +342,27 @@ pub(crate) fn detail_tab_line(
     };
 
     let activity_label = if activity_count > 0 {
-        format!("Activity ({activity_count})")
+        format!("{ICON_COMMENT} Activity ({activity_count})")
     } else {
-        "Activity".to_string()
+        format!("{ICON_COMMENT} Activity")
     };
     let commits_label = if commits_count > 0 {
-        format!("Commits ({commits_count})")
+        format!("{ICON_COMMIT} Commits ({commits_count})")
     } else {
-        "Commits".to_string()
+        format!("{ICON_COMMIT} Commits")
     };
     let checks_label = if checks_count > 0 {
-        format!("Checks ({checks_count})")
+        format!("{ICON_CHECKLIST} Checks ({checks_count})")
     } else {
-        "Checks".to_string()
+        format!("{ICON_CHECKLIST} Checks")
     };
 
     Line::from(vec![
         Span::raw(" "),
-        Span::styled("Overview", style(DetailSection::Overview)),
+        Span::styled(
+            format!("{ICON_PR_HEADER} Overview"),
+            style(DetailSection::Overview),
+        ),
         Span::raw("  "),
         Span::styled(activity_label, style(DetailSection::Activity)),
         Span::raw("  "),
@@ -366,7 +370,10 @@ pub(crate) fn detail_tab_line(
         Span::raw("  "),
         Span::styled(checks_label, style(DetailSection::Checks)),
         Span::raw("  "),
-        Span::styled("Files Changed", style(DetailSection::FilesChanged)),
+        Span::styled(
+            format!("{ICON_FILE_DIFF} Files Changed"),
+            style(DetailSection::FilesChanged),
+        ),
         Span::raw(" "),
     ])
 }
