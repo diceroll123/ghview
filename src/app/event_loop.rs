@@ -329,9 +329,12 @@ pub async fn run_event_loop(
                 }
 
                 if app.repo_view == RepoView::Prs || app.repos_view == ReposView::PrList {
+                    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                     match key.code {
                         KeyCode::Char('[') => { app.detail_prev_tab(); continue; }
                         KeyCode::Char(']') => { app.detail_next_tab(); continue; }
+                        KeyCode::Char('u') if ctrl => { app.detail_scroll_up(); continue; }
+                        KeyCode::Char('d') if ctrl => { app.detail_scroll_down(); continue; }
                         _ => {}
                     }
                 }
