@@ -12,6 +12,8 @@ fn clamp_list_state(state: &mut ListState, len: usize) {
 
 trait SelectChanged {
     fn select_changed(&mut self, i: Option<usize>) -> bool;
+    fn nav_prev_by(&mut self, n: usize, len: usize) -> bool;
+    fn nav_next_by(&mut self, n: usize, len: usize) -> bool;
     fn nav_prev(&mut self, len: usize) -> bool;
     fn nav_next(&mut self, len: usize) -> bool;
 }
@@ -23,20 +25,28 @@ impl SelectChanged for ListState {
         self.selected() != prev
     }
 
-    fn nav_prev(&mut self, len: usize) -> bool {
+    fn nav_prev_by(&mut self, n: usize, len: usize) -> bool {
         if len == 0 {
             return false;
         }
-        let idx = self.selected().map_or(0, |i| i.saturating_sub(1));
+        let idx = self.selected().map_or(0, |i| i.saturating_sub(n));
         self.select_changed(Some(idx))
     }
 
-    fn nav_next(&mut self, len: usize) -> bool {
+    fn nav_next_by(&mut self, n: usize, len: usize) -> bool {
         if len == 0 {
             return false;
         }
-        let idx = self.selected().map_or(0, |i| (i + 1).min(len - 1));
+        let idx = self.selected().map_or(0, |i| (i + n).min(len - 1));
         self.select_changed(Some(idx))
+    }
+
+    fn nav_prev(&mut self, len: usize) -> bool {
+        self.nav_prev_by(1, len)
+    }
+
+    fn nav_next(&mut self, len: usize) -> bool {
+        self.nav_next_by(1, len)
     }
 }
 
@@ -138,13 +148,25 @@ impl App {
                         self.repo_ctx.issue_body_scroll.saturating_sub(1);
                 }
                 RepoView::Prs | RepoView::Frontpage => match self.repo_ctx.detail_section {
-                    DetailSection::Body => {
+                    DetailSection::Overview => {
                         self.repo_ctx.pr_body_scroll =
                             self.repo_ctx.pr_body_scroll.saturating_sub(1);
+                    }
+                    DetailSection::Activity => {
+                        self.repo_ctx.pr_activity_scroll =
+                            self.repo_ctx.pr_activity_scroll.saturating_sub(1);
+                    }
+                    DetailSection::Commits => {
+                        let len = self.repo_ctx.pr_commits.as_ref().map_or(0, Vec::len);
+                        self.repo_ctx.pr_commits_state.nav_prev(len);
                     }
                     DetailSection::Checks => {
                         let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
                         self.repo_ctx.check_runs_state.nav_prev(len);
+                    }
+                    DetailSection::FilesChanged => {
+                        let len = self.repo_ctx.pr_files.as_ref().map_or(0, Vec::len);
+                        self.repo_ctx.pr_files_state.nav_prev(len);
                     }
                 },
             },
@@ -227,13 +249,25 @@ impl App {
                         self.repo_ctx.issue_body_scroll.saturating_add(1);
                 }
                 RepoView::Prs | RepoView::Frontpage => match self.repo_ctx.detail_section {
-                    DetailSection::Body => {
+                    DetailSection::Overview => {
                         self.repo_ctx.pr_body_scroll =
                             self.repo_ctx.pr_body_scroll.saturating_add(1);
+                    }
+                    DetailSection::Activity => {
+                        self.repo_ctx.pr_activity_scroll =
+                            self.repo_ctx.pr_activity_scroll.saturating_add(1);
+                    }
+                    DetailSection::Commits => {
+                        let len = self.repo_ctx.pr_commits.as_ref().map_or(0, Vec::len);
+                        self.repo_ctx.pr_commits_state.nav_next(len);
                     }
                     DetailSection::Checks => {
                         let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
                         self.repo_ctx.check_runs_state.nav_next(len);
+                    }
+                    DetailSection::FilesChanged => {
+                        let len = self.repo_ctx.pr_files.as_ref().map_or(0, Vec::len);
+                        self.repo_ctx.pr_files_state.nav_next(len);
                     }
                 },
             },
@@ -301,7 +335,7 @@ impl App {
                     {
                         self.focus = Column::Detail;
                         self.repo_view = crate::types::RepoView::Prs;
-                        self.repo_ctx.detail_section = DetailSection::Body;
+                        self.repo_ctx.detail_section = DetailSection::Overview;
                         self.repo_ctx.pr_body_scroll = 0;
                         self.repo_ctx.check_runs_state = ListState::default();
                         self.trigger_load_pr_body();
@@ -321,13 +355,7 @@ impl App {
                 RepoView::Prs => {
                     if self.selected_pr().is_some() {
                         self.focus = Column::Detail;
-                        self.repo_ctx.detail_section = if self.pr_body_focusable() {
-                            DetailSection::Body
-                        } else if self.checks_focusable() {
-                            DetailSection::Checks
-                        } else {
-                            DetailSection::Body
-                        };
+                        self.repo_ctx.detail_section = DetailSection::Overview;
                         self.repo_ctx.pr_body_scroll = 0;
                         self.repo_ctx.check_runs_state = ListState::default();
                     }
@@ -343,18 +371,77 @@ impl App {
         }
     }
 
-    pub(crate) fn detail_tab(&mut self) {
-        if self.focus != Column::Detail {
-            return;
-        }
+    pub(crate) fn detail_next_tab(&mut self) {
+        self.repo_ctx.detail_section = self.repo_ctx.detail_section.next();
+    }
+
+    pub(crate) fn detail_prev_tab(&mut self) {
+        self.repo_ctx.detail_section = self.repo_ctx.detail_section.prev();
+    }
+
+    /// Half the terminal height, used as the step for a Ctrl+d/Ctrl+u half-page
+    /// scroll of the Detail pane's active tab.
+    fn detail_page_step(&self) -> usize {
+        usize::from((self.terminal_height / 2).max(1))
+    }
+
+    pub(crate) fn detail_scroll_up(&mut self) {
+        let step = self.detail_page_step();
         match self.repo_ctx.detail_section {
-            DetailSection::Body if self.checks_focusable() => {
-                self.repo_ctx.detail_section = DetailSection::Checks;
+            DetailSection::Overview => {
+                self.repo_ctx.pr_body_scroll = self
+                    .repo_ctx
+                    .pr_body_scroll
+                    .saturating_sub(u16::try_from(step).unwrap_or(u16::MAX));
             }
-            DetailSection::Checks if self.pr_body_focusable() => {
-                self.repo_ctx.detail_section = DetailSection::Body;
+            DetailSection::Activity => {
+                self.repo_ctx.pr_activity_scroll = self
+                    .repo_ctx
+                    .pr_activity_scroll
+                    .saturating_sub(u16::try_from(step).unwrap_or(u16::MAX));
             }
-            _ => {}
+            DetailSection::Commits => {
+                let len = self.repo_ctx.pr_commits.as_ref().map_or(0, Vec::len);
+                self.repo_ctx.pr_commits_state.nav_prev_by(step, len);
+            }
+            DetailSection::Checks => {
+                let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
+                self.repo_ctx.check_runs_state.nav_prev_by(step, len);
+            }
+            DetailSection::FilesChanged => {
+                let len = self.repo_ctx.pr_files.as_ref().map_or(0, Vec::len);
+                self.repo_ctx.pr_files_state.nav_prev_by(step, len);
+            }
+        }
+    }
+
+    pub(crate) fn detail_scroll_down(&mut self) {
+        let step = self.detail_page_step();
+        match self.repo_ctx.detail_section {
+            DetailSection::Overview => {
+                self.repo_ctx.pr_body_scroll = self
+                    .repo_ctx
+                    .pr_body_scroll
+                    .saturating_add(u16::try_from(step).unwrap_or(u16::MAX));
+            }
+            DetailSection::Activity => {
+                self.repo_ctx.pr_activity_scroll = self
+                    .repo_ctx
+                    .pr_activity_scroll
+                    .saturating_add(u16::try_from(step).unwrap_or(u16::MAX));
+            }
+            DetailSection::Commits => {
+                let len = self.repo_ctx.pr_commits.as_ref().map_or(0, Vec::len);
+                self.repo_ctx.pr_commits_state.nav_next_by(step, len);
+            }
+            DetailSection::Checks => {
+                let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
+                self.repo_ctx.check_runs_state.nav_next_by(step, len);
+            }
+            DetailSection::FilesChanged => {
+                let len = self.repo_ctx.pr_files.as_ref().map_or(0, Vec::len);
+                self.repo_ctx.pr_files_state.nav_next_by(step, len);
+            }
         }
     }
 
@@ -402,11 +489,20 @@ impl App {
                     self.repo_ctx.issue_body_scroll = 0;
                 }
                 RepoView::Prs | RepoView::Frontpage => match self.repo_ctx.detail_section {
-                    DetailSection::Body => {
+                    DetailSection::Overview => {
                         self.repo_ctx.pr_body_scroll = 0;
+                    }
+                    DetailSection::Activity => {
+                        self.repo_ctx.pr_activity_scroll = 0;
+                    }
+                    DetailSection::Commits => {
+                        self.repo_ctx.pr_commits_state.select(Some(0));
                     }
                     DetailSection::Checks => {
                         self.repo_ctx.check_runs_state.select(Some(0));
+                    }
+                    DetailSection::FilesChanged => {
+                        self.repo_ctx.pr_files_state.select(Some(0));
                     }
                 },
             },
@@ -467,13 +563,28 @@ impl App {
                     self.repo_ctx.issue_body_scroll = u16::MAX;
                 }
                 RepoView::Prs | RepoView::Frontpage => match self.repo_ctx.detail_section {
-                    DetailSection::Body => {
+                    DetailSection::Overview => {
                         self.repo_ctx.pr_body_scroll = u16::MAX;
+                    }
+                    DetailSection::Activity => {
+                        self.repo_ctx.pr_activity_scroll = u16::MAX;
+                    }
+                    DetailSection::Commits => {
+                        let len = self.repo_ctx.pr_commits.as_ref().map_or(0, Vec::len);
+                        if len > 0 {
+                            self.repo_ctx.pr_commits_state.select(Some(len - 1));
+                        }
                     }
                     DetailSection::Checks => {
                         let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
                         if len > 0 {
                             self.repo_ctx.check_runs_state.select(Some(len - 1));
+                        }
+                    }
+                    DetailSection::FilesChanged => {
+                        let len = self.repo_ctx.pr_files.as_ref().map_or(0, Vec::len);
+                        if len > 0 {
+                            self.repo_ctx.pr_files_state.select(Some(len - 1));
                         }
                     }
                 },
@@ -520,6 +631,26 @@ mod tests {
         let changed = state.nav_next(3);
         assert_eq!(state.selected(), Some(2));
         assert!(changed);
+    }
+
+    #[test]
+    fn nav_prev_by_steps_multiple_and_clamps_at_zero() {
+        let mut state = ListState::default();
+        state.select(Some(5));
+        assert!(state.nav_prev_by(3, 10));
+        assert_eq!(state.selected(), Some(2));
+        assert!(state.nav_prev_by(10, 10));
+        assert_eq!(state.selected(), Some(0));
+    }
+
+    #[test]
+    fn nav_next_by_steps_multiple_and_clamps_at_end() {
+        let mut state = ListState::default();
+        state.select(Some(2));
+        assert!(state.nav_next_by(3, 10));
+        assert_eq!(state.selected(), Some(5));
+        assert!(state.nav_next_by(10, 10));
+        assert_eq!(state.selected(), Some(9));
     }
 
     #[test]
@@ -617,5 +748,54 @@ mod tests {
         app.focus = Column::Detail;
         app.move_left();
         assert_eq!(app.focus, Column::Repo);
+    }
+
+    #[test]
+    fn detail_scroll_down_pages_overview_scroll() {
+        let mut app = make_app();
+        app.terminal_height = 40;
+        app.repo_ctx.detail_section = DetailSection::Overview;
+        app.detail_scroll_down();
+        assert_eq!(app.repo_ctx.pr_body_scroll, 20);
+    }
+
+    #[test]
+    fn detail_scroll_up_pages_overview_scroll_and_clamps_at_zero() {
+        let mut app = make_app();
+        app.terminal_height = 40;
+        app.repo_ctx.detail_section = DetailSection::Overview;
+        app.repo_ctx.pr_body_scroll = 25;
+        app.detail_scroll_up();
+        assert_eq!(app.repo_ctx.pr_body_scroll, 5);
+        app.detail_scroll_up();
+        assert_eq!(app.repo_ctx.pr_body_scroll, 0);
+    }
+
+    #[test]
+    fn detail_scroll_down_pages_activity_scroll() {
+        let mut app = make_app();
+        app.terminal_height = 40;
+        app.repo_ctx.detail_section = DetailSection::Activity;
+        app.detail_scroll_down();
+        assert_eq!(app.repo_ctx.pr_activity_scroll, 20);
+    }
+
+    #[test]
+    fn detail_scroll_down_pages_commits_selection() {
+        let mut app = make_app();
+        app.terminal_height = 10;
+        app.repo_ctx.detail_section = DetailSection::Commits;
+        app.repo_ctx.pr_commits = Some(vec![
+            crate::types::PrCommit {
+                sha: "a".repeat(40),
+                message: "msg".into(),
+                author: "alice".into(),
+                date: "2024-01-01T00:00:00Z".into(),
+            };
+            20
+        ]);
+        app.repo_ctx.pr_commits_state.select(Some(0));
+        app.detail_scroll_down();
+        assert_eq!(app.repo_ctx.pr_commits_state.selected(), Some(5));
     }
 }

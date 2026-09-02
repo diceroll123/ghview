@@ -132,7 +132,10 @@ fn hint_entries(app: &App, width: usize) -> String {
                     ReposView::RepoList | ReposView::IssueList,
                 ) => CHECKS_BAR,
             },
-            DetailSection::Body => match (app.repo_view, app.repos_view) {
+            DetailSection::Overview
+            | DetailSection::Activity
+            | DetailSection::Commits
+            | DetailSection::FilesChanged => match (app.repo_view, app.repos_view) {
                 (RepoView::Issues, _) | (_, ReposView::IssueList) => ISSUES_BAR,
                 (RepoView::Frontpage | RepoView::Prs, ReposView::RepoList | ReposView::PrList) => {
                     PRS_BAR
@@ -164,7 +167,10 @@ fn hint_entries(app: &App, width: usize) -> String {
         },
         Column::Detail => match app.repo_ctx.detail_section {
             DetailSection::Checks => &app.config.keybindings.checks,
-            DetailSection::Body => match (app.repo_view, app.repos_view) {
+            DetailSection::Overview
+            | DetailSection::Activity
+            | DetailSection::Commits
+            | DetailSection::FilesChanged => match (app.repo_view, app.repos_view) {
                 (RepoView::Issues, _) | (_, ReposView::IssueList) => &app.config.keybindings.issues,
                 (RepoView::Frontpage | RepoView::Prs, ReposView::RepoList | ReposView::PrList) => {
                     &app.config.keybindings.prs

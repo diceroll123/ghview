@@ -328,12 +328,15 @@ pub async fn run_event_loop(
                     continue;
                 }
 
-                if app.focus == Column::Detail
-                    && key.code == KeyCode::Tab
-                    && (app.repo_view == RepoView::Prs || app.repos_view == ReposView::PrList)
-                {
-                    app.detail_tab();
-                    continue;
+                if app.repo_view == RepoView::Prs || app.repos_view == ReposView::PrList {
+                    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                    match key.code {
+                        KeyCode::Char('[') => { app.detail_prev_tab(); continue; }
+                        KeyCode::Char(']') => { app.detail_next_tab(); continue; }
+                        KeyCode::Char('u') if ctrl => { app.detail_scroll_up(); continue; }
+                        KeyCode::Char('d') if ctrl => { app.detail_scroll_down(); continue; }
+                        _ => {}
+                    }
                 }
 
                 // View switching when in repo workspace (f/p/i).

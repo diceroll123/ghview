@@ -3,9 +3,10 @@ use crate::{
     actions,
     config::SourcesConfig,
     data::{
-        fetch_check_runs, fetch_diff, fetch_issue_body, fetch_issues, fetch_pr_body, fetch_prs,
-        fetch_rate_limit, fetch_repo_frontpage, fetch_repos, fetch_review_status,
-        fetch_source_issues, fetch_source_prs, fetch_sources, fetch_viewer_permission, rerun_check,
+        fetch_check_runs, fetch_diff, fetch_issue_body, fetch_issues, fetch_pr_body,
+        fetch_pr_comments, fetch_pr_commits, fetch_pr_files, fetch_prs, fetch_rate_limit,
+        fetch_repo_frontpage, fetch_repos, fetch_review_status, fetch_source_issues,
+        fetch_source_prs, fetch_sources, fetch_viewer_permission, rerun_check,
     },
     types::{
         Column, DataMsg, DetailSection, LoadingKind, PR, PrAction, PrState, RepoId, RepoView,
@@ -308,7 +309,13 @@ impl App {
         self.repo_ctx.pr_body_scroll = 0;
         self.repo_ctx.detail_section = DetailSection::default();
         self.repo_ctx.diff_view = None;
-        let pr_id = rid.pr(pr_number);
+        self.repo_ctx.pr_activity = None;
+        self.repo_ctx.pr_activity_scroll = 0;
+        self.repo_ctx.pr_commits = None;
+        self.repo_ctx.pr_commits_state = ListState::default();
+        self.repo_ctx.pr_files = None;
+        self.repo_ctx.pr_files_state = ListState::default();
+        let pr_id = rid.clone().pr(pr_number);
         let tx = self.tx.clone();
         tokio::spawn(async move {
             let (body, mergeable_state, additions, deletions, sha, auto_merge) =
@@ -330,6 +337,28 @@ impl App {
                 let runs = fetch_check_runs(&pr_id.repo, &sha).await;
                 let _ = tx.send(DataMsg::CheckRuns { pr: pr_id, runs });
             }
+        });
+
+        let pr_id = rid.clone().pr(pr_number);
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let comments = fetch_pr_comments(&pr_id.repo, pr_number).await;
+            let _ = tx.send(DataMsg::PrActivity {
+                pr: pr_id,
+                comments,
+            });
+        });
+
+        let pr_id = rid.pr(pr_number);
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let commits = fetch_pr_commits(&pr_id.repo, pr_number).await;
+            let _ = tx.send(DataMsg::PrCommits {
+                pr: pr_id.clone(),
+                commits,
+            });
+            let files = fetch_pr_files(&pr_id.repo, pr_number).await;
+            let _ = tx.send(DataMsg::PrFiles { pr: pr_id, files });
         });
     }
 

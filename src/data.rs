@@ -1,6 +1,7 @@
 use crate::config::SourcesConfig;
 use crate::types::{
-    CheckRun, CheckStatus, Issue, PR, Repo, RepoId, RepoSortKey, ReviewStatus, Source, Visibility,
+    CheckRun, CheckStatus, Issue, PR, PrComment, PrCommit, PrFile, Repo, RepoId, RepoSortKey,
+    ReviewStatus, Source, Visibility,
 };
 use anyhow::{Context, Result, bail};
 use log::debug;
@@ -461,6 +462,57 @@ pub async fn fetch_check_runs_with<R: GhRunner>(
             })
         })
         .collect()
+}
+
+pub async fn fetch_pr_comments(repo: &RepoId, number: u64) -> Vec<PrComment> {
+    fetch_pr_comments_with(&GhCli, repo, number).await
+}
+
+pub async fn fetch_pr_comments_with<R: GhRunner>(
+    runner: &R,
+    repo: &RepoId,
+    number: u64,
+) -> Vec<PrComment> {
+    let endpoint = format!("{}/issues/{number}/comments?per_page=100", repo.api_base());
+    let jq = r#".[] | {author: (.user.login // "ghost"), created_at, body: (.body // "")}"#;
+    let Ok(raw) = runner.run(&["api", &endpoint, "--jq", jq]).await else {
+        return Vec::new();
+    };
+    parse_ndjson_lines(&raw).unwrap_or_default()
+}
+
+pub async fn fetch_pr_commits(repo: &RepoId, number: u64) -> Vec<PrCommit> {
+    fetch_pr_commits_with(&GhCli, repo, number).await
+}
+
+pub async fn fetch_pr_commits_with<R: GhRunner>(
+    runner: &R,
+    repo: &RepoId,
+    number: u64,
+) -> Vec<PrCommit> {
+    let endpoint = format!("{}/pulls/{number}/commits?per_page=100", repo.api_base());
+    let jq = r#".[] | {sha, message: (.commit.message | split("\n")[0]), author: (.author.login // .commit.author.name // "ghost"), date: .commit.author.date}"#;
+    let Ok(raw) = runner.run(&["api", &endpoint, "--jq", jq]).await else {
+        return Vec::new();
+    };
+    parse_ndjson_lines(&raw).unwrap_or_default()
+}
+
+pub async fn fetch_pr_files(repo: &RepoId, number: u64) -> Vec<PrFile> {
+    fetch_pr_files_with(&GhCli, repo, number).await
+}
+
+pub async fn fetch_pr_files_with<R: GhRunner>(
+    runner: &R,
+    repo: &RepoId,
+    number: u64,
+) -> Vec<PrFile> {
+    let endpoint = format!("{}/pulls/{number}/files?per_page=100", repo.api_base());
+    let jq = ".[] | {filename, additions, deletions, status}";
+    let Ok(raw) = runner.run(&["api", &endpoint, "--jq", jq]).await else {
+        return Vec::new();
+    };
+    parse_ndjson_lines(&raw).unwrap_or_default()
 }
 
 pub async fn rerun_check(repo: &RepoId, check_run_id: u64) -> Result<()> {
