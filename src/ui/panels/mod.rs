@@ -331,6 +331,9 @@ pub(crate) fn mergeable_state_span(state: Option<&MergeableState>) -> Option<Spa
         Some(MergeableState::Dirty) => {
             Some(Span::styled("✖ conflicts  ", Style::new().fg(Color::Red)))
         }
+        Some(MergeableState::Blocked) => {
+            Some(Span::styled("⛔ blocked  ", Style::new().fg(Color::Red)))
+        }
         _ => None,
     }
 }
