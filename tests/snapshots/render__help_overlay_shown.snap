@@ -1,6 +1,5 @@
 ---
 source: tests/render.rs
-assertion_line: 13
 expression: terminal.backend()
 ---
 "┌──┐┌──┐┌ octo-org/repo-charlie  newest ───────────────────────────────▲┌ repo-charlie #2628 ──────────────────────────┐"
@@ -42,4 +41,4 @@ expression: terminal.backend()
 "│  ││  ││  #2436 by │space select                                                                  ║                  ││"
 "│  ││  ││      fix:│j/k scroll  (34/55)                                                           ║──────────────────┘│"
 "└──┘└──┘└ f·page  p·└──────────────────────────────────────────────────────────────────────────────▼───────────────────┘"
-" space select  A select all  v approve  m merge  C checkout  c comment  d diff  o open  y copy URL  / filter  ? help    "
+" space select  ^a select all  v approve  m merge  C checkout  c comment  d diff  o open  y copy URL  / filter  ? help   "

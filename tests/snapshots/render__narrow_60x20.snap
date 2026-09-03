@@ -1,6 +1,5 @@
 ---
 source: tests/render.rs
-assertion_line: 13
 expression: terminal.backend()
 ---
 "┌──┐┌──┐┌ octo-org/repo-charlie  newe▲┌ repo-charlie #2628 ┐"
@@ -22,4 +21,4 @@ expression: terminal.backend()
 "│  ││  ││  #2569     0  · ·          ║││Loading…          ││"
 "│  ││  ││      test: add integratio…║│└──────────────────┘│"
 "└──┘└──┘└ f·page  p·prs (30)  i·issue▼└────────────────────┘"
-" space select  A select all  v approve  m merge  ? help     "
+" space select  ^a select all  v approve  m merge  ? help    "
