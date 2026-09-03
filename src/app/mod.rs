@@ -617,6 +617,16 @@ impl App {
         }
     }
 
+    /// Warn once at startup if any user keybinding shadows a built-in, so the clobbered
+    /// action (e.g. `A` = select all) is not silently unreachable. No-op when there are
+    /// no clobbers, so the default status bar is unaffected.
+    pub fn warn_clobbered_bindings(&mut self) {
+        let summary = crate::keys::clobber_summary(&self.config.keybindings);
+        if !summary.is_empty() {
+            self.set_status(summary);
+        }
+    }
+
     pub fn handle_filter_input(&mut self, key: KeyEvent) {
         let prev_source = self.selected_source_owner();
         let prev_repo = self.selected_repo().map(str::to_string);

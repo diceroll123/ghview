@@ -3,7 +3,7 @@ use crate::{
     app::{App, DEPENDABOT_COMMANDS},
     keys::{
         Action, CHECKS_BINDINGS, ISSUES_BAR, NAV_ACTIONS, PRS_BAR, PRS_BINDINGS, REPOS_BAR,
-        SOURCES_BAR, find_binding,
+        SOURCES_BAR, clobbered_bindings, find_binding,
     },
 };
 use ratatui::{
@@ -92,6 +92,18 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
     left_sections.push(("\u{f407}  PRs", pr_entries));
     left_sections.push(("\u{e641}  Checks", checks_entries));
     let mut right_sections: Vec<(&str, Vec<(String, String)>)> = vec![];
+    // Keys whose custom binding shadows a built-in, so the built-in no longer fires.
+    let clobbers = clobbered_bindings(&app.config.keybindings);
+    if !clobbers.is_empty() {
+        let entries: Vec<(String, String)> = clobbers
+            .iter()
+            .map(|c| {
+                let (display, label) = c.builtin_display().unwrap_or(("", ""));
+                (c.key.clone(), format!("{display} {label} ({})", c.scope))
+            })
+            .collect();
+        right_sections.push(("Clobbered", entries));
+    }
     if !kb.universal.is_empty() {
         right_sections.push(("\u{f013}  Universal (custom)", custom_kv(&kb.universal)));
     }
