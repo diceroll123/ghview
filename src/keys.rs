@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Action {
@@ -45,6 +45,9 @@ pub struct DefaultBinding {
     pub display: &'static str,
     pub action: Action,
     pub label: &'static str,
+    /// Modifiers required in addition to `keys`. `NONE` means any modifier state matches
+    /// (the historical behaviour, before `SelectAll` needed `CONTROL`).
+    pub modifiers: KeyModifiers,
 }
 
 pub static UNIVERSAL_BINDINGS: &[DefaultBinding] = &[
@@ -53,90 +56,105 @@ pub static UNIVERSAL_BINDINGS: &[DefaultBinding] = &[
         display: "q",
         action: Action::Quit,
         label: "quit",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('?')],
         display: "?",
         action: Action::Help,
         label: "help",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('R')],
         display: "R",
         action: Action::Refresh,
         label: "refresh",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('/')],
         display: "/",
         action: Action::FilterStart,
         label: "filter",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('S')],
         display: "S",
         action: Action::SortCycle,
         label: "sort",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('j'), KeyCode::Down],
         display: "j/↓",
         action: Action::Down,
         label: "move down",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('k'), KeyCode::Up],
         display: "k/↑",
         action: Action::Up,
         label: "move up",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('h'), KeyCode::Left],
         display: "h/←",
         action: Action::Left,
         label: "focus left",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('l'), KeyCode::Right, KeyCode::Enter],
         display: "l/→",
         action: Action::Right,
         label: "focus right",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('g'), KeyCode::Home],
         display: "g",
         action: Action::Top,
         label: "jump to top",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('G'), KeyCode::End],
         display: "G",
         action: Action::Bottom,
         label: "jump to bottom",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('o')],
         display: "o",
         action: Action::OpenBrowser,
         label: "open",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('i')],
         display: "i",
         action: Action::OpenIssues,
         label: "issues",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('y')],
         display: "y",
         action: Action::CopyUrl,
         label: "copy URL",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('C')],
         display: "C",
         action: Action::Clone,
         label: "clone",
+        modifiers: KeyModifiers::NONE,
     },
 ];
 
@@ -146,72 +164,84 @@ pub static PRS_BINDINGS: &[DefaultBinding] = &[
         display: "space",
         action: Action::ToggleSelect,
         label: "select",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
-        keys: &[KeyCode::Char('A')],
-        display: "A",
+        keys: &[KeyCode::Char('a')],
+        display: "ctrl+a",
         action: Action::SelectAll,
         label: "select all",
+        modifiers: KeyModifiers::CONTROL,
     },
     DefaultBinding {
         keys: &[KeyCode::Esc],
         display: "esc",
         action: Action::ClearSelection,
         label: "clear selection",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('v')],
         display: "v",
         action: Action::Approve,
         label: "approve",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('m')],
         display: "m",
         action: Action::Merge,
         label: "auto-merge",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('C')],
         display: "C",
         action: Action::Checkout,
         label: "checkout",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('c')],
         display: "c",
         action: Action::Comment,
         label: "comment",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('d')],
         display: "d",
         action: Action::Diff,
         label: "diff",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('x')],
         display: "x",
         action: Action::ClosePr,
         label: "close",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('X')],
         display: "X",
         action: Action::ReopenPr,
         label: "reopen",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('W')],
         display: "W",
         action: Action::MarkReady,
         label: "mark ready",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('b')],
         display: "b",
         action: Action::DependabotMenu,
         label: "dependabot",
+        modifiers: KeyModifiers::NONE,
     },
 ];
 
@@ -223,18 +253,21 @@ pub static REPOS_BINDINGS: &[DefaultBinding] = &[
         display: "r",
         action: Action::ViewRepos,
         label: "repos",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('p')],
         display: "p",
         action: Action::ViewPrs,
         label: "prs",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('i')],
         display: "i",
         action: Action::ViewIssues,
         label: "issues",
+        modifiers: KeyModifiers::NONE,
     },
 ];
 
@@ -244,18 +277,21 @@ pub static CHECKS_BINDINGS: &[DefaultBinding] = &[
         display: "o",
         action: Action::CheckOpen,
         label: "open check",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('O')],
         display: "O",
         action: Action::OpenBrowser,
         label: "open PR",
+        modifiers: KeyModifiers::NONE,
     },
     DefaultBinding {
         keys: &[KeyCode::Char('R')],
         display: "R",
         action: Action::CheckRerun,
         label: "re-run",
+        modifiers: KeyModifiers::NONE,
     },
 ];
 
@@ -382,14 +418,19 @@ const CONTEXTS: &[&[LayerSpec]] = &[
 ];
 
 fn key_matches(code: KeyCode, binding_keys: &[KeyCode]) -> bool {
-    // Built-in dispatch matches on `KeyCode` only (see find_layer_match), so clobber
-    // detection must compare the same way to agree with what actually wins.
+    // Built-in dispatch matches on `KeyCode` first (see find_layer_match), so clobber
+    // detection compares the same way to agree with what actually wins. Dropping the
+    // custom binding's own modifiers (see `binding_code`) is a safe over-approximation:
+    // a user binding with fewer required modifiers than a built-in (e.g. plain `a`, which
+    // requires none) always fires whenever the built-in would (e.g. `ctrl+a`), so treating
+    // any same-code binding as a potential clobber never under-reports. It can only ever
+    // over-report for a binding whose modifiers are unrelated to the built-in's (e.g.
+    // `alt+a` against `ctrl+a` select-all) - an accepted, rare false positive.
     binding_keys.contains(&code)
 }
 
 /// Parsed `KeyCode` for a keybinding, or `None` if the key string is malformed.
-/// Only the code matters for built-in matching; modifiers are ignored there, so they are
-/// dropped here to agree with `find_layer_match`.
+/// Modifiers are dropped for clobber-detection purposes; see `key_matches`.
 fn binding_code(kb: &crate::config::Keybinding) -> Option<KeyCode> {
     crate::config::parse_key(&kb.key).map(|(c, _)| c)
 }
@@ -687,24 +728,24 @@ mod tests {
     }
 
     #[test]
-    fn prs_command_on_cap_a_clobbers_select_all() {
-        // The reported bug: a custom `A` in [keybindings.prs] hides the built-in
-        // select-all from multi-PR selection.
-        let c = clobbered_bindings(&cfg(vec![], vec![], vec![kb("A")]));
+    fn prs_command_on_a_clobbers_select_all() {
+        // The reported bug: a custom `a` in [keybindings.prs] hides the built-in
+        // select-all (ctrl+a) from multi-PR selection.
+        let c = clobbered_bindings(&cfg(vec![], vec![], vec![kb("a")]));
         assert_eq!(actions(&c), vec![Action::SelectAll]);
         let clobber = &c[0];
         assert_eq!(clobber.scope, "prs");
-        assert_eq!(clobber.key, "A");
-        assert_eq!(clobber.builtin_display(), Some(("A", "select all")));
+        assert_eq!(clobber.key, "a");
+        assert_eq!(clobber.builtin_display(), Some(("ctrl+a", "select all")));
     }
 
     #[test]
-    fn universal_command_on_cap_a_does_not_clobber_select_all() {
+    fn universal_command_on_a_does_not_clobber_select_all() {
         // In the PR context the PRs layer is checked before the universal one, and its
-        // defaults already bind `A` to select all. So a *universal* `A` is itself shadowed
-        // there and never fires; it does not clobber select all. (Only a prs-scope `A`
+        // defaults already bind `a` to select all. So a *universal* `a` is itself shadowed
+        // there and never fires; it does not clobber select all. (Only a prs-scope `a`
         // would, since prs user bindings are checked before prs defaults.)
-        let c = clobbered_bindings(&cfg(vec![kb("A")], vec![], vec![]));
+        let c = clobbered_bindings(&cfg(vec![kb("a")], vec![], vec![]));
         assert!(c.is_empty());
     }
 
@@ -717,45 +758,51 @@ mod tests {
     }
 
     #[test]
-    fn lowercase_a_does_not_clobber_select_all() {
-        // Built-in matching is by KeyCode, so 'a' != 'A'.
-        let c = clobbered_bindings(&cfg(vec![], vec![], vec![kb("a")]));
-        assert!(c.is_empty());
+    fn ctrl_a_clobbers_select_all() {
+        // A `ctrl+a` custom binding is the literal same combo as the built-in, so it
+        // clobbers it (unlike unrelated modifiers, e.g. `alt+a`, which built-in matching
+        // by KeyCode alone can't distinguish from this - an accepted over-approximation,
+        // see `key_matches`).
+        let c = clobbered_bindings(&cfg(vec![], vec![], vec![kb("ctrl+a")]));
+        assert_eq!(actions(&c), vec![Action::SelectAll]);
     }
 
     #[test]
     fn ctrl_key_clobbers_nothing_without_matching_builtin() {
+        // A *universal* `ctrl+a` is shadowed by the PRs-layer select-all default wherever
+        // the PRs layer is active, and no other built-in uses code 'a', so it never
+        // actually clobbers anything.
         let c = clobbered_bindings(&cfg(vec![kb("ctrl+a")], vec![], vec![]));
         assert!(c.is_empty());
     }
 
     #[test]
     fn builtin_remap_to_same_action_is_not_a_clobber() {
-        // `A -> selectAll` keeps the behaviour; it is a documented override, not a clobber.
-        let c = clobbered_bindings(&cfg(vec![], vec![], vec![kb_builtin("A", "selectAll")]));
+        // `a -> selectAll` keeps the behaviour; it is a documented override, not a clobber.
+        let c = clobbered_bindings(&cfg(vec![], vec![], vec![kb_builtin("a", "selectAll")]));
         assert!(c.is_empty());
     }
 
     #[test]
     fn builtin_remap_to_other_action_is_a_clobber() {
-        // `A -> merge` makes select-all unreachable.
-        let c = clobbered_bindings(&cfg(vec![], vec![], vec![kb_builtin("A", "merge")]));
+        // `a -> merge` makes select-all unreachable.
+        let c = clobbered_bindings(&cfg(vec![], vec![], vec![kb_builtin("a", "merge")]));
         assert_eq!(actions(&c), vec![Action::SelectAll]);
     }
 
     #[test]
     fn later_same_scope_binding_is_not_reported_when_itself_shadowed() {
-        // First `A` (command) wins; the second `A` (builtin merge) is never reached, so it
+        // First `a` (command) wins; the second `a` (builtin merge) is never reached, so it
         // must not be reported as clobbering anything.
         let c = clobbered_bindings(&cfg(
             vec![],
             vec![],
-            vec![kb("A"), kb_builtin("A", "merge")],
+            vec![kb("a"), kb_builtin("a", "merge")],
         ));
         assert_eq!(actions(&c), vec![Action::SelectAll]);
         assert!(
             c.iter()
-                .all(|x| x.key == "A" && x.action == Action::SelectAll)
+                .all(|x| x.key == "a" && x.action == Action::SelectAll)
         );
     }
 
@@ -782,9 +829,9 @@ mod tests {
 
     #[test]
     fn clobber_summary_lists_shadowed_builtins() {
-        let s = clobber_summary(&cfg(vec![], vec![], vec![kb("A")]));
+        let s = clobber_summary(&cfg(vec![], vec![], vec![kb("a")]));
         assert!(s.starts_with("keybinding clobber:"));
-        assert!(s.contains("A (prs) shadows A select all"), "got: {s}");
+        assert!(s.contains("a (prs) shadows ctrl+a select all"), "got: {s}");
         assert!(s.contains("see ?"), "got: {s}");
     }
 
@@ -793,13 +840,13 @@ mod tests {
         let c = clobbered_bindings(&cfg(
             vec![],
             vec![],
-            vec![kb("A"), kb("v"), kb("m"), kb("x")],
+            vec![kb("a"), kb("v"), kb("m"), kb("x")],
         ));
         assert_eq!(c.len(), 4);
         let s = clobber_summary(&cfg(
             vec![],
             vec![],
-            vec![kb("A"), kb("v"), kb("m"), kb("x")],
+            vec![kb("a"), kb("v"), kb("m"), kb("x")],
         ));
         assert!(s.contains("+1 more"), "got: {s}");
     }

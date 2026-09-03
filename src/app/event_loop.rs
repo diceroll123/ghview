@@ -144,7 +144,11 @@ fn find_layer_match(key: KeyEvent, app: &App) -> Option<LayerMatch> {
                 LayerMatch::Consumed
             });
         }
-        if let Some(b) = layer.defaults.iter().find(|b| b.keys.contains(&key.code)) {
+        if let Some(b) = layer
+            .defaults
+            .iter()
+            .find(|b| b.keys.contains(&key.code) && key.modifiers.contains(b.modifiers))
+        {
             return Some(LayerMatch::Action(b.action));
         }
     }

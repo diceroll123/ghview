@@ -41,4 +41,4 @@ expression: terminal.backend()
 "│  ││  ││  #2436 by @user-17            0  · ·                 3d    1d║││                                            ││"
 "│  ││  ││      fix: correct timezone handling                         ║│└────────────────────────────────────────────┘│"
 "└──┘└──┘└ f·page  p·prs (30)  i·issues ────────────────────────────────▼└──────────────────────────────────────────────┘"
-" 2 selected  space select  A select all  v approve  m merge  C checkout  c comment  d diff  o open  y copy URL  ? help  "
+" 2 selected  space select  ctrl+a select all  v approve  m merge  C checkout  c comment  d diff  o open  ? help         "

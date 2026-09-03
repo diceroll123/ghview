@@ -1,6 +1,5 @@
 ---
 source: tests/render.rs
-assertion_line: 13
 expression: terminal.backend()
 ---
 "┌──┐┌  @octocat  ────────────────────────────────────────────────────┐┌ repo-zulu-2 #3460 ─────────────────────────────┐"
@@ -42,4 +41,4 @@ expression: terminal.backend()
 "│  ││                                                                │││                                              ││"
 "│  ││                                                                ││└──────────────────────────────────────────────┘│"
 "└──┘└ r·repos  p·prs (10)  i·issues ─────────────────────────────────┘└────────────────────────────────────────────────┘"
-" space select  A select all  v approve  m merge  C checkout  c comment  d diff  o open  y copy URL  / filter  ? help    "
+" space select  ctrl+a select all  v approve  m merge  C checkout  c comment  d diff  o open  y copy URL  / filter  ? hel"

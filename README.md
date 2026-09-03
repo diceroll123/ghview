@@ -88,7 +88,7 @@ Available when focused on the PRs column:
 | Key | Action |
 |-----|--------|
 | `space` | Toggle the cursor PR in/out of the selection |
-| `A` | Select all visible PRs (press again to clear) |
+| `ctrl+a` | Select all visible PRs (press again to clear) |
 | `Esc` | Clear the selection (when not in filter mode) |
 
 Selected PRs are marked with a highlighted row background (plus a cyan number) and a count is shown in the status bar. While a selection is active, `v`, `m`, `x`/`X`, and `W` apply to every selected PR (already-done PRs are skipped), `b` opens the Dependabot menu to send a command to all selected dependabot PRs, and `o` / `y` fan out to every selected PR (open all in the browser, or copy all URLs as a newline-separated list). Single-serving actions `C` (checkout), `c` (comment), and `d` (diff) are blocked while a selection is active - clear the selection with `Esc` to use them on the cursor PR.
