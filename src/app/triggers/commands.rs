@@ -2,7 +2,7 @@ use super::super::App;
 use crate::{
     actions,
     config::{CheckContext, IssueContext, Keybinding, PrContext, RepoContext},
-    types::{DataMsg, RepoId, RepoView, ReposView},
+    types::{DataMsg, PrId, RepoId, RepoView, ReposView},
 };
 use log::debug;
 
@@ -111,8 +111,30 @@ impl App {
         }
     }
 
-    pub(crate) fn context_open_browser(&self) {
-        if let Some(url) = self.selected_context_url() {
+    /// URLs of every PR in the active selection, in screen order. `None` when no
+    /// selection is active (cursor-only context). Used to fan out open/copy actions.
+    fn selected_pr_urls(&self) -> Option<Vec<String>> {
+        if !self.pr_list_focused() || self.selected_prs.is_empty() {
+            return None;
+        }
+        let visible = self.active_visible_prs();
+        Some(
+            visible
+                .iter()
+                .filter(|pr| self.selected_prs.contains(&self.pr_id_of(pr)))
+                .map(|pr| pr.url.clone())
+                .collect(),
+        )
+    }
+
+    pub(crate) fn context_open_browser(&mut self) {
+        if let Some(urls) = self.selected_pr_urls() {
+            for url in &urls {
+                self.spawn_open_url(url);
+            }
+            let n = urls.len();
+            self.set_status(format!("Opened {n} PRs in browser"));
+        } else if let Some(url) = self.selected_context_url() {
             self.spawn_open_url(&url);
         }
     }
@@ -128,7 +150,14 @@ impl App {
     }
 
     pub(crate) fn context_copy_url(&mut self) {
-        if let Some(url) = self.selected_context_url() {
+        if let Some(urls) = self.selected_pr_urls() {
+            if urls.is_empty() {
+                return;
+            }
+            let joined = urls.join("\n");
+            self.set_status(format!("Copied {} PR URLs", urls.len()));
+            copy_to_clipboard(&joined);
+        } else if let Some(url) = self.selected_context_url() {
             self.copy_and_notify(&url);
         }
     }
@@ -144,10 +173,8 @@ impl App {
         }
     }
 
-    pub(crate) fn post_dependabot_comment(&mut self, body: &str) {
-        let Some(pr_id) = self.selected_pr_id() else {
-            return;
-        };
+    pub(crate) fn post_dependabot_comment(&mut self, pr_id: &PrId, body: &str) {
+        let pr_id = pr_id.clone();
         let body = body.to_string();
         let tx = self.tx.clone();
         use crate::types::LoadingKind;
@@ -163,6 +190,37 @@ impl App {
                 }
             }
         });
+    }
+
+    /// Post the same comment to every PR in `targets`, concurrently. Holds loading and
+    /// the pending counter until all complete; per-PR failures surface individually.
+    /// `summary_ok` is the status shown when every target succeeds (e.g. "Sent rebase to 3 PRs").
+    pub(crate) fn post_batch_comment(
+        &mut self,
+        targets: Vec<PrId>,
+        body: &str,
+        summary_ok: String,
+    ) {
+        if targets.is_empty() {
+            return;
+        }
+        let body = body.to_string();
+        let tx = self.tx.clone();
+        use crate::types::LoadingKind;
+        self.loading = Some(LoadingKind::Action("comment".into()));
+        let n = targets.len() as u32;
+        self.pending_pr_actions += n;
+        self.batch_total = n;
+        self.batch_failed = 0;
+        self.batch_summary_ok = Some(summary_ok);
+        for pr_id in targets {
+            let tx = tx.clone();
+            let body = body.clone();
+            tokio::spawn(async move {
+                let ok = actions::post_comment(&pr_id, &body).await.is_ok();
+                let _ = tx.send(DataMsg::CommentDone { pr: pr_id, ok });
+            });
+        }
     }
 
     pub(crate) fn open_selected_check(&mut self) {

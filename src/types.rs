@@ -503,6 +503,18 @@ impl PrAction {
             Self::MarkReady => format!("✓ Marked ready #{pr_number}"),
         }
     }
+
+    /// Completion summary for a batch of `n` PRs that all succeeded.
+    pub fn batch_success_msg(self, n: u32) -> String {
+        let verb = match self {
+            Self::Approve => "Approved",
+            Self::Merge => "Merged",
+            Self::Close => "Closed",
+            Self::Reopen => "Reopened",
+            Self::MarkReady => "Marked ready",
+        };
+        format!("✓ {verb} {n} PR(s)")
+    }
 }
 
 #[cfg(test)]
@@ -842,6 +854,18 @@ pub enum DataMsg {
         action: PrAction,
         use_auto: bool,
         msg: Option<String>,
+    },
+    /// A single PR in a batch action failed. Kept separate from `Error` so the
+    /// batch completion counter can distinguish per-PR failures from hard errors.
+    PrActionError {
+        pr: PrId,
+        msg: String,
+    },
+    /// A single PR in a batch comment (e.g. dependabot) completed. `ok` is false
+    /// when posting failed; the counter decrements either way.
+    CommentDone {
+        pr: PrId,
+        ok: bool,
     },
     Error(String),
 }

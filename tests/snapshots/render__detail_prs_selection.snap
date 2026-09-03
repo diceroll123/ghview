@@ -1,13 +1,12 @@
 ---
 source: tests/render.rs
-assertion_line: 13
 expression: terminal.backend()
 ---
-"┌──┐┌──┐┌ octo-org/repo-charlie  newest ───────────────────────────────▲┌ repo-charlie #2628 ──────────────────────────┐"
-"│ ││ ││                                    ±                    █│Fix panic when list is empty                  │"
-"│o ││r ││▶ #2628 by @user-01            0  · ·                6mo    2w█│@user-01  fix/handler-panic-on-missing-config…│"
+"┌──┐┌──┐┌ octo-org/repo-charlie  newest ───────────────────────────────▲┌ repo-charlie #2625 ──────────────────────────┐"
+"│ ││ ││                                    ±                    █│Add keyboard navigation to sidebar            │"
+"│o ││r ││  #2628 by @user-01            0  · ·                6mo    2w█│@user-02  fix/status-line-alignment → main    │"
 "│c ││e ││      Fix panic when list is empty                           █│  Overview   Activity   Commits   Checks  │"
-"│t ││p ││  #2625 by @user-02            0  · ·                45m    2y█│┌  Overview ────────────────────────────────┐│"
+"│t ││p ││▶ #2625 by @user-02            0  · ·                45m    2y█│┌  Overview ────────────────────────────────┐│"
 "│o ││o ││      Add keyboard navigation to sidebar                     █││Summary                                     ││"
 "│- ││- ││  #2621 by @user-03            0  · ·                 1d    3h█││                                            ││"
 "│o ││c ││      chore(deps): bump serde from 1.0.1 to 1.0.2            █││Loading…                                    ││"
@@ -42,4 +41,4 @@ expression: terminal.backend()
 "│  ││  ││  #2436 by @user-17            0  · ·                 3d    1d║││                                            ││"
 "│  ││  ││      fix: correct timezone handling                         ║│└────────────────────────────────────────────┘│"
 "└──┘└──┘└ f·page  p·prs (30)  i·issues ────────────────────────────────▼└──────────────────────────────────────────────┘"
-" space select  A select all  v approve  m merge  C checkout  c comment  d diff  o open  y copy URL  / filter  ? help    "
+" 2 selected  space select  A select all  v approve  m merge  C checkout  c comment  d diff  o open  y copy URL  ? help  "

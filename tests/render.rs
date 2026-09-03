@@ -1,8 +1,8 @@
 mod common;
 use common::{builders, inflate};
 use ghview::types::{
-    CheckRun, CheckStatus, Column, DetailSection, DiffView, PrComment, PrCommit, PrFile, RepoView,
-    ReposView,
+    CheckRun, CheckStatus, Column, DetailSection, DiffView, PrComment, PrCommit, PrFile, RepoId,
+    RepoView, ReposView,
 };
 use ratatui::{Terminal, backend::TestBackend};
 
@@ -246,6 +246,22 @@ async fn detail_tab_files_changed() {
 }
 
 #[tokio::test]
+async fn detail_prs_selection() {
+    let mut app = inflate::app_with_prs().await;
+    app.focus = Column::Repo;
+    // Select the top two PRs and park the cursor on the second so the snapshot
+    // shows both a tinted selected row (non-cursor) and a highlighted cursor row.
+    let pr1 = app.repo_ctx.prs[0].number;
+    let pr2 = app.repo_ctx.prs[1].number;
+    app.selected_prs
+        .insert(RepoId::new("octo-org", "repo-charlie").pr(pr1));
+    app.selected_prs
+        .insert(RepoId::new("octo-org", "repo-charlie").pr(pr2));
+    app.repo_ctx.pr_state.select(Some(1));
+    render("detail_prs_selection", &mut app, 120, 40);
+}
+
+#[tokio::test]
 async fn detail_issues() {
     let mut app = inflate::app_with_issues().await;
     app.focus = Column::Repo;
@@ -295,6 +311,23 @@ async fn help_overlay_shown_direct_repo() {
     app.focus = Column::Repo;
     app.show_help = true;
     render("help_overlay_shown_direct_repo", &mut app, 120, 40);
+}
+
+#[tokio::test]
+async fn help_overlay_shown_clobbered_binding() {
+    // A custom `A` in [keybindings.prs] shadows the built-in select-all, so the help
+    // overlay should list it under a "Clobbered" section.
+    let mut app = inflate::app_with_prs().await;
+    app.focus = Column::Repo;
+    app.config.keybindings.prs.push(ghview::config::Keybinding {
+        key: "A".into(),
+        name: None,
+        builtin: None,
+        command: Some("true".into()),
+        interactive: false,
+    });
+    app.show_help = true;
+    render("help_overlay_shown_clobbered_binding", &mut app, 120, 40);
 }
 
 #[tokio::test]

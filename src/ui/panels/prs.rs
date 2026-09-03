@@ -19,6 +19,9 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
+/// Background tint for rows in the multi-PR selection (rows not under the cursor).
+const SELECTION_BG: Color = Color::Rgb(35, 48, 62);
+
 pub(crate) struct PrListCols {
     pub(super) show_comments: bool,
     pub(super) show_check_summary: bool,
@@ -115,6 +118,21 @@ fn pr_state_color(pr: &PR) -> Color {
     }
 }
 
+/// Tint every span in a row with the selection background and pad it to `inner_width`
+/// so the highlight fills the whole row, not just the glyphs. Applied to both lines of a
+/// selected (non-cursor) PR so it is obvious which rows are in the multi-PR selection.
+fn tint_selection_row(spans: &mut Vec<Span<'static>>, inner_width: usize, color: Color) {
+    for span in spans.iter_mut() {
+        span.style.bg = Some(color);
+    }
+    let w: usize = spans.iter().map(Span::width).sum();
+    if w < inner_width {
+        let mut pad = gap_span(inner_width - w);
+        pad.style.bg = Some(color);
+        spans.push(pad);
+    }
+}
+
 /// Build list items shared by both the repo PR list and the source PR list.
 ///
 /// `repo_override`: `Some(repo_name)` for the per-repo list (all PRs share the same repo,
@@ -130,6 +148,7 @@ fn build_pr_list_items(
     focused: bool,
     selected_idx: Option<usize>,
     cols: &PrListCols,
+    selection_active: bool,
 ) -> Vec<ListItem<'static>> {
     use crate::types::RepoId;
     prs.iter()
@@ -139,6 +158,11 @@ fn build_pr_list_items(
             let dimmed = pr.is_dimmed();
             let repo_name = repo_override.unwrap_or(&pr.repo);
             let pr_id = RepoId::new(owner, repo_name).pr(pr.number);
+            // Multi-PR selection: mark the number cyan. Use pr_id_of so the marker key
+            // matches exactly how selections are stored and targeted (source-level lists
+            // may carry a repo_owner distinct from the source owner). Layout is unchanged
+            // so existing snapshots (rendered with no selection) stay valid.
+            let is_selected = selection_active && app.selected_prs.contains(&app.pr_id_of(pr));
             let base_style = if dimmed {
                 Style::new().fg(Color::DarkGray)
             } else {
@@ -167,8 +191,13 @@ fn build_pr_list_items(
                     left_budget.saturating_sub(num_w),
                 );
                 let gap = left_budget.saturating_sub(num_w + by_str.width());
+                let num_style = if is_selected {
+                    Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::new().add_modifier(Modifier::BOLD)
+                };
                 vec![
-                    Span::styled(number_str, Style::new().add_modifier(Modifier::BOLD)),
+                    Span::styled(number_str, num_style),
                     Span::styled(by_str, meta_style),
                     gap_span(gap),
                 ]
@@ -251,6 +280,13 @@ fn build_pr_list_items(
                     meta_style,
                 ));
             }
+            // Multi-PR selection: tint the whole row background for selected rows that are
+            // not under the cursor (the cursor row keeps list_highlight_style's own bg).
+            let sel_tint = is_selected && selected_idx != Some(i);
+
+            if sel_tint {
+                tint_selection_row(&mut line1_spans, inner_width, SELECTION_BG);
+            }
             let line1 = Line::from(line1_spans);
 
             let state_icon = pr_state_icon(pr.draft, pr.state);
@@ -278,6 +314,9 @@ fn build_pr_list_items(
                 line2_spans.push(s);
             }
             line2_spans.push(Span::styled(title2_text, base_style));
+            if sel_tint {
+                tint_selection_row(&mut line2_spans, inner_width, SELECTION_BG);
+            }
             ListItem::new(Text::from(vec![line1, Line::from(line2_spans)]))
         })
         .collect()
@@ -432,6 +471,7 @@ pub(crate) fn draw_prs(f: &mut Frame, app: &mut App, area: Rect) {
         focused,
         app.repo_ctx.pr_state.selected(),
         &cols,
+        !app.selected_prs.is_empty(),
     );
 
     let inner = block.inner(area);
@@ -526,6 +566,7 @@ pub(crate) fn draw_source_prs(f: &mut Frame, app: &mut App, area: Rect) {
         focused,
         app.source_ctx.source_pr_state.selected(),
         &cols,
+        !app.selected_prs.is_empty(),
     );
 
     let inner = block.inner(area);

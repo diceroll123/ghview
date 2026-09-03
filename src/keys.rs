@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Action {
     Up,
     Down,
@@ -22,6 +22,10 @@ pub enum Action {
     OpenIssues,
     CopyUrl,
     Clone,
+    // PR multi-select (PR list columns only)
+    ToggleSelect,
+    SelectAll,
+    ClearSelection,
     // PR-only actions
     Approve,
     Merge,
@@ -137,6 +141,24 @@ pub static UNIVERSAL_BINDINGS: &[DefaultBinding] = &[
 ];
 
 pub static PRS_BINDINGS: &[DefaultBinding] = &[
+    DefaultBinding {
+        keys: &[KeyCode::Char(' ')],
+        display: "space",
+        action: Action::ToggleSelect,
+        label: "select",
+    },
+    DefaultBinding {
+        keys: &[KeyCode::Char('A')],
+        display: "A",
+        action: Action::SelectAll,
+        label: "select all",
+    },
+    DefaultBinding {
+        keys: &[KeyCode::Esc],
+        display: "esc",
+        action: Action::ClearSelection,
+        label: "clear selection",
+    },
     DefaultBinding {
         keys: &[KeyCode::Char('v')],
         display: "v",
@@ -264,6 +286,231 @@ pub fn find_binding(action: Action) -> Option<&'static DefaultBinding> {
         .or_else(|| CHECKS_BINDINGS.iter().find(|b| b.action == action))
 }
 
+/// A user keybinding that shadows a built-in binding for the same key. Because user
+/// bindings are matched before the defaults of their own layer and every later layer, a
+/// custom key silently wins over any built-in on the same key in those positions. This
+/// records which built-ins are hidden so they can be surfaced to the user.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Clobber {
+    /// Scope the user binding lives in ("universal", "prs", ...).
+    pub scope: &'static str,
+    /// The user's key string as written in the config.
+    pub key: String,
+    /// The built-in action that is shadowed.
+    pub action: Action,
+}
+
+impl Clobber {
+    /// Display key and label of the clobbered built-in, via `find_binding`.
+    pub fn builtin_display(&self) -> Option<(&'static str, &'static str)> {
+        find_binding(self.action).map(|b| (b.display, b.label))
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Scope {
+    Universal,
+    Repos,
+    Prs,
+    Issues,
+    Checks,
+}
+
+impl Scope {
+    const fn name(self) -> &'static str {
+        match self {
+            Scope::Universal => "universal",
+            Scope::Repos => "repos",
+            Scope::Prs => "prs",
+            Scope::Issues => "issues",
+            Scope::Checks => "checks",
+        }
+    }
+
+    const fn table(self) -> &'static [DefaultBinding] {
+        match self {
+            Scope::Universal => UNIVERSAL_BINDINGS,
+            Scope::Repos => REPOS_BINDINGS,
+            Scope::Prs => PRS_BINDINGS,
+            Scope::Issues => ISSUES_BINDINGS,
+            Scope::Checks => CHECKS_BINDINGS,
+        }
+    }
+}
+
+struct LayerSpec {
+    scope: Scope,
+    /// Whether user keybindings in this scope are checked for this layer. The view-switch
+    /// layers that back the Browse column while a PR/issue list is open expose only their
+    /// defaults (no user bindings), so `user_active` is false there.
+    user_active: bool,
+}
+
+const fn layer(scope: Scope, user_active: bool) -> LayerSpec {
+    LayerSpec { scope, user_active }
+}
+
+/// The ordered key layers for every input context. Must stay in sync with
+/// `active_layers()` in app/event_loop.rs: same scopes, same order.
+const CONTEXTS: &[&[LayerSpec]] = &[
+    // Checks section of the detail panel (also inherits PR keys).
+    &[
+        layer(Scope::Checks, true),
+        layer(Scope::Prs, true),
+        layer(Scope::Universal, true),
+    ],
+    // PR list while the Browse column is focused (view-switch layer, defaults only).
+    &[
+        layer(Scope::Repos, false),
+        layer(Scope::Prs, true),
+        layer(Scope::Universal, true),
+    ],
+    // PR list / source PR list / PR detail.
+    &[layer(Scope::Prs, true), layer(Scope::Universal, true)],
+    // Issue list while the Browse column is focused (view-switch layer, defaults only).
+    &[
+        layer(Scope::Repos, false),
+        layer(Scope::Issues, true),
+        layer(Scope::Universal, true),
+    ],
+    // Issue list / issue detail.
+    &[layer(Scope::Issues, true), layer(Scope::Universal, true)],
+    // Repos column (repo list).
+    &[layer(Scope::Repos, true), layer(Scope::Universal, true)],
+    // Sources / frontpage.
+    &[layer(Scope::Universal, true)],
+];
+
+fn key_matches(code: KeyCode, binding_keys: &[KeyCode]) -> bool {
+    // Built-in dispatch matches on `KeyCode` only (see find_layer_match), so clobber
+    // detection must compare the same way to agree with what actually wins.
+    binding_keys.contains(&code)
+}
+
+/// Parsed `KeyCode` for a keybinding, or `None` if the key string is malformed.
+/// Only the code matters for built-in matching; modifiers are ignored there, so they are
+/// dropped here to agree with `find_layer_match`.
+fn binding_code(kb: &crate::config::Keybinding) -> Option<KeyCode> {
+    crate::config::parse_key(&kb.key).map(|(c, _)| c)
+}
+
+/// Find the built-in bindings that a user's keybindings shadow. A user binding is checked
+/// before the defaults of its own layer and every later layer, so it wins over any built-in
+/// on the same key in those positions (across every input context where it is active).
+///
+/// The simulation mirrors `find_layer_match` exactly: per layer, user bindings in config
+/// order first, then that layer's defaults; the first match wins and stops dispatch. A
+/// binding is only reported if it actually fires (no earlier user binding or default in an
+/// earlier layer takes the key first).
+///
+/// Returns one `Clobber` per (scope, key, action). Re-mapping an action to itself
+/// (`builtin = "<same action>"`) is a behaviour-preserving no-op and is not reported.
+pub fn clobbered_bindings(cfg: &crate::config::KeybindingsConfig) -> Vec<Clobber> {
+    let scopes: [(Scope, &[crate::config::Keybinding]); 5] = [
+        (Scope::Universal, &cfg.universal),
+        (Scope::Repos, &cfg.repos),
+        (Scope::Prs, &cfg.prs),
+        (Scope::Issues, &cfg.issues),
+        (Scope::Checks, &cfg.checks),
+    ];
+
+    let user_kbs = |scope: Scope| -> &[crate::config::Keybinding] {
+        scopes
+            .iter()
+            .find(|(s, _)| *s == scope)
+            .map(|(_, kbs)| *kbs)
+            .unwrap_or(&[])
+    };
+
+    let mut out: Vec<Clobber> = Vec::new();
+    let mut seen: std::collections::HashSet<(Scope, String, Action)> =
+        std::collections::HashSet::new();
+
+    for (scope, kbs) in scopes {
+        for (idx, kb) in kbs.iter().enumerate() {
+            let Some(code) = binding_code(kb) else {
+                continue;
+            };
+            // A `builtin` that resolves to the same action is a no-op re-map, not a clobber.
+            let self_action = kb.builtin.as_deref().and_then(builtin_to_action);
+
+            // User bindings of the same scope that come before this one in config order.
+            let earlier_same_scope = kbs[..idx].iter().any(|k| binding_code(k) == Some(code));
+
+            let mut clobbered: std::collections::HashSet<Action> = std::collections::HashSet::new();
+            for layers in CONTEXTS {
+                // Our user binding is only checked where this scope's layer has a user section.
+                let Some(i) = layers
+                    .iter()
+                    .position(|l| l.scope == scope && l.user_active)
+                else {
+                    continue;
+                };
+                // Anything checked before our binding that matches the key wins first, so we
+                // never fire in this context: an earlier same-scope binding, or any user
+                // binding / default of an earlier layer.
+                let shadowed = earlier_same_scope
+                    || layers[..i].iter().any(|l| {
+                        (l.user_active
+                            && user_kbs(l.scope)
+                                .iter()
+                                .any(|k| binding_code(k) == Some(code)))
+                            || l.scope.table().iter().any(|b| key_matches(code, b.keys))
+                    });
+                if shadowed {
+                    continue;
+                }
+                // Our binding fires here; it shadows built-ins in its own layer and all later ones.
+                for l in &layers[i..] {
+                    for b in l.scope.table() {
+                        if key_matches(code, b.keys) {
+                            clobbered.insert(b.action);
+                        }
+                    }
+                }
+            }
+
+            for action in clobbered {
+                if Some(action) == self_action {
+                    continue; // re-mapped to itself: no behaviour change
+                }
+                if seen.insert((scope, kb.key.clone(), action)) {
+                    out.push(Clobber {
+                        scope: scope.name(),
+                        key: kb.key.clone(),
+                        action,
+                    });
+                }
+            }
+        }
+    }
+
+    out
+}
+
+/// One-line, human-readable summary of clobbered built-ins for the status bar.
+/// Empty when there is nothing to report.
+pub fn clobber_summary(cfg: &crate::config::KeybindingsConfig) -> String {
+    let clobbers = clobbered_bindings(cfg);
+    if clobbers.is_empty() {
+        return String::new();
+    }
+    let mut parts: Vec<String> = clobbers
+        .iter()
+        .map(|c| {
+            let (display, label) = c.builtin_display().unwrap_or(("", ""));
+            format!("{} ({}) shadows {} {}", c.key, c.scope, display, label)
+        })
+        .collect();
+    // Keep the status line short: at most three examples, then a count.
+    if parts.len() > 3 {
+        let total = parts.len();
+        parts.truncate(3);
+        parts.push(format!("+{} more", total - 3));
+    }
+    format!("keybinding clobber: {} (see ?)", parts.join("; "))
+}
+
 /// Which actions to show in the status-bar hint for each column.
 pub const SOURCES_BAR: &[Action] = &[
     Action::OpenBrowser,
@@ -293,6 +540,8 @@ pub const SOURCE_ISSUES_BAR: &[Action] = &[
 ];
 
 pub const SOURCE_PRS_BAR: &[Action] = &[
+    Action::ToggleSelect,
+    Action::SelectAll,
     Action::ViewRepos,
     Action::ViewPrs,
     Action::ViewIssues,
@@ -307,6 +556,8 @@ pub const SOURCE_PRS_BAR: &[Action] = &[
 ];
 
 pub const PRS_BAR: &[Action] = &[
+    Action::ToggleSelect,
+    Action::SelectAll,
     Action::Approve,
     Action::Merge,
     Action::Checkout,
@@ -363,6 +614,9 @@ pub fn builtin_to_action(name: &str) -> Option<Action> {
         "openIssues" => Some(Action::OpenIssues),
         "copyUrl" => Some(Action::CopyUrl),
         "clone" => Some(Action::Clone),
+        "toggleSelect" => Some(Action::ToggleSelect),
+        "selectAll" => Some(Action::SelectAll),
+        "clearSelection" => Some(Action::ClearSelection),
         "approve" => Some(Action::Approve),
         "merge" => Some(Action::Merge),
         "checkout" => Some(Action::Checkout),
@@ -383,4 +637,170 @@ pub fn map_key_universal(key: KeyEvent) -> Option<Action> {
         .iter()
         .find(|b| b.keys.contains(&key.code))
         .map(|b| b.action)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{Keybinding, KeybindingsConfig};
+
+    fn kb(key: &str) -> Keybinding {
+        Keybinding {
+            key: key.into(),
+            name: None,
+            builtin: None,
+            command: Some("true".into()),
+            interactive: false,
+        }
+    }
+
+    fn kb_builtin(key: &str, builtin: &str) -> Keybinding {
+        Keybinding {
+            key: key.into(),
+            name: None,
+            builtin: Some(builtin.into()),
+            command: None,
+            interactive: false,
+        }
+    }
+
+    fn cfg(
+        kb_universal: Vec<Keybinding>,
+        kb_repos: Vec<Keybinding>,
+        kb_prs: Vec<Keybinding>,
+    ) -> KeybindingsConfig {
+        KeybindingsConfig {
+            universal: kb_universal,
+            repos: kb_repos,
+            prs: kb_prs,
+            ..KeybindingsConfig::default()
+        }
+    }
+
+    fn actions(c: &[Clobber]) -> Vec<Action> {
+        c.iter().map(|c| c.action).collect()
+    }
+
+    #[test]
+    fn empty_config_has_no_clobbers() {
+        assert!(clobbered_bindings(&KeybindingsConfig::default()).is_empty());
+    }
+
+    #[test]
+    fn prs_command_on_cap_a_clobbers_select_all() {
+        // The reported bug: a custom `A` in [keybindings.prs] hides the built-in
+        // select-all from multi-PR selection.
+        let c = clobbered_bindings(&cfg(vec![], vec![], vec![kb("A")]));
+        assert_eq!(actions(&c), vec![Action::SelectAll]);
+        let clobber = &c[0];
+        assert_eq!(clobber.scope, "prs");
+        assert_eq!(clobber.key, "A");
+        assert_eq!(clobber.builtin_display(), Some(("A", "select all")));
+    }
+
+    #[test]
+    fn universal_command_on_cap_a_does_not_clobber_select_all() {
+        // In the PR context the PRs layer is checked before the universal one, and its
+        // defaults already bind `A` to select all. So a *universal* `A` is itself shadowed
+        // there and never fires; it does not clobber select all. (Only a prs-scope `A`
+        // would, since prs user bindings are checked before prs defaults.)
+        let c = clobbered_bindings(&cfg(vec![kb("A")], vec![], vec![]));
+        assert!(c.is_empty());
+    }
+
+    #[test]
+    fn universal_command_on_o_clobbers_open_browser() {
+        // `o` is a universal built-in with no earlier layer claiming it, so a universal
+        // command on `o` clobbers open browser everywhere.
+        let c = clobbered_bindings(&cfg(vec![kb("o")], vec![], vec![]));
+        assert_eq!(actions(&c), vec![Action::OpenBrowser]);
+    }
+
+    #[test]
+    fn lowercase_a_does_not_clobber_select_all() {
+        // Built-in matching is by KeyCode, so 'a' != 'A'.
+        let c = clobbered_bindings(&cfg(vec![], vec![], vec![kb("a")]));
+        assert!(c.is_empty());
+    }
+
+    #[test]
+    fn ctrl_key_clobbers_nothing_without_matching_builtin() {
+        let c = clobbered_bindings(&cfg(vec![kb("ctrl+a")], vec![], vec![]));
+        assert!(c.is_empty());
+    }
+
+    #[test]
+    fn builtin_remap_to_same_action_is_not_a_clobber() {
+        // `A -> selectAll` keeps the behaviour; it is a documented override, not a clobber.
+        let c = clobbered_bindings(&cfg(vec![], vec![], vec![kb_builtin("A", "selectAll")]));
+        assert!(c.is_empty());
+    }
+
+    #[test]
+    fn builtin_remap_to_other_action_is_a_clobber() {
+        // `A -> merge` makes select-all unreachable.
+        let c = clobbered_bindings(&cfg(vec![], vec![], vec![kb_builtin("A", "merge")]));
+        assert_eq!(actions(&c), vec![Action::SelectAll]);
+    }
+
+    #[test]
+    fn later_same_scope_binding_is_not_reported_when_itself_shadowed() {
+        // First `A` (command) wins; the second `A` (builtin merge) is never reached, so it
+        // must not be reported as clobbering anything.
+        let c = clobbered_bindings(&cfg(
+            vec![],
+            vec![],
+            vec![kb("A"), kb_builtin("A", "merge")],
+        ));
+        assert_eq!(actions(&c), vec![Action::SelectAll]);
+        assert!(
+            c.iter()
+                .all(|x| x.key == "A" && x.action == Action::SelectAll)
+        );
+    }
+
+    #[test]
+    fn prs_binding_r_clobbers_nothing() {
+        // `r` is a built-in only in the repos layer (ViewRepos). In the context where that
+        // built-in is active, the repos defaults are checked before prs user bindings, so a
+        // prs `r` is itself shadowed there; elsewhere it fires but clobbers nothing.
+        let c = clobbered_bindings(&cfg(vec![], vec![], vec![kb("r")]));
+        assert!(c.is_empty());
+    }
+
+    #[test]
+    fn prs_command_on_o_clobbers_open_browser() {
+        // `o` is a universal built-in (OpenBrowser); prs user bindings are checked first.
+        let c = clobbered_bindings(&cfg(vec![], vec![], vec![kb("o")]));
+        assert_eq!(actions(&c), vec![Action::OpenBrowser]);
+    }
+
+    #[test]
+    fn clobber_summary_empty_when_no_clobbers() {
+        assert_eq!(clobber_summary(&KeybindingsConfig::default()), "");
+    }
+
+    #[test]
+    fn clobber_summary_lists_shadowed_builtins() {
+        let s = clobber_summary(&cfg(vec![], vec![], vec![kb("A")]));
+        assert!(s.starts_with("keybinding clobber:"));
+        assert!(s.contains("A (prs) shadows A select all"), "got: {s}");
+        assert!(s.contains("see ?"), "got: {s}");
+    }
+
+    #[test]
+    fn clobber_summary_caps_examples_at_three() {
+        let c = clobbered_bindings(&cfg(
+            vec![],
+            vec![],
+            vec![kb("A"), kb("v"), kb("m"), kb("x")],
+        ));
+        assert_eq!(c.len(), 4);
+        let s = clobber_summary(&cfg(
+            vec![],
+            vec![],
+            vec![kb("A"), kb("v"), kb("m"), kb("x")],
+        ));
+        assert!(s.contains("+1 more"), "got: {s}");
+    }
 }

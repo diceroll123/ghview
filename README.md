@@ -83,6 +83,16 @@ Available when focused on the PRs column:
 | `W` | Mark ready (remove draft) |
 | `b` | Dependabot commands (if PR is from dependabot) |
 
+### Multi-PR selection
+
+| Key | Action |
+|-----|--------|
+| `space` | Toggle the cursor PR in/out of the selection |
+| `A` | Select all visible PRs (press again to clear) |
+| `Esc` | Clear the selection (when not in filter mode) |
+
+Selected PRs are marked with a highlighted row background (plus a cyan number) and a count is shown in the status bar. While a selection is active, `v`, `m`, `x`/`X`, and `W` apply to every selected PR (already-done PRs are skipped), `b` opens the Dependabot menu to send a command to all selected dependabot PRs, and `o` / `y` fan out to every selected PR (open all in the browser, or copy all URLs as a newline-separated list). Single-serving actions `C` (checkout), `c` (comment), and `d` (diff) are blocked while a selection is active - clear the selection with `Esc` to use them on the cursor PR.
+
 ## Detail Panel
 
 Press `l` / `→` / `Enter` while focused on the PRs column to enter the detail panel. Press `Tab` to switch between sections (Body / Checks). Press `h` / `←` to return to the PRs column.
@@ -149,6 +159,8 @@ exclude = []
 Define custom keybindings per column. Each entry requires a `key` and one of `builtin` (invoke a built-in action by name) or `command` (run a shell command). Set `interactive = true` to suspend the TUI and run the command in the foreground.
 
 See [`config.example.toml`](config.example.toml) for the full list of built-in action names and variable reference.
+
+A custom binding that reuses a key already bound to a built-in action shadows (clobbers) that built-in, so the built-in no longer fires on that key. ghview lists any clobbered built-ins under "Clobbered" in the help popup (`?`) and warns once at startup. Re-mapping a built-in to itself (e.g. `A` -> `selectAll`) is not a clobber.
 
 #### Universal
 

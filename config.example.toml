@@ -64,9 +64,12 @@ exclude = []
 # Universal:   up, down, left, right, top, bottom, quit, help, refresh,
 #              filter, sort, openBrowser, openIssues, copyUrl, clone
 # PRs only:    approve, merge, checkout, comment, diff, close, reopen,
-#              ready, dependabot
+#              ready, dependabot, toggleSelect, selectAll, clearSelection
 #
-# Universal keybindings are checked before defaults, so they can override them.
+# A binding reuses a key that is already bound to a built-in action, it shadows
+# (clobbers) that built-in: the built-in no longer fires on that key. ghview lists
+# any clobbered built-ins under "Clobbered" in the help popup (?) and warns once at
+# startup. Re-mapping a built-in to itself (e.g. A -> selectAll) is not a clobber.
 #
 # [[keybindings.universal]]
 # key     = "Q"

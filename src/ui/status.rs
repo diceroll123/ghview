@@ -21,7 +21,19 @@ pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout
     let rl_width = rl_text.as_ref().map_or(0, |s| {
         u16::try_from(s.len()).unwrap_or(u16::MAX).saturating_add(1)
     });
-    let hint_width = area.width.saturating_sub(rl_width) as usize;
+
+    // Multi-PR selection indicator, shown at the front of the status bar while a
+    // selection is active in a PR list. Empty when there is no selection, so existing
+    // snapshots are unaffected.
+    let selection_indicator: Option<String> = (app.pr_list_focused()
+        && !app.selected_prs.is_empty())
+    .then(|| format!("{} selected  ", app.selected_prs.len()));
+    let sel_width = selection_indicator.as_ref().map_or(0, |s| s.len());
+
+    let hint_width = area
+        .width
+        .saturating_sub(rl_width)
+        .saturating_sub(sel_width as u16) as usize;
 
     let (hint, hint_color, hint_align): (Cow<'a, str>, Color, Alignment) =
         if app.repo_ctx.diff_view.is_some() {
@@ -91,24 +103,27 @@ pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout
             .constraints([Constraint::Min(0), Constraint::Length(rl_width)])
             .split(area);
         f.render_widget(
-            Paragraph::new(Line::from(vec![
-                Span::raw(" "),
-                Span::styled(hint, Style::new().fg(hint_color)),
-            ]))
-            .alignment(hint_align),
+            Paragraph::new(hint_line(&hint, hint_color, selection_indicator.clone()))
+                .alignment(hint_align),
             chunks[0],
         );
         f.render_widget(Paragraph::new(Line::from(rl_spans)), chunks[1]);
     } else {
         f.render_widget(
-            Paragraph::new(Line::from(vec![
-                Span::raw(" "),
-                Span::styled(hint, Style::new().fg(hint_color)),
-            ]))
-            .alignment(hint_align),
+            Paragraph::new(hint_line(&hint, hint_color, selection_indicator)).alignment(hint_align),
             area,
         );
     }
+}
+
+/// Build the status-bar hint line, optionally prefixed with a selection indicator.
+fn hint_line(hint: &str, color: Color, sel_indicator: Option<String>) -> Line<'static> {
+    let mut spans = vec![Span::raw(" ")];
+    if let Some(s) = sel_indicator {
+        spans.push(Span::styled(s, Style::new().fg(Color::Cyan)));
+    }
+    spans.push(Span::styled(hint.to_string(), Style::new().fg(color)));
+    Line::from(spans)
 }
 
 fn hint_entries(app: &App, width: usize) -> String {

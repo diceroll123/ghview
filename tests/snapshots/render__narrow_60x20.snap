@@ -22,4 +22,4 @@ expression: terminal.backend()
 "│  ││  ││  #2569     0  · ·          ║││Loading…          ││"
 "│  ││  ││      test: add integratio…║│└──────────────────┘│"
 "└──┘└──┘└ f·page  p·prs (30)  i·issue▼└────────────────────┘"
-" v approve  m merge  C checkout  c comment  d diff  ? help  "
+" space select  A select all  v approve  m merge  ? help     "

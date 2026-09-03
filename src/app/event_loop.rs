@@ -160,6 +160,18 @@ enum DispatchResult {
 fn dispatch_action(action: Action, app: &mut App) -> Option<DispatchResult> {
     match action {
         Action::Checkout | Action::Comment => {
+            // Single-serving actions: blocked while a multi-PR selection is active.
+            if app.pr_list_focused() && !app.selected_prs.is_empty() {
+                let verb = if action == Action::Checkout {
+                    "checkout"
+                } else {
+                    "comment on"
+                };
+                app.set_status(format!(
+                    "{verb} targets one PR - clear the selection (Esc) to use it"
+                ));
+                return Some(DispatchResult::Handled);
+            }
             let (rid, pr) = app.selected_pr_context()?;
             let kind = if action == Action::Checkout {
                 InteractiveKind::Checkout

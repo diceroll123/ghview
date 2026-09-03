@@ -80,6 +80,9 @@ async fn run_app(
     let cfg = ghview::config::load();
     let (tx, mut rx) = unbounded_channel();
     let mut app = App::new(tx, cfg);
+    // Surface any keybindings that shadow a built-in (e.g. a custom `A` hiding select all)
+    // so the clobbered action is not silently unreachable.
+    app.warn_clobbered_bindings();
     match direct_target {
         Some(LaunchTarget::Repo(repo)) => app.enter_direct_repo(repo),
         Some(LaunchTarget::Owner(owner)) => app.enter_direct_owner(owner),

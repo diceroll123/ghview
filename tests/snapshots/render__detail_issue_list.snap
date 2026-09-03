@@ -41,4 +41,4 @@ expression: terminal.backend()
 "│  ││  repo-oscar #168 style: format code with rust… @user-50     1d││                                                │"
 "│  ││  octo-org-textarea #9 perf: optimize database… @user-51     3d││                                                │"
 "└──┘└ r·repos  p·prs  i·issues (30) ─────────────────────────────────┘└────────────────────────────────────────────────┘"
-" v approve  m merge  C checkout  c comment  d diff  o open  y copy URL  / filter  S sort  ? help                        "
+" space select  A select all  v approve  m merge  C checkout  c comment  d diff  o open  y copy URL  / filter  ? help    "

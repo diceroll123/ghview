@@ -416,9 +416,6 @@ impl App {
                 use_auto,
                 msg,
             } => {
-                if let Some(m) = msg {
-                    self.set_status(m);
-                }
                 match action {
                     PrAction::Approve => {
                         self.repo_ctx
@@ -431,7 +428,27 @@ impl App {
                     }
                     _ => {}
                 }
-                self.loading = None;
+                // Per-PR status for single actions; batches leave this None and show a
+                // summary in finish_pr_action_result.
+                if let Some(m) = msg {
+                    self.set_status(m);
+                }
+                self.finish_pr_action_result(true);
+            }
+            DataMsg::PrActionError { pr, msg } => {
+                debug!("pr action failed for #{}: {msg}", pr.number);
+                // A lone single-PR action surfaces its own error; a batch counts it and
+                // shows one summary when the counter reaches zero.
+                if self.batch_total == 0 {
+                    self.set_error(format!("Error: {msg}"));
+                }
+                self.finish_pr_action_result(false);
+            }
+            DataMsg::CommentDone { pr, ok } => {
+                if !ok {
+                    debug!("comment failed for #{}", pr.number);
+                }
+                self.finish_pr_action_result(ok);
             }
             DataMsg::Error(e) => {
                 debug!("error: {e}");
@@ -461,6 +478,44 @@ impl App {
         }
     }
 
+    /// Common completion path for a single PR in an (in-flight) action or comment batch.
+    /// Decrement the pending counter; when it reaches 0 clear loading and, for a batch,
+    /// show one summary (per-PR status is suppressed while a batch runs). For a lone
+    /// single-PR action the per-action status was already set by the caller.
+    pub(crate) fn finish_pr_action_result(&mut self, ok: bool) {
+        if !ok && self.batch_total > 0 {
+            self.batch_failed = self.batch_failed.saturating_add(1);
+        }
+        if self.pending_pr_actions == 0 {
+            return; // nothing in flight (defensive)
+        }
+        self.pending_pr_actions -= 1;
+        if self.pending_pr_actions > 0 {
+            return; // batch still running; keep loading up
+        }
+
+        self.loading = None;
+        if self.batch_total > 0 {
+            let failed = self.batch_failed;
+            let total = self.batch_total;
+            match (failed, self.batch_summary_ok.take()) {
+                (0, Some(summary)) => self.set_status(summary),
+                (_, _) => {
+                    let done = total - failed;
+                    if failed == 0 {
+                        self.set_status(format!("✓ Done {done}/{total}"));
+                    } else if done == 0 {
+                        self.set_error(format!("Failed {failed}/{total}"));
+                    } else {
+                        self.set_status(format!("✓ Done {done}, failed {failed} of {total}"));
+                    }
+                }
+            }
+            self.batch_total = 0;
+            self.batch_failed = 0;
+        }
+    }
+
     pub(crate) fn current_repo_key(&self) -> Option<String> {
         Some(self.selected_owner_repo()?.to_string())
     }
@@ -469,6 +524,8 @@ impl App {
     /// Add new per-repo caches here so every transition site is covered automatically.
     pub(crate) fn invalidate_repo(&mut self) {
         self.repo_ctx = RepoCtx::default();
+        // The PR list changes wholesale, so any multi-selection is stale.
+        self.selected_prs.clear();
     }
 
     /// Clear all state scoped to a single source. Calls `invalidate_repo()`, then clears
@@ -476,6 +533,7 @@ impl App {
     pub(crate) fn invalidate_source(&mut self) {
         self.repo_ctx = RepoCtx::default();
         self.source_ctx = SourceCtx::default();
+        self.selected_prs.clear();
     }
 
     pub(crate) fn apply_repos(&mut self, repos: Vec<Repo>) {
