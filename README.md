@@ -160,6 +160,8 @@ Define custom keybindings per column. Each entry requires a `key` and one of `bu
 
 See [`config.example.toml`](config.example.toml) for the full list of built-in action names and variable reference.
 
+A custom binding that reuses a key already bound to a built-in action shadows (clobbers) that built-in, so the built-in no longer fires on that key. ghview lists any clobbered built-ins under "Clobbered" in the help popup (`?`) and warns once at startup. Re-mapping a built-in to itself (e.g. `A` -> `selectAll`) is not a clobber.
+
 #### Universal
 
 Active in every column. Checked before defaults, so they can override built-in key assignments.

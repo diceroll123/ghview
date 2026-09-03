@@ -314,6 +314,23 @@ async fn help_overlay_shown_direct_repo() {
 }
 
 #[tokio::test]
+async fn help_overlay_shown_clobbered_binding() {
+    // A custom `A` in [keybindings.prs] shadows the built-in select-all, so the help
+    // overlay should list it under a "Clobbered" section.
+    let mut app = inflate::app_with_prs().await;
+    app.focus = Column::Repo;
+    app.config.keybindings.prs.push(ghview::config::Keybinding {
+        key: "A".into(),
+        name: None,
+        builtin: None,
+        command: Some("true".into()),
+        interactive: false,
+    });
+    app.show_help = true;
+    render("help_overlay_shown_clobbered_binding", &mut app, 120, 40);
+}
+
+#[tokio::test]
 async fn dependabot_menu_overlay_shown() {
     let mut app = inflate::app_with_prs().await;
     app.focus = Column::Repo;
