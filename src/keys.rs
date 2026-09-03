@@ -168,7 +168,7 @@ pub static PRS_BINDINGS: &[DefaultBinding] = &[
     },
     DefaultBinding {
         keys: &[KeyCode::Char('a')],
-        display: "ctrl+a",
+        display: "^a",
         action: Action::SelectAll,
         label: "select all",
         modifiers: KeyModifiers::CONTROL,
@@ -736,7 +736,7 @@ mod tests {
         let clobber = &c[0];
         assert_eq!(clobber.scope, "prs");
         assert_eq!(clobber.key, "a");
-        assert_eq!(clobber.builtin_display(), Some(("ctrl+a", "select all")));
+        assert_eq!(clobber.builtin_display(), Some(("^a", "select all")));
     }
 
     #[test]
@@ -831,7 +831,7 @@ mod tests {
     fn clobber_summary_lists_shadowed_builtins() {
         let s = clobber_summary(&cfg(vec![], vec![], vec![kb("a")]));
         assert!(s.starts_with("keybinding clobber:"));
-        assert!(s.contains("a (prs) shadows ctrl+a select all"), "got: {s}");
+        assert!(s.contains("a (prs) shadows ^a select all"), "got: {s}");
         assert!(s.contains("see ?"), "got: {s}");
     }
 

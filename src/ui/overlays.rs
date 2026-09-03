@@ -163,7 +163,7 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
         Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
             .areas(content_area);
 
-    let col_widths = [Constraint::Length(6), Constraint::Min(0)];
+    let col_widths = [Constraint::Length(5), Constraint::Min(0)];
     f.render_widget(
         Table::new(left_rows.into_iter().skip(scroll), col_widths),
         left_area,
