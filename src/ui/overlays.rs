@@ -1,4 +1,4 @@
-use super::render_list_scrollbar;
+use super::{render_list_scrollbar, truncate};
 use crate::{
     app::{App, DEPENDABOT_COMMANDS},
     keys::{
@@ -13,6 +13,28 @@ use ratatui::{
     text::Span,
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, Wrap},
 };
+use unicode_width::UnicodeWidthStr;
+
+/// Minimum width of the help popup's key column: fits every built-in
+/// `display` string (the longest is `"space"`) without shifting the
+/// layout for the common case.
+const KEY_COL_FLOOR: usize = 5;
+/// Maximum width of the help popup's key column: custom keybindings come
+/// from user-supplied config text, so this bounds how much a long key
+/// string can eat from the row; anything wider is truncated.
+const KEY_COL_CAP: usize = 12;
+
+/// Width for a help-popup key column, sized to the widest key string
+/// actually present (clamped to `[KEY_COL_FLOOR, KEY_COL_CAP]`).
+fn key_col_width(sections: &[(&str, Vec<(String, String)>)]) -> u16 {
+    let max = sections
+        .iter()
+        .flat_map(|(_, entries)| entries.iter())
+        .map(|(key, _)| key.width())
+        .max()
+        .unwrap_or(0);
+    u16::try_from(max.clamp(KEY_COL_FLOOR, KEY_COL_CAP)).unwrap_or(KEY_COL_CAP as u16)
+}
 
 pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
     let bar_entries = |actions: &[Action]| -> Vec<(String, String)> {
@@ -66,7 +88,7 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
         list.iter()
             .map(|k| {
                 (
-                    k.key.clone(),
+                    truncate(&k.key, KEY_COL_CAP),
                     k.name
                         .as_deref()
                         .or(k.builtin.as_deref())
@@ -99,7 +121,10 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
             .iter()
             .map(|c| {
                 let (display, label) = c.builtin_display().unwrap_or(("", ""));
-                (c.key.clone(), format!("{display} {label} ({})", c.scope))
+                (
+                    truncate(&c.key, KEY_COL_CAP),
+                    format!("{display} {label} ({})", c.scope),
+                )
             })
             .collect();
         right_sections.push(("Clobbered", entries));
@@ -120,6 +145,8 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
         right_sections.push(("\u{f013}  Checks (custom)", custom_kv(&kb.checks)));
     }
 
+    let left_key_width = key_col_width(&left_sections);
+    let right_key_width = key_col_width(&right_sections);
     let left_rows = make_panel(left_sections);
     let right_rows = make_panel(right_sections);
 
@@ -163,13 +190,14 @@ pub(super) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
         Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
             .areas(content_area);
 
-    let col_widths = [Constraint::Length(5), Constraint::Min(0)];
+    let left_col_widths = [Constraint::Length(left_key_width), Constraint::Min(0)];
+    let right_col_widths = [Constraint::Length(right_key_width), Constraint::Min(0)];
     f.render_widget(
-        Table::new(left_rows.into_iter().skip(scroll), col_widths),
+        Table::new(left_rows.into_iter().skip(scroll), left_col_widths),
         left_area,
     );
     f.render_widget(
-        Table::new(right_rows.into_iter().skip(scroll), col_widths),
+        Table::new(right_rows.into_iter().skip(scroll), right_col_widths),
         right_area,
     );
     f.render_widget(
