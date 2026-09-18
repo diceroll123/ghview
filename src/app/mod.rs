@@ -39,7 +39,7 @@ use crate::{
     config::Config,
     keys::Action,
     types::{
-        CheckRun, CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, LoadingKind,
+        CheckRun, CheckStatus, Column, DataMsg, DetailSection, DiffView, Issue, LoadKey,
         MergeableState, PR, PrAction, PrComment, PrCommit, PrFile, PrId, Repo, RepoId, RepoSortKey,
         RepoView, ReposView, ReviewStatus, SortKey, Source,
     },
@@ -141,7 +141,9 @@ pub struct App {
     pub rate_limit: Option<(u32, u32)>,
     pub rate_limit_updated_at: Option<Instant>,
 
-    pub loading: Option<LoadingKind>,
+    /// Which panes are actively loading. Empty when idle; several can be in flight at once
+    /// (e.g. a background PR refresh while the frontpage is still loading). See `LoadKey`.
+    pub loading_keys: HashSet<LoadKey>,
     pub config: Config,
     pub status_msg: Option<(String, bool)>,
     pub(crate) status_msg_at: Option<Instant>,
@@ -217,7 +219,7 @@ impl App {
             repos_view: config.ui.default_repos_view,
             rate_limit: None,
             rate_limit_updated_at: None,
-            loading: None,
+            loading_keys: HashSet::new(),
             config,
             status_msg: None,
             status_msg_at: None,
@@ -250,7 +252,7 @@ impl App {
 
     pub fn resume(mut self, tx: UnboundedSender<DataMsg>) -> Self {
         self.tx = tx;
-        self.loading = None;
+        self.loading_keys.clear();
         self.status_msg = None;
         self.show_help = false;
         self.help_scroll = 0;
@@ -296,7 +298,7 @@ impl App {
     pub fn enter_direct_owner(&mut self, owner: String) {
         self.direct_source = true;
         self.focus = Column::Repos;
-        self.loading = Some(LoadingKind::Sources);
+        self.set_loading(LoadKey::Sources);
         let tx = self.tx.clone();
         tokio::spawn(async move {
             match crate::data::fetch_owner_kind(&owner).await {
@@ -615,6 +617,69 @@ impl App {
             self.status_msg = None;
             self.status_msg_at = None;
         }
+    }
+
+    /// Mark a pane as loading. Several keys can be set at once (background refreshes run
+    /// alongside the active pane), which is what lets one spinner not clobber another.
+    pub(crate) fn set_loading(&mut self, key: LoadKey) {
+        self.loading_keys.insert(key);
+    }
+
+    /// Stop showing a pane as loading.
+    pub(crate) fn clear_loading(&mut self, key: &LoadKey) {
+        self.loading_keys.remove(key);
+    }
+
+    /// Stop showing the in-flight action. At most one `Action` key is ever set (batch
+    /// actions are gated on "nothing loading"), so removing any of them is unambiguous.
+    pub(crate) fn clear_action(&mut self) {
+        self.loading_keys
+            .retain(|k| !matches!(k, LoadKey::Action(_)));
+    }
+
+    /// Whether any pane is currently loading.
+    pub(crate) fn is_loading(&self) -> bool {
+        !self.loading_keys.is_empty()
+    }
+
+    /// Whether the given pane is currently loading.
+    pub(crate) fn loading(&self, key: &LoadKey) -> bool {
+        self.loading_keys.contains(key)
+    }
+
+    /// The label to show in the status bar while something loads, or `None` when idle.
+    /// Mirrors the legacy single-indicator priority (action first, then sources → repos →
+    /// frontpage → PRs → issues), now over the set of in-flight panes.
+    pub(crate) fn loading_label(&self) -> Option<String> {
+        if let Some(name) = self.action_label() {
+            return Some(name.to_string());
+        }
+        const PANES: [(LoadKey, &str); 7] = [
+            (LoadKey::Sources, "loading sources"),
+            (LoadKey::Repos, "loading repos"),
+            (LoadKey::Frontpage, "loading frontpage"),
+            (LoadKey::RepoPrs, "loading PRs"),
+            (LoadKey::SourcePrs, "loading PRs"),
+            (LoadKey::RepoIssues, "loading issues"),
+            (LoadKey::SourceIssues, "loading issues"),
+        ];
+        for (key, label) in PANES {
+            if self.loading_keys.contains(&key) {
+                return Some(label.to_string());
+            }
+        }
+        None
+    }
+
+    /// The in-flight action's label (e.g. "merge x3"), if any. At most one is ever in flight
+    /// (batch actions are gated on "nothing loading"), so this is unambiguous. Drives the
+    /// status bar and, for the PR pane titles, the ` {label}…` suffix shown while that
+    /// pane isn't itself fetching.
+    pub(crate) fn action_label(&self) -> Option<&str> {
+        self.loading_keys.iter().find_map(|k| match k {
+            LoadKey::Action(name) => Some(name.as_str()),
+            _ => None,
+        })
     }
 
     /// Warn once at startup if any user keybinding shadows a built-in, so the clobbered
@@ -991,7 +1056,7 @@ mod tests {
         assert!(app.direct_source);
         assert!(!app.direct_repo);
         assert_eq!(app.focus, Column::Repos);
-        assert_eq!(app.loading, Some(LoadingKind::Sources));
+        assert!(app.loading_keys.contains(&LoadKey::Sources));
     }
 
     #[tokio::test]

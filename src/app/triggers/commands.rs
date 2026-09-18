@@ -35,8 +35,8 @@ fn copy_to_clipboard(text: &str) {
 
 impl App {
     pub(super) fn spawn_keybinding_cmd(&mut self, name: String, cmd: String, output: KbOutput) {
-        use crate::types::LoadingKind;
-        self.loading = Some(LoadingKind::Action(name));
+        use crate::types::LoadKey;
+        self.set_loading(LoadKey::Action(name));
         let tx = self.tx.clone();
         tokio::spawn(async move {
             debug!("sh -c {cmd}");
@@ -177,8 +177,8 @@ impl App {
         let pr_id = pr_id.clone();
         let body = body.to_string();
         let tx = self.tx.clone();
-        use crate::types::LoadingKind;
-        self.loading = Some(LoadingKind::Action("comment".into()));
+        use crate::types::LoadKey;
+        self.set_loading(LoadKey::Action("comment".into()));
         tokio::spawn(async move {
             let result = actions::post_comment(&pr_id, &body).await;
             match result {
@@ -206,8 +206,8 @@ impl App {
         }
         let body = body.to_string();
         let tx = self.tx.clone();
-        use crate::types::LoadingKind;
-        self.loading = Some(LoadingKind::Action("comment".into()));
+        use crate::types::LoadKey;
+        self.set_loading(LoadKey::Action("comment".into()));
         let n = targets.len() as u32;
         self.pending_pr_actions += n;
         self.batch_total = n;

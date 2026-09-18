@@ -8,7 +8,7 @@ use super::{
 use crate::types::Issue;
 use crate::{
     app::App,
-    types::{Column, LoadingKind, PR, PrColumn, PrState, RepoView, ReposView},
+    types::{Column, LoadKey, PR, PrColumn, PrState, RepoView, ReposView},
 };
 use ratatui::{
     Frame,
@@ -424,10 +424,12 @@ pub(crate) fn draw_prs(f: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Column::Repo;
     let border_style = panel_focus(focused);
 
-    let loading_suffix = match &app.loading {
-        Some(LoadingKind::Prs) => " ⟳".to_string(),
-        Some(LoadingKind::Action(a)) => format!(" {a}…"),
-        _ => String::new(),
+    let loading_suffix = if app.loading(&LoadKey::RepoPrs) {
+        " ⟳".to_string()
+    } else if let Some(a) = app.action_label() {
+        format!(" {a}…")
+    } else {
+        String::new()
     };
     let sort_label = app.sort_key.label();
     let owner_repo = app.selected_owner_repo();
@@ -483,7 +485,7 @@ pub(crate) fn draw_prs(f: &mut Frame, app: &mut App, area: Rect) {
         header_area,
     );
 
-    if items.is_empty() && app.loading.is_none() {
+    if items.is_empty() && !app.is_loading() {
         let msg = if !app.pr_filter.is_empty() {
             format!("no results for \"{}\"", app.pr_filter)
         } else if owner_repo.is_some() {
@@ -520,10 +522,12 @@ pub(crate) fn draw_source_prs(f: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Column::Repos;
     let border_style = panel_focus(focused);
 
-    let loading_suffix = match &app.loading {
-        Some(LoadingKind::Prs) => " ⟳".to_string(),
-        Some(LoadingKind::Action(a)) => format!(" {a}…"),
-        _ => String::new(),
+    let loading_suffix = if app.loading(&LoadKey::SourcePrs) {
+        " ⟳".to_string()
+    } else if let Some(a) = app.action_label() {
+        format!(" {a}…")
+    } else {
+        String::new()
     };
     let source_name = app
         .selected_source()
@@ -579,7 +583,7 @@ pub(crate) fn draw_source_prs(f: &mut Frame, app: &mut App, area: Rect) {
     );
 
     if visible_prs.is_empty() {
-        if app.loading.is_some() {
+        if app.is_loading() {
             f.render_widget(loading_placeholder(), body_area);
         } else if !app.source_ctx.source_pr_filter.is_empty() {
             f.render_widget(dim_italic("no results"), body_area);
@@ -607,10 +611,12 @@ pub(crate) fn draw_source_issues(f: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Column::Repos;
     let border_style = panel_focus(focused);
 
-    let loading_suffix = match &app.loading {
-        Some(LoadingKind::Issues) => " ⟳".to_string(),
-        Some(LoadingKind::Action(a)) => format!(" {a}…"),
-        _ => String::new(),
+    let loading_suffix = if app.loading(&LoadKey::SourceIssues) {
+        " ⟳".to_string()
+    } else if let Some(a) = app.action_label() {
+        format!(" {a}…")
+    } else {
+        String::new()
     };
     let source_name = app
         .selected_source()
@@ -662,7 +668,7 @@ pub(crate) fn draw_source_issues(f: &mut Frame, app: &mut App, area: Rect) {
     let visible_issues = app.visible_source_issues();
 
     if visible_issues.is_empty() {
-        if app.loading.is_some() {
+        if app.is_loading() {
             f.render_widget(loading_placeholder(), body_area);
         } else if !app.source_ctx.source_issue_filter.is_empty() {
             f.render_widget(dim_italic("no results"), body_area);

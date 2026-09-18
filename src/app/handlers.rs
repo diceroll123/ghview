@@ -1,6 +1,6 @@
 use super::{App, RepoCtx, SourceCtx};
 use crate::types::{
-    CheckStatus, DataMsg, DiffView, Issue, PR, PrAction, PrId, Repo, RepoId, RepoView, ReposView,
+    CheckStatus, DataMsg, DiffView, Issue, LoadKey, PR, PrAction, PrId, Repo, RepoId, ReposView,
     ReviewStatus, SortKey,
 };
 use log::debug;
@@ -21,7 +21,7 @@ impl App {
                 if self.source_state.selected().is_some() {
                     self.trigger_load_repos();
                 } else {
-                    self.loading = None;
+                    self.clear_loading(&LoadKey::Sources);
                 }
             }
             DataMsg::Repos {
@@ -41,7 +41,7 @@ impl App {
                 if self.source_ctx.repo_state.selected().is_some() {
                     self.trigger_load_prs();
                 } else {
-                    self.loading = None;
+                    self.clear_loading(&LoadKey::Repos);
                 }
             }
             DataMsg::MoreRepos {
@@ -58,7 +58,7 @@ impl App {
                     (owner, self.repo_sort_key),
                     (std::time::Instant::now(), self.source_ctx.repos.clone()),
                 );
-                self.loading = None;
+                self.clear_loading(&LoadKey::Repos);
             }
             DataMsg::Prs {
                 repo,
@@ -74,13 +74,10 @@ impl App {
                     self.apply_prs(prs);
                     self.trigger_review_and_check_fetches();
                     self.trigger_prefetch_pr_details();
-                    // PRs are also fetched in the background when viewing Frontpage/Issues
-                    // to keep the tab count current. Only clear the loading indicator when
-                    // the user is actually on the PR view so we don't clobber an in-flight
-                    // frontpage/issues spinner.
-                    if self.repo_view == RepoView::Prs {
-                        self.loading = None;
-                    }
+                    // PRs are also fetched in the background when viewing Frontpage/Issues to
+                    // keep the tab count current. Clearing only the RepoPrs key leaves any
+                    // in-flight frontpage/issues spinner untouched.
+                    self.clear_loading(&LoadKey::RepoPrs);
                 } else {
                     self.pr_cache.insert(key, (std::time::Instant::now(), prs));
                 }
@@ -96,10 +93,8 @@ impl App {
                 self.repo_ctx.prs_pagination.finish(has_more);
                 self.repo_ctx.prs_raw.extend(prs);
                 self.rebuild_prs();
-                // Same reasoning as DataMsg::Prs above.
-                if self.repo_view == RepoView::Prs {
-                    self.loading = None;
-                }
+                // Same reasoning as DataMsg::Prs above: clear only the RepoPrs key.
+                self.clear_loading(&LoadKey::RepoPrs);
             }
             DataMsg::ReviewStatus {
                 pr,
@@ -163,7 +158,7 @@ impl App {
                         .collect(),
                     scroll: 0,
                 });
-                self.loading = None;
+                self.clear_action();
             }
             DataMsg::PrBody {
                 pr,
@@ -234,7 +229,7 @@ impl App {
                 );
                 if self.current_repo_key().as_deref() == Some(repo.key().as_str()) {
                     self.repo_ctx.repo_frontpage = Some((description, readme));
-                    self.loading = None;
+                    self.clear_loading(&LoadKey::Frontpage);
                 }
             }
             DataMsg::Issues {
@@ -251,7 +246,7 @@ impl App {
                         self.repo_ctx.issue_state.select(Some(0));
                         self.trigger_load_issue_body();
                     }
-                    self.loading = None;
+                    self.clear_loading(&LoadKey::RepoIssues);
                 }
             }
             DataMsg::MoreIssues {
@@ -264,7 +259,7 @@ impl App {
                 }
                 self.repo_ctx.issues_pagination.finish(has_more);
                 self.repo_ctx.issues.extend(issues);
-                self.loading = None;
+                self.clear_loading(&LoadKey::RepoIssues);
             }
             DataMsg::IssueBody { repo, number, body } => {
                 if !self.pr_still_visible(&repo, number) {
@@ -287,7 +282,7 @@ impl App {
                     .insert(owner, (std::time::Instant::now(), issues.clone()));
                 self.apply_source_issues(issues);
                 self.trigger_load_source_issue_body();
-                self.loading = None;
+                self.clear_loading(&LoadKey::SourceIssues);
             }
             DataMsg::MoreSourceIssues {
                 owner,
@@ -299,7 +294,7 @@ impl App {
                 }
                 self.source_ctx.source_issues_pagination.finish(has_more);
                 self.source_ctx.source_issues.extend(issues);
-                self.loading = None;
+                self.clear_loading(&LoadKey::SourceIssues);
             }
             DataMsg::RateLimit { remaining, limit } => {
                 if self.rate_limit != Some((remaining, limit)) {
@@ -336,7 +331,7 @@ impl App {
                 self.trigger_load_pr_body();
                 self.trigger_review_and_check_fetches();
                 self.trigger_prefetch_pr_details();
-                self.loading = None;
+                self.clear_loading(&LoadKey::SourcePrs);
             }
             DataMsg::MoreSourcePrs {
                 owner,
@@ -348,13 +343,13 @@ impl App {
                 }
                 self.source_ctx.source_prs_pagination.finish(has_more);
                 self.source_ctx.source_prs.extend(prs);
-                self.loading = None;
+                self.clear_loading(&LoadKey::SourcePrs);
             }
             DataMsg::ActionDone(msg) => {
                 if let Some(m) = msg {
                     self.set_status(m);
                 }
-                self.loading = None;
+                self.clear_action();
             }
             DataMsg::PrActionDone {
                 pr,
@@ -399,7 +394,9 @@ impl App {
             DataMsg::Error(e) => {
                 debug!("error: {e}");
                 self.set_error(format!("Error: {e}"));
-                self.loading = None;
+                // The error doesn't carry a load key, so clear everything in flight - the
+                // faithful generalization of the legacy single-flag `loading = None`.
+                self.loading_keys.clear();
             }
         }
     }
@@ -440,7 +437,7 @@ impl App {
             return; // batch still running; keep loading up
         }
 
-        self.loading = None;
+        self.clear_action();
         if self.batch_total > 0 {
             let failed = self.batch_failed;
             let total = self.batch_total;

@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     app::App,
-    types::{Column, LoadingKind, Source},
+    types::{Column, LoadKey, Source},
 };
 use ratatui::{
     Frame,
@@ -18,9 +18,10 @@ pub(crate) fn draw_sources(f: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Column::Sources;
     let border_style = panel_focus(focused);
 
-    let loading_suffix = match &app.loading {
-        Some(LoadingKind::Sources) => " ⟳",
-        _ => "",
+    let loading_suffix = if app.loading(&LoadKey::Sources) {
+        " ⟳"
+    } else {
+        ""
     };
 
     let base = format!("Sources{loading_suffix}");
@@ -50,7 +51,7 @@ pub(crate) fn draw_sources(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
-    if items.is_empty() && app.loading.is_none() {
+    if items.is_empty() && !app.is_loading() {
         let inner = block.inner(area);
         f.render_widget(block, area);
         f.render_widget(
