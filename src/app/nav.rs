@@ -18,6 +18,14 @@ trait SelectChanged {
     fn nav_next(&mut self, len: usize) -> bool;
 }
 
+/// Direction for vertical navigation of the Detail pane's active tab. Shared by the
+/// single-line `move_up`/`move_down` and the half-page `detail_scroll_up`/`down`.
+#[derive(Clone, Copy)]
+enum NavDir {
+    Up,
+    Down,
+}
+
 impl SelectChanged for ListState {
     fn select_changed(&mut self, i: Option<usize>) -> bool {
         let prev = self.selected();
@@ -94,6 +102,55 @@ impl App {
         }
     }
 
+    /// Scroll the Detail pane's active tab by `step` lines in `dir`. Overview and Activity
+    /// scroll their markdown body; Commits, Checks, and FilesChanged move their list
+    /// selection. Shared by `move_up`/`move_down` (step 1) and
+    /// `detail_scroll_up`/`down` (half-page step).
+    fn detail_nav(&mut self, dir: NavDir, step: usize) {
+        let s = u16::try_from(step).unwrap_or(u16::MAX);
+        match self.repo_ctx.detail_section {
+            DetailSection::Overview => match dir {
+                NavDir::Up => {
+                    self.repo_ctx.pr_body_scroll = self.repo_ctx.pr_body_scroll.saturating_sub(s)
+                }
+                NavDir::Down => {
+                    self.repo_ctx.pr_body_scroll = self.repo_ctx.pr_body_scroll.saturating_add(s)
+                }
+            },
+            DetailSection::Activity => match dir {
+                NavDir::Up => {
+                    self.repo_ctx.pr_activity_scroll =
+                        self.repo_ctx.pr_activity_scroll.saturating_sub(s)
+                }
+                NavDir::Down => {
+                    self.repo_ctx.pr_activity_scroll =
+                        self.repo_ctx.pr_activity_scroll.saturating_add(s)
+                }
+            },
+            DetailSection::Commits => {
+                let len = self.repo_ctx.pr_commits.as_ref().map_or(0, Vec::len);
+                match dir {
+                    NavDir::Up => self.repo_ctx.pr_commits_state.nav_prev_by(step, len),
+                    NavDir::Down => self.repo_ctx.pr_commits_state.nav_next_by(step, len),
+                };
+            }
+            DetailSection::Checks => {
+                let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
+                match dir {
+                    NavDir::Up => self.repo_ctx.check_runs_state.nav_prev_by(step, len),
+                    NavDir::Down => self.repo_ctx.check_runs_state.nav_next_by(step, len),
+                };
+            }
+            DetailSection::FilesChanged => {
+                let len = self.repo_ctx.pr_files.as_ref().map_or(0, Vec::len);
+                match dir {
+                    NavDir::Up => self.repo_ctx.pr_files_state.nav_prev_by(step, len),
+                    NavDir::Down => self.repo_ctx.pr_files_state.nav_next_by(step, len),
+                };
+            }
+        }
+    }
+
     pub(crate) fn move_up(&mut self) {
         match self.focus {
             Column::Sources => {
@@ -147,28 +204,7 @@ impl App {
                     self.repo_ctx.issue_body_scroll =
                         self.repo_ctx.issue_body_scroll.saturating_sub(1);
                 }
-                RepoView::Prs | RepoView::Frontpage => match self.repo_ctx.detail_section {
-                    DetailSection::Overview => {
-                        self.repo_ctx.pr_body_scroll =
-                            self.repo_ctx.pr_body_scroll.saturating_sub(1);
-                    }
-                    DetailSection::Activity => {
-                        self.repo_ctx.pr_activity_scroll =
-                            self.repo_ctx.pr_activity_scroll.saturating_sub(1);
-                    }
-                    DetailSection::Commits => {
-                        let len = self.repo_ctx.pr_commits.as_ref().map_or(0, Vec::len);
-                        self.repo_ctx.pr_commits_state.nav_prev(len);
-                    }
-                    DetailSection::Checks => {
-                        let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
-                        self.repo_ctx.check_runs_state.nav_prev(len);
-                    }
-                    DetailSection::FilesChanged => {
-                        let len = self.repo_ctx.pr_files.as_ref().map_or(0, Vec::len);
-                        self.repo_ctx.pr_files_state.nav_prev(len);
-                    }
-                },
+                RepoView::Prs | RepoView::Frontpage => self.detail_nav(NavDir::Up, 1),
             },
         }
     }
@@ -248,28 +284,7 @@ impl App {
                     self.repo_ctx.issue_body_scroll =
                         self.repo_ctx.issue_body_scroll.saturating_add(1);
                 }
-                RepoView::Prs | RepoView::Frontpage => match self.repo_ctx.detail_section {
-                    DetailSection::Overview => {
-                        self.repo_ctx.pr_body_scroll =
-                            self.repo_ctx.pr_body_scroll.saturating_add(1);
-                    }
-                    DetailSection::Activity => {
-                        self.repo_ctx.pr_activity_scroll =
-                            self.repo_ctx.pr_activity_scroll.saturating_add(1);
-                    }
-                    DetailSection::Commits => {
-                        let len = self.repo_ctx.pr_commits.as_ref().map_or(0, Vec::len);
-                        self.repo_ctx.pr_commits_state.nav_next(len);
-                    }
-                    DetailSection::Checks => {
-                        let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
-                        self.repo_ctx.check_runs_state.nav_next(len);
-                    }
-                    DetailSection::FilesChanged => {
-                        let len = self.repo_ctx.pr_files.as_ref().map_or(0, Vec::len);
-                        self.repo_ctx.pr_files_state.nav_next(len);
-                    }
-                },
+                RepoView::Prs | RepoView::Frontpage => self.detail_nav(NavDir::Down, 1),
             },
         }
     }
@@ -387,62 +402,12 @@ impl App {
 
     pub(crate) fn detail_scroll_up(&mut self) {
         let step = self.detail_page_step();
-        match self.repo_ctx.detail_section {
-            DetailSection::Overview => {
-                self.repo_ctx.pr_body_scroll = self
-                    .repo_ctx
-                    .pr_body_scroll
-                    .saturating_sub(u16::try_from(step).unwrap_or(u16::MAX));
-            }
-            DetailSection::Activity => {
-                self.repo_ctx.pr_activity_scroll = self
-                    .repo_ctx
-                    .pr_activity_scroll
-                    .saturating_sub(u16::try_from(step).unwrap_or(u16::MAX));
-            }
-            DetailSection::Commits => {
-                let len = self.repo_ctx.pr_commits.as_ref().map_or(0, Vec::len);
-                self.repo_ctx.pr_commits_state.nav_prev_by(step, len);
-            }
-            DetailSection::Checks => {
-                let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
-                self.repo_ctx.check_runs_state.nav_prev_by(step, len);
-            }
-            DetailSection::FilesChanged => {
-                let len = self.repo_ctx.pr_files.as_ref().map_or(0, Vec::len);
-                self.repo_ctx.pr_files_state.nav_prev_by(step, len);
-            }
-        }
+        self.detail_nav(NavDir::Up, step);
     }
 
     pub(crate) fn detail_scroll_down(&mut self) {
         let step = self.detail_page_step();
-        match self.repo_ctx.detail_section {
-            DetailSection::Overview => {
-                self.repo_ctx.pr_body_scroll = self
-                    .repo_ctx
-                    .pr_body_scroll
-                    .saturating_add(u16::try_from(step).unwrap_or(u16::MAX));
-            }
-            DetailSection::Activity => {
-                self.repo_ctx.pr_activity_scroll = self
-                    .repo_ctx
-                    .pr_activity_scroll
-                    .saturating_add(u16::try_from(step).unwrap_or(u16::MAX));
-            }
-            DetailSection::Commits => {
-                let len = self.repo_ctx.pr_commits.as_ref().map_or(0, Vec::len);
-                self.repo_ctx.pr_commits_state.nav_next_by(step, len);
-            }
-            DetailSection::Checks => {
-                let len = self.repo_ctx.check_runs.as_ref().map_or(0, Vec::len);
-                self.repo_ctx.check_runs_state.nav_next_by(step, len);
-            }
-            DetailSection::FilesChanged => {
-                let len = self.repo_ctx.pr_files.as_ref().map_or(0, Vec::len);
-                self.repo_ctx.pr_files_state.nav_next_by(step, len);
-            }
-        }
+        self.detail_nav(NavDir::Down, step);
     }
 
     pub(crate) fn move_top(&mut self) {
