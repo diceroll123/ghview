@@ -1,6 +1,6 @@
 use super::{App, RepoCtx, SourceCtx};
 use crate::types::{
-    CheckStatus, DataMsg, DiffView, Issue, PR, PrAction, PrId, Repo, RepoView, ReposView,
+    CheckStatus, DataMsg, DiffView, Issue, PR, PrAction, PrId, Repo, RepoId, RepoView, ReposView,
     ReviewStatus, SortKey,
 };
 use log::debug;
@@ -118,16 +118,7 @@ impl App {
                 self.update_pr_by_id(&pr, |p| p.viewer_approved = viewer_approved);
             }
             DataMsg::CheckRuns { pr, mut runs } => {
-                let passes = if self.repos_view == ReposView::PrList {
-                    self.source_ctx.source_prs.iter().any(|p| {
-                        p.number == pr.number
-                            && p.repo == pr.repo.repo
-                            && (p.repo_owner.is_empty() || p.repo_owner == pr.repo.owner)
-                    })
-                } else {
-                    self.current_repo_key().as_deref() == Some(pr.repo.key().as_str())
-                };
-                if !passes {
+                if !self.pr_still_visible(&pr.repo, pr.number) {
                     return;
                 }
                 // The Checks tab (ui/panels/detail.rs) assumes `check_runs` already arrives
@@ -182,16 +173,7 @@ impl App {
                 deletions,
                 auto_merge,
             } => {
-                let passes = if self.repos_view == ReposView::PrList {
-                    self.source_ctx.source_prs.iter().any(|p| {
-                        p.number == pr.number
-                            && p.repo == pr.repo.repo
-                            && (p.repo_owner.is_empty() || p.repo_owner == pr.repo.owner)
-                    })
-                } else {
-                    self.current_repo_key().as_deref() == Some(pr.repo.key().as_str())
-                };
-                if !passes {
+                if !self.pr_still_visible(&pr.repo, pr.number) {
                     return;
                 }
                 self.repo_ctx
@@ -209,16 +191,7 @@ impl App {
                 });
             }
             DataMsg::PrActivity { pr, comments } => {
-                let passes = if self.repos_view == ReposView::PrList {
-                    self.source_ctx.source_prs.iter().any(|p| {
-                        p.number == pr.number
-                            && p.repo == pr.repo.repo
-                            && (p.repo_owner.is_empty() || p.repo_owner == pr.repo.owner)
-                    })
-                } else {
-                    self.current_repo_key().as_deref() == Some(pr.repo.key().as_str())
-                };
-                if !passes {
+                if !self.pr_still_visible(&pr.repo, pr.number) {
                     return;
                 }
                 if self.selected_pr().is_some_and(|p| {
@@ -228,16 +201,7 @@ impl App {
                 }
             }
             DataMsg::PrCommits { pr, commits } => {
-                let passes = if self.repos_view == ReposView::PrList {
-                    self.source_ctx.source_prs.iter().any(|p| {
-                        p.number == pr.number
-                            && p.repo == pr.repo.repo
-                            && (p.repo_owner.is_empty() || p.repo_owner == pr.repo.owner)
-                    })
-                } else {
-                    self.current_repo_key().as_deref() == Some(pr.repo.key().as_str())
-                };
-                if !passes {
+                if !self.pr_still_visible(&pr.repo, pr.number) {
                     return;
                 }
                 if self.selected_pr().is_some_and(|p| {
@@ -247,16 +211,7 @@ impl App {
                 }
             }
             DataMsg::PrFiles { pr, files } => {
-                let passes = if self.repos_view == ReposView::PrList {
-                    self.source_ctx.source_prs.iter().any(|p| {
-                        p.number == pr.number
-                            && p.repo == pr.repo.repo
-                            && (p.repo_owner.is_empty() || p.repo_owner == pr.repo.owner)
-                    })
-                } else {
-                    self.current_repo_key().as_deref() == Some(pr.repo.key().as_str())
-                };
-                if !passes {
+                if !self.pr_still_visible(&pr.repo, pr.number) {
                     return;
                 }
                 if self.selected_pr().is_some_and(|p| {
@@ -312,16 +267,7 @@ impl App {
                 self.loading = None;
             }
             DataMsg::IssueBody { repo, number, body } => {
-                let passes = if self.repos_view == ReposView::IssueList {
-                    self.source_ctx.source_issues.iter().any(|i| {
-                        i.number == number
-                            && i.repo == repo.repo
-                            && (i.repo_owner.is_empty() || i.repo_owner == repo.owner)
-                    })
-                } else {
-                    self.current_repo_key().as_deref() == Some(repo.key().as_str())
-                };
-                if !passes {
+                if !self.pr_still_visible(&repo, number) {
                     return;
                 }
                 if self.selected_issue().is_some_and(|i| i.number == number) {
@@ -518,6 +464,26 @@ impl App {
 
     pub(crate) fn current_repo_key(&self) -> Option<String> {
         Some(self.selected_owner_repo()?.to_string())
+    }
+
+    /// Whether a PR/issue-scoped data message is still relevant to the active list, guarding
+    /// against stale messages that raced a navigation. In a source-level PR or issue list the
+    /// message must match an entry in that list (an empty `repo_owner` falls back to the
+    /// selected source's owner); otherwise it must be for the currently focused repo.
+    pub(crate) fn pr_still_visible(&self, repo: &RepoId, number: u64) -> bool {
+        match self.repos_view {
+            ReposView::PrList => self.source_ctx.source_prs.iter().any(|p| {
+                p.number == number
+                    && p.repo == repo.repo
+                    && (p.repo_owner.is_empty() || p.repo_owner == repo.owner)
+            }),
+            ReposView::IssueList => self.source_ctx.source_issues.iter().any(|i| {
+                i.number == number
+                    && i.repo == repo.repo
+                    && (i.repo_owner.is_empty() || i.repo_owner == repo.owner)
+            }),
+            ReposView::RepoList => self.current_repo_key().as_deref() == Some(repo.key().as_str()),
+        }
     }
 
     /// Clear all state scoped to a single repo. Call this whenever the active repo changes.
