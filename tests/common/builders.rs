@@ -6,7 +6,7 @@ pub fn make_app() -> App {
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let mut app = App::new(tx, Config::default());
     app.now_override = Some(crate::common::fixed_now());
-    app.loading = None;
+    app.loading_keys.clear();
     app.rate_limit_updated_at = None;
     app
 }

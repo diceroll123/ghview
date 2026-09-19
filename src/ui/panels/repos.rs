@@ -8,7 +8,7 @@ use super::{
 };
 use crate::{
     app::App,
-    types::{Column, LoadingKind, RepoColumn, RepoView, ReposView, Visibility},
+    types::{Column, LoadKey, RepoColumn, RepoView, ReposView, Visibility},
 };
 use ratatui::{
     Frame,
@@ -41,9 +41,10 @@ pub(crate) fn draw_repos(f: &mut Frame, app: &mut App, area: Rect) {
     let border_style = panel_focus(focused);
     let now = app.now();
 
-    let loading_suffix = match &app.loading {
-        Some(LoadingKind::Repos) => " ⟳",
-        _ => "",
+    let loading_suffix = if app.loading(&LoadKey::Repos) {
+        " ⟳"
+    } else {
+        ""
     };
 
     let sort_label = app.repo_sort_key.label();
@@ -231,7 +232,7 @@ pub(crate) fn draw_repos(f: &mut Frame, app: &mut App, area: Rect) {
         .collect();
 
     let total = items.len();
-    if total == 0 && !app.source_ctx.repo_filter.is_empty() && app.loading.is_none() {
+    if total == 0 && !app.source_ctx.repo_filter.is_empty() && !app.is_loading() {
         f.render_widget(
             Paragraph::new(format!("no results for \"{}\"", app.source_ctx.repo_filter))
                 .style(Style::new().fg(Color::DarkGray)),
@@ -345,7 +346,7 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Column::Repo;
     let border_style = panel_focus(focused);
 
-    let loading_suffix = if matches!(app.loading, Some(LoadingKind::Issues)) {
+    let loading_suffix = if app.loading(&LoadKey::RepoIssues) {
         " ⟳"
     } else {
         ""
@@ -409,7 +410,7 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
         Some(app.selected_repo().unwrap_or("")),
     );
 
-    if items.is_empty() && !matches!(app.loading, Some(LoadingKind::Issues)) {
+    if items.is_empty() && !app.loading(&LoadKey::RepoIssues) {
         let msg = if owner_repo.is_some() {
             "No open issues"
         } else {

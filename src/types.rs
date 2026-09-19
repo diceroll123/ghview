@@ -332,13 +332,21 @@ pub struct CheckRun {
     pub status: CheckStatus,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LoadingKind {
+/// Identifies which pane is actively loading. Several panes can be in flight at once (e.g.
+/// a background PR refresh while the frontpage is still loading), so the app tracks a *set*
+/// of these rather than a single indicator. `RepoPrs`/`SourcePrs` and
+/// `RepoIssues`/`SourceIssues` are split so a background PR refresh can't clobber the
+/// frontpage/issues spinner (and vice-versa). `Action` is labelled with the command/action
+/// name for the status bar.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LoadKey {
     Sources,
     Repos,
     Frontpage,
-    Prs,
-    Issues,
+    RepoPrs,
+    SourcePrs,
+    RepoIssues,
+    SourceIssues,
     Action(String),
 }
 

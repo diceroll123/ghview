@@ -2,7 +2,7 @@ mod common;
 
 use common::builders::{make_app, make_issue, make_pr_numbered, make_repo, setup_selected_repo};
 use ghview::types::{
-    CheckRun, CheckStatus, DataMsg, LoadingKind, MergeableState, RepoId, ReviewStatus, Source,
+    CheckRun, CheckStatus, DataMsg, LoadKey, MergeableState, RepoId, ReviewStatus, Source,
 };
 
 #[tokio::test]
@@ -59,7 +59,7 @@ fn more_repos_extends_and_finishes_pagination() {
 
     app.source_ctx.repos_pagination.has_more = true;
     app.source_ctx.repos_pagination.fetching_more = true;
-    app.loading = Some(LoadingKind::Repos);
+    app.loading_keys.insert(LoadKey::Repos);
 
     app.handle_data(DataMsg::MoreRepos {
         owner: "owner".into(),
@@ -70,7 +70,7 @@ fn more_repos_extends_and_finishes_pagination() {
     assert_eq!(app.source_ctx.repos.len(), 2);
     assert!(!app.source_ctx.repos_pagination.has_more);
     assert!(!app.source_ctx.repos_pagination.fetching_more);
-    assert!(app.loading.is_none());
+    assert!(app.loading_keys.is_empty());
     assert!(
         app.repo_cache
             .contains_key(&("owner".to_string(), app.repo_sort_key))
@@ -97,7 +97,7 @@ async fn prs_current_repo_applies_and_caches() {
     let mut app = make_app();
     setup_selected_repo(&mut app);
 
-    app.loading = Some(LoadingKind::Prs);
+    app.loading_keys.insert(LoadKey::RepoPrs);
 
     app.handle_data(DataMsg::Prs {
         repo: RepoId::new("owner", "repo"),
@@ -109,7 +109,7 @@ async fn prs_current_repo_applies_and_caches() {
     assert_eq!(app.repo_ctx.prs.len(), 1);
     assert_eq!(app.repo_ctx.pr_state.selected(), Some(0));
     assert!(app.pr_cache.contains_key("owner/repo"));
-    assert!(app.loading.is_none());
+    assert!(app.loading_keys.is_empty());
 }
 
 #[test]
@@ -133,7 +133,7 @@ fn more_prs_extends_and_rebuilds() {
 
     app.repo_ctx.prs_raw = vec![make_pr_numbered(1)];
     app.repo_ctx.prs = vec![make_pr_numbered(1)];
-    app.loading = Some(LoadingKind::Prs);
+    app.loading_keys.insert(LoadKey::RepoPrs);
 
     app.handle_data(DataMsg::MorePrs {
         repo: RepoId::new("owner", "repo"),
@@ -144,7 +144,7 @@ fn more_prs_extends_and_rebuilds() {
     assert_eq!(app.repo_ctx.prs_raw.len(), 2);
     assert_eq!(app.repo_ctx.prs.len(), 2);
     assert!(app.repo_ctx.prs_pagination.has_more);
-    assert!(app.loading.is_none());
+    assert!(app.loading_keys.is_empty());
 }
 
 #[test]
@@ -339,7 +339,8 @@ fn diff_content_sets_diff_view() {
     app.repo_ctx.prs_raw = vec![make_pr_numbered(1)];
     app.repo_ctx.prs = vec![make_pr_numbered(1)];
     app.repo_ctx.pr_state.select(Some(0));
-    app.loading = Some(LoadingKind::Prs);
+    // A diff fetch is tracked as an Action (not a pane load); DiffContent clears it.
+    app.loading_keys.insert(LoadKey::Action("diff".into()));
 
     app.handle_data(DataMsg::DiffContent {
         pr: RepoId::new("owner", "repo").pr(1),
@@ -352,7 +353,7 @@ fn diff_content_sets_diff_view() {
     assert_eq!(diff.title, "diff");
     assert_eq!(diff.lines.len(), 2);
     assert_eq!(diff.lines[1], "b");
-    assert!(app.loading.is_none());
+    assert!(app.loading_keys.is_empty());
 }
 
 #[test]
@@ -453,7 +454,7 @@ fn pr_body_updates_source_pr_in_pr_list_view() {
 fn repo_frontpage_current_repo_sets_frontpage() {
     let mut app = make_app();
     setup_selected_repo(&mut app);
-    app.loading = Some(LoadingKind::Frontpage);
+    app.loading_keys.insert(LoadKey::Frontpage);
 
     app.handle_data(DataMsg::RepoFrontpage {
         repo: RepoId::new("owner", "repo"),
@@ -465,7 +466,7 @@ fn repo_frontpage_current_repo_sets_frontpage() {
         app.repo_ctx.repo_frontpage,
         Some(("d".to_string(), "r".to_string()))
     );
-    assert!(app.loading.is_none());
+    assert!(app.loading_keys.is_empty());
 }
 
 #[test]
@@ -486,7 +487,7 @@ fn repo_frontpage_other_repo_not_applied() {
 async fn issues_current_repo_selects_first() {
     let mut app = make_app();
     setup_selected_repo(&mut app);
-    app.loading = Some(LoadingKind::Issues);
+    app.loading_keys.insert(LoadKey::RepoIssues);
 
     app.handle_data(DataMsg::Issues {
         repo: RepoId::new("owner", "repo"),
@@ -496,7 +497,7 @@ async fn issues_current_repo_selects_first() {
 
     assert_eq!(app.repo_ctx.issues.len(), 1);
     assert_eq!(app.repo_ctx.issue_state.selected(), Some(0));
-    assert!(app.loading.is_none());
+    assert!(app.loading_keys.is_empty());
 }
 
 #[test]
@@ -527,7 +528,7 @@ fn more_issues_extends() {
 
     assert_eq!(app.repo_ctx.issues.len(), 2);
     assert!(!app.repo_ctx.issues_pagination.has_more);
-    assert!(app.loading.is_none());
+    assert!(app.loading_keys.is_empty());
 }
 
 #[test]
@@ -580,7 +581,7 @@ fn issue_body_stale_repo_ignored() {
 async fn source_issues_accept_selects_and_caches() {
     let mut app = make_app();
     setup_selected_repo(&mut app);
-    app.loading = Some(LoadingKind::Issues);
+    app.loading_keys.insert(LoadKey::SourceIssues);
 
     app.handle_data(DataMsg::SourceIssues {
         owner: "owner".into(),
@@ -593,7 +594,7 @@ async fn source_issues_accept_selects_and_caches() {
     assert_eq!(app.source_ctx.source_issues_pagination.page, 1);
     assert!(app.source_ctx.source_issues_pagination.has_more);
     assert!(app.source_issues_cache.contains_key("owner"));
-    assert!(app.loading.is_none());
+    assert!(app.loading_keys.is_empty());
 }
 
 #[test]
@@ -702,7 +703,7 @@ fn viewer_permission_other_repo_not_applied() {
 async fn source_prs_accept_selects_and_caches() {
     let mut app = make_app();
     setup_selected_repo(&mut app);
-    app.loading = Some(LoadingKind::Prs);
+    app.loading_keys.insert(LoadKey::SourcePrs);
 
     app.handle_data(DataMsg::SourcePrs {
         owner: "owner".into(),
@@ -715,7 +716,7 @@ async fn source_prs_accept_selects_and_caches() {
     assert_eq!(app.source_ctx.source_prs_pagination.page, 1);
     assert!(app.source_ctx.source_prs_pagination.has_more);
     assert!(app.source_prs_cache.contains_key("owner"));
-    assert!(app.loading.is_none());
+    assert!(app.loading_keys.is_empty());
 }
 
 #[test]
@@ -766,32 +767,32 @@ fn more_source_prs_stale_owner_ignored() {
 #[test]
 fn action_done_some_sets_status_and_clears_loading() {
     let mut app = make_app();
-    app.loading = Some(LoadingKind::Action("x".into()));
+    app.loading_keys.insert(LoadKey::Action("x".into()));
 
     app.handle_data(DataMsg::ActionDone(Some("done!".into())));
 
     assert_eq!(app.status_msg.as_ref().unwrap().0, "done!");
-    assert!(app.loading.is_none());
+    assert!(app.loading_keys.is_empty());
 }
 
 #[test]
 fn action_done_none_clears_loading_only() {
     let mut app = make_app();
-    app.loading = Some(LoadingKind::Action("x".into()));
+    app.loading_keys.insert(LoadKey::Action("x".into()));
 
     app.handle_data(DataMsg::ActionDone(None));
 
     assert!(app.status_msg.is_none());
-    assert!(app.loading.is_none());
+    assert!(app.loading_keys.is_empty());
 }
 
 #[test]
 fn error_sets_status_prefixed() {
     let mut app = make_app();
-    app.loading = Some(LoadingKind::Prs);
+    app.loading_keys.insert(LoadKey::RepoPrs);
 
     app.handle_data(DataMsg::Error("boom".into()));
 
     assert_eq!(app.status_msg.as_ref().unwrap().0, "Error: boom");
-    assert!(app.loading.is_none());
+    assert!(app.loading_keys.is_empty());
 }

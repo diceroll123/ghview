@@ -9,7 +9,7 @@ use crate::{
         fetch_source_prs, fetch_sources, fetch_viewer_permission, rerun_check,
     },
     types::{
-        Column, DataMsg, DetailSection, LoadingKind, PR, PrAction, PrId, PrState, RepoId, RepoView,
+        Column, DataMsg, DetailSection, LoadKey, PR, PrAction, PrId, PrState, RepoId, RepoView,
         ReposView, Source,
     },
 };
@@ -48,7 +48,7 @@ impl App {
     }
 
     pub fn trigger_load_sources(&mut self) {
-        self.loading = Some(LoadingKind::Sources);
+        self.set_loading(LoadKey::Sources);
         let tx = self.tx.clone();
         let cfg_sources = SourcesConfig {
             auto_fetch_orgs: self.config.sources.auto_fetch_orgs,
@@ -92,7 +92,7 @@ impl App {
                 if self.source_ctx.repo_state.selected().is_some() {
                     self.trigger_load_prs();
                 } else {
-                    self.loading = None;
+                    self.clear_loading(&LoadKey::Repos);
                 }
                 return;
             }
@@ -101,7 +101,7 @@ impl App {
 
         let current_user = self.current_user.clone().unwrap_or_default();
         let sort_key = self.repo_sort_key;
-        self.loading = Some(LoadingKind::Repos);
+        self.set_loading(LoadKey::Repos);
         self.source_ctx.repos_pagination.fetching_more = false;
         self.spawn_page_fetch(
             per_page,
@@ -146,7 +146,7 @@ impl App {
         let current_user = self.current_user.clone().unwrap_or_default();
         let per_page = self.per_page();
         let sort_key = self.repo_sort_key;
-        self.loading = Some(LoadingKind::Repos);
+        self.set_loading(LoadKey::Repos);
         let page = self.source_ctx.repos_pagination.begin_fetch();
         self.spawn_page_fetch(
             per_page,
@@ -174,11 +174,11 @@ impl App {
                 .source_prs_pagination
                 .reset(cached.len() == per_page as usize);
             self.apply_source_prs(cached);
-            self.loading = None;
+            self.clear_loading(&LoadKey::SourcePrs);
             return;
         }
 
-        self.loading = Some(LoadingKind::Prs);
+        self.set_loading(LoadKey::SourcePrs);
         let owner_msg = owner.clone();
         self.spawn_page_fetch(
             per_page,
@@ -202,7 +202,7 @@ impl App {
         let is_org = matches!(source, Source::Org(_));
         let per_page = self.per_page();
         let page = self.source_ctx.source_prs_pagination.begin_fetch();
-        self.loading = Some(LoadingKind::Prs);
+        self.set_loading(LoadKey::SourcePrs);
         let owner_msg = owner.clone();
         self.spawn_page_fetch(
             per_page,
@@ -230,11 +230,11 @@ impl App {
                 .source_issues_pagination
                 .reset(cached.len() == per_page as usize);
             self.apply_source_issues(cached);
-            self.loading = None;
+            self.clear_loading(&LoadKey::SourceIssues);
             return;
         }
 
-        self.loading = Some(LoadingKind::Issues);
+        self.set_loading(LoadKey::SourceIssues);
         let owner_msg = owner.clone();
         self.spawn_page_fetch(
             per_page,
@@ -258,7 +258,7 @@ impl App {
         let is_org = matches!(source, Source::Org(_));
         let per_page = self.per_page();
         let page = self.source_ctx.source_issues_pagination.begin_fetch();
-        self.loading = Some(LoadingKind::Issues);
+        self.set_loading(LoadKey::SourceIssues);
         let owner_msg = owner.clone();
         self.spawn_page_fetch(
             per_page,
@@ -367,7 +367,7 @@ impl App {
             return;
         };
         if !self.selected_repo_has_prs() {
-            self.loading = None;
+            self.clear_loading(&LoadKey::RepoPrs);
             return;
         }
         self.invalidate_repo();
@@ -398,12 +398,12 @@ impl App {
         if let Some((fetched_at, cached)) = self.pr_cache.get(&key).cloned() {
             if fetched_at.elapsed() < self.config.cache_ttl() {
                 self.apply_prs(cached);
-                self.loading = None;
+                self.clear_loading(&LoadKey::RepoPrs);
                 return;
             }
             // Stale cache: show existing data, refresh silently in background.
             self.apply_prs(cached);
-            self.loading = None;
+            self.clear_loading(&LoadKey::RepoPrs);
             let per_page = self.per_page();
             let rid2 = rid;
             let rid_msg = rid2.clone();
@@ -420,7 +420,7 @@ impl App {
         }
 
         if self.repo_view == crate::types::RepoView::Prs {
-            self.loading = Some(LoadingKind::Prs);
+            self.set_loading(LoadKey::RepoPrs);
         }
         self.repo_ctx.prs_pagination.fetching_more = false;
         let per_page = self.per_page();
@@ -448,7 +448,7 @@ impl App {
         };
         let per_page = self.per_page();
         let page = self.repo_ctx.prs_pagination.begin_fetch();
-        self.loading = Some(LoadingKind::Prs);
+        self.set_loading(LoadKey::RepoPrs);
         let rid_msg = rid.clone();
         self.spawn_page_fetch(
             per_page,
@@ -649,12 +649,12 @@ impl App {
         if let Some((fetched_at, cached)) = self.frontpage_cache.get(&key).cloned() {
             if fetched_at.elapsed() < self.config.cache_ttl() {
                 self.repo_ctx.repo_frontpage = Some(cached);
-                self.loading = None;
+                self.clear_loading(&LoadKey::Frontpage);
                 return;
             }
             // Stale: show cached while refreshing silently in background.
             self.repo_ctx.repo_frontpage = Some(cached);
-            self.loading = None;
+            self.clear_loading(&LoadKey::Frontpage);
             let tx = self.tx.clone();
             tokio::spawn(async move {
                 if let Ok((description, readme)) = fetch_repo_frontpage(&rid).await {
@@ -670,7 +670,7 @@ impl App {
 
         self.repo_ctx.repo_frontpage = None;
         self.repo_ctx.repo_frontpage_scroll = 0;
-        self.loading = Some(LoadingKind::Frontpage);
+        self.set_loading(LoadKey::Frontpage);
         let tx = self.tx.clone();
         tokio::spawn(async move {
             if let Ok((description, readme)) = fetch_repo_frontpage(&rid).await {
@@ -691,7 +691,7 @@ impl App {
         self.repo_ctx.issue_state = ListState::default();
         self.repo_ctx.issue_body = None;
         self.repo_ctx.issue_body_scroll = 0;
-        self.loading = Some(LoadingKind::Issues);
+        self.set_loading(LoadKey::RepoIssues);
         self.repo_ctx.issues_pagination.fetching_more = false;
         let per_page = self.per_page();
         let tx = self.tx.clone();
@@ -720,7 +720,7 @@ impl App {
         };
         let per_page = self.per_page();
         let page = self.repo_ctx.issues_pagination.begin_fetch();
-        self.loading = Some(LoadingKind::Issues);
+        self.set_loading(LoadKey::RepoIssues);
         let tx = self.tx.clone();
         tokio::spawn(async move {
             match fetch_issues(&rid, per_page, page).await {
@@ -831,7 +831,7 @@ impl App {
             return;
         };
         let title = format!("#{} {}", pr.number, pr.title);
-        self.loading = Some(LoadingKind::Action("diff".into()));
+        self.set_loading(LoadKey::Action("diff".into()));
         self.repo_ctx.diff_view = None;
         let tx = self.tx.clone();
         let pr_number = pr.number;
@@ -858,7 +858,7 @@ impl App {
     /// single-PR action, still surface the "already ..." status as before.
     pub(crate) fn do_pr_action_batch(&mut self, action: PrAction) {
         // In-flight guard: don't stack a new batch on top of one already running.
-        if self.loading.is_some() || self.pending_pr_actions > 0 {
+        if self.is_loading() || self.pending_pr_actions > 0 {
             return;
         }
 
@@ -933,7 +933,7 @@ impl App {
 
         let tx = self.tx.clone();
         let merge_method = self.config.ui.merge_method;
-        self.loading = Some(LoadingKind::Action(label));
+        self.set_loading(LoadKey::Action(label));
 
         for (pr_id, pr) in actionable {
             let use_auto = action == PrAction::Merge && self.merge_uses_auto_for(&pr);
