@@ -937,8 +937,17 @@ impl App {
 
         for (pr_id, pr) in actionable {
             let use_auto = action == PrAction::Merge && self.merge_uses_auto_for(&pr);
+            // Merges into the same base branch run one at a time: GitHub rejects a merge
+            // whose base moved since state was read, so concurrent same-branch merges are
+            // a self-inflicted race. The lock is held for the whole gh call (incl. any
+            // retries). Other actions stay fully concurrent.
+            let merge_lock = (action == PrAction::Merge).then(|| self.merge_lock_for(&pr));
             let tx = tx.clone();
             tokio::spawn(async move {
+                let _merge_guard = match merge_lock.as_ref() {
+                    Some(l) => Some(l.lock().await),
+                    None => None,
+                };
                 let result = match action {
                     PrAction::Approve => actions::approve(&pr_id).await,
                     PrAction::Merge => actions::merge(&pr_id, merge_method, use_auto).await,
