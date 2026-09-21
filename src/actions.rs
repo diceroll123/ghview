@@ -18,15 +18,53 @@ pub async fn approve(pr: &PrId) -> Result<()> {
     .await
 }
 
+/// Maximum number of `gh pr merge` attempts for a single PR.
+const MERGE_MAX_ATTEMPTS: u32 = 3;
+
+/// Backoff before each retry of a failed merge, by zero-based retry index.
+fn merge_retry_delay(retry: u32) -> std::time::Duration {
+    // 500ms, 1s: long enough for the base branch to settle after a concurrent merge.
+    std::time::Duration::from_millis(500u64.saturating_mul(u64::from(retry + 1)))
+}
+
+/// True when a merge failure is the transient "Base branch was modified" error GitHub
+/// returns when another PR merged into the same base branch between our state read and
+/// the merge mutation. Safe to retry: `gh` re-reads current head/base state on each run,
+/// and the error message itself says "Review and try the merge again". See cli/cli#8092.
+fn is_base_branch_modified(msg: &str) -> bool {
+    msg.to_lowercase().contains("base branch was modified")
+}
+
+/// Merges a PR, retrying (with backoff) when GitHub rejects the merge because the base
+/// branch moved underneath us. Concurrent merges to the same branch are serialized by
+/// the caller; this retry is the safety net for external actors (GitHub's own
+/// auto-merge queue, dependabot, other users) and for any residual race. All other
+/// errors are returned immediately.
 pub async fn merge(pr: &PrId, method: crate::config::MergeMethod, auto: bool) -> Result<()> {
     let number = pr.number.to_string();
     let repo = pr.repo.to_string();
-    let mut args = vec!["pr", "merge", &number, "-R", &repo];
+    let mut args: Vec<&str> = vec!["pr", "merge", &number, "-R", &repo];
     if auto {
         args.push("--auto");
     }
     args.push(method.flag());
-    run_silent(&args).await
+
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        match run_silent(&args).await {
+            Ok(()) => return Ok(()),
+            Err(e) if attempt < MERGE_MAX_ATTEMPTS && is_base_branch_modified(&e.to_string()) => {
+                let delay = merge_retry_delay(attempt - 1);
+                debug!(
+                    "gh pr merge {}#{}: base branch was modified, retrying in {:?}",
+                    pr.repo, pr.number, delay
+                );
+                tokio::time::sleep(delay).await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 pub async fn close_pr(pr: &PrId) -> Result<()> {
@@ -222,6 +260,36 @@ mod tests {
             resolve_clone_dir(Some("/tmp/somebase"), "acme"),
             PathBuf::from("/tmp/somebase").join("acme")
         );
+    }
+
+    #[test]
+    fn is_base_branch_modified_matches_gh_error() {
+        assert!(is_base_branch_modified(
+            "GraphQL: Base branch was modified. Review and try the merge again. (mergePullRequest)"
+        ));
+    }
+
+    #[test]
+    fn is_base_branch_modified_is_case_insensitive() {
+        assert!(is_base_branch_modified("base branch was modified"));
+        assert!(is_base_branch_modified("BASE BRANCH WAS MODIFIED"));
+    }
+
+    #[test]
+    fn is_base_branch_modified_rejects_other_errors() {
+        assert!(!is_base_branch_modified(
+            "GraphQL: Pull Request is not mergeable (mergePullRequest)"
+        ));
+        assert!(!is_base_branch_modified(
+            "branch was modified by someone else"
+        ));
+        assert!(!is_base_branch_modified(""));
+    }
+
+    #[test]
+    fn merge_retry_delay_grows_with_attempt() {
+        assert_eq!(merge_retry_delay(0), std::time::Duration::from_millis(500));
+        assert_eq!(merge_retry_delay(1), std::time::Duration::from_millis(1000));
     }
 
     #[test]

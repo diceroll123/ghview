@@ -181,6 +181,16 @@ pub struct App {
     /// "Sent rebase to 2 Dependabot PRs"). Shown when the batch completes cleanly.
     pub(crate) batch_summary_ok: Option<String>,
 
+    /// One lock per base branch (`"{owner}/{repo}/{base_ref}"`) that merge actions
+    /// hold for the duration of their `gh pr merge` call. GitHub rejects a merge when
+    /// the base branch moved since state was read ("Base branch was modified"), so
+    /// merging several PRs into the same branch concurrently is a self-inflicted race;
+    /// this serializes them. Merges to different branches stay concurrent. Entries are
+    /// never dropped (bounded by repo x branch count; the `Arc` keeps waiting tasks
+    /// alive across TUI suspensions).
+    pub(crate) merge_locks:
+        std::sync::Mutex<HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>>,
+
     pub(crate) tx: UnboundedSender<DataMsg>,
 }
 
@@ -241,6 +251,7 @@ impl App {
             batch_total: 0,
             batch_failed: 0,
             batch_summary_ok: None,
+            merge_locks: std::sync::Mutex::new(HashMap::new()),
             tx,
         }
     }
@@ -375,6 +386,18 @@ impl App {
     pub fn merge_uses_auto(&self) -> bool {
         self.selected_pr()
             .is_some_and(|pr| self.merge_uses_auto_for(pr))
+    }
+
+    /// Get-or-insert the lock that serializes merges into `pr`'s base branch, so a
+    /// batch of PRs targeting the same branch merges one at a time (see `merge_locks`).
+    pub(crate) fn merge_lock_for(&self, pr: &PR) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+        let pr_id = self.pr_id_of(pr);
+        let key = format!("{}/{}", pr_id.repo, pr.base_ref); // "{owner}/{repo}/{base_ref}"
+        let mut locks = self.merge_locks.lock().expect("merge_locks poisoned");
+        locks
+            .entry(key)
+            .or_insert_with(|| std::sync::Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
     }
 
     /// Whether a merge of `pr` should use auto-merge, honoring the global toggle and
