@@ -18,10 +18,12 @@ impl App {
                 if self.source_state.selected().is_none() && !self.visible_sources().is_empty() {
                     self.source_state.select(Some(0));
                 }
+                // The sources pane is done loading as soon as the data lands, even when we
+                // hand off to a repos fetch — otherwise the Sources key leaks and the
+                // status bar shows "loading sources…" forever.
+                self.clear_loading(&LoadKey::Sources);
                 if self.source_state.selected().is_some() {
                     self.trigger_load_repos();
-                } else {
-                    self.clear_loading(&LoadKey::Sources);
                 }
             }
             DataMsg::Repos {
@@ -37,11 +39,12 @@ impl App {
                     (std::time::Instant::now(), repos.clone()),
                 );
                 self.source_ctx.repos_pagination.reset(has_more);
+                // Same as Sources: the repos pane is done once its data lands, even when we
+                // hand off to a PRs fetch.
+                self.clear_loading(&LoadKey::Repos);
                 self.apply_repos(repos);
                 if self.source_ctx.repo_state.selected().is_some() {
                     self.trigger_load_prs();
-                } else {
-                    self.clear_loading(&LoadKey::Repos);
                 }
             }
             DataMsg::MoreRepos {
