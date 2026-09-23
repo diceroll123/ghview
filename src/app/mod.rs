@@ -1082,6 +1082,64 @@ mod tests {
         assert!(app.loading_keys.contains(&LoadKey::Sources));
     }
 
+    /// Regression: the startup Sources → Repos hand-off must not leak loading keys. Each key was
+    /// cleared only in the no-selection branch, so after a normal start `loading_keys` kept
+    /// `{Sources, Repos}` forever and the status bar showed "loading sources…" (e.g. right
+    /// after pressing "/" at startup).
+    #[tokio::test]
+    async fn sources_and_repos_data_clear_their_own_loading_keys() {
+        let mut app = make_app();
+        app.set_loading(LoadKey::Sources);
+
+        app.handle_data(DataMsg::Sources {
+            sources: vec![Source::User("owner".into())],
+            current_user: "me".into(),
+        });
+        assert_eq!(app.source_state.selected(), Some(0));
+        // Sources pane is done as soon as its data lands, even though we hand off to a
+        // repos fetch.
+        assert!(!app.loading_keys.contains(&LoadKey::Sources));
+        assert!(app.loading_keys.contains(&LoadKey::Repos));
+
+        app.handle_data(DataMsg::Repos {
+            owner: "owner".into(),
+            repos: vec![Repo {
+                name: "repo".into(),
+                has_pull_requests: true,
+                ..Repo::default()
+            }],
+            has_more: false,
+        });
+        // Same for repos. The hand-off to the PRs fetch carries its own key, so the
+        // spinner now tracks the pane that is actually loading.
+        assert!(!app.loading_keys.contains(&LoadKey::Repos));
+        assert!(app.loading_keys.contains(&LoadKey::RepoPrs));
+        assert_eq!(app.loading_label().as_deref(), Some("loading PRs"));
+    }
+
+    /// When the hand-off starts no visible fetch (frontpage view: PRs refresh silently in
+    /// the background), nothing may be left spinning after repos data lands.
+    #[tokio::test]
+    async fn repos_data_leaves_nothing_loading_when_handoff_is_silent() {
+        let mut app = make_app();
+        app.repo_view = RepoView::Frontpage;
+        app.sources = vec![Source::User("owner".into())];
+        app.source_state.select(Some(0));
+        app.set_loading(LoadKey::Repos);
+
+        app.handle_data(DataMsg::Repos {
+            owner: "owner".into(),
+            repos: vec![Repo {
+                name: "repo".into(),
+                has_pull_requests: true,
+                ..Repo::default()
+            }],
+            has_more: false,
+        });
+        assert!(!app.loading_keys.contains(&LoadKey::Repos));
+        assert!(app.loading_keys.is_empty());
+    }
+
     #[tokio::test]
     async fn enter_direct_repo_resolves_owner_repo() {
         let mut app = make_app();
