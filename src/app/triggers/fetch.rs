@@ -125,6 +125,8 @@ impl App {
         if let Some(owner) = self.selected_source_owner() {
             self.source_prs_cache.remove(&owner);
         }
+        // Hard refresh: the list is replaced wholesale, so any multi-selection is stale.
+        self.clear_pr_selection();
         self.trigger_load_source_prs();
     }
 
@@ -823,6 +825,8 @@ impl App {
             self.pr_cache.remove(&key);
             self.review_cache.remove(&key);
         }
+        // Hard refresh: the list is replaced wholesale, so any multi-selection is stale.
+        self.clear_pr_selection();
         self.trigger_load_prs();
     }
 
@@ -1046,5 +1050,126 @@ impl App {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{Repo, Source};
+
+    fn make_app() -> App {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        App::new(tx, crate::config::Config::default())
+    }
+
+    fn make_pr(number: u64) -> PR {
+        PR {
+            number,
+            title: format!("pr {number}"),
+            author: "alice".into(),
+            draft: false,
+            state: PrState::Open,
+            created_at: "2024-01-01T00:00:00Z".into(),
+            updated_at: "2024-01-01T00:00:00Z".into(),
+            url: format!("https://github.com/owner/repo/pull/{number}"),
+            requested_reviewers: vec![],
+            labels: vec![],
+            head_ref: "branch".into(),
+            base_ref: "main".into(),
+            head_sha: "abc".into(),
+            additions: 0,
+            deletions: 0,
+            comments: 0,
+            auto_merge: false,
+            viewer_approved: false,
+            repo: String::new(),
+            repo_owner: String::new(),
+        }
+    }
+
+    /// Focus the per-repo PR list with a selected source/repo that has PRs enabled.
+    fn setup_repo_prs(app: &mut App, prs: Vec<PR>) {
+        app.sources = vec![Source::User("owner".into())];
+        app.source_state.select(Some(0));
+        app.source_ctx.repos = vec![Repo {
+            name: "repo".into(),
+            has_pull_requests: true,
+            ..Repo::default()
+        }];
+        app.source_ctx.repo_state.select(Some(0));
+        app.repos_view = ReposView::RepoList;
+        app.repo_view = RepoView::Prs;
+        app.focus = Column::Repo;
+        app.repo_ctx.prs_raw = prs.clone();
+        app.rebuild_prs();
+    }
+
+    /// Focus the source-level PR list with a selected source and some PRs.
+    fn setup_source_prs(app: &mut App, prs: Vec<PR>) {
+        app.sources = vec![Source::User("octocat".into())];
+        app.source_state.select(Some(0));
+        app.repos_view = ReposView::PrList;
+        app.focus = Column::Repos;
+        app.source_ctx.source_prs = prs.clone();
+        app.source_ctx.source_pr_state.select(Some(0));
+    }
+
+    #[tokio::test]
+    async fn hard_refresh_repo_prs_clears_selection() {
+        let mut app = make_app();
+        setup_repo_prs(&mut app, vec![make_pr(1), make_pr(2)]);
+        let selected = app.pr_id_of(&app.repo_ctx.prs[0]);
+        app.selected_prs.insert(selected);
+
+        // The spawned fetch tasks race the test end; only the synchronous state
+        // transition under test matters here.
+        app.force_load_prs();
+
+        assert!(
+            app.selected_prs.is_empty(),
+            "hard refresh must clear the PR selection"
+        );
+    }
+
+    #[tokio::test]
+    async fn hard_refresh_source_prs_clears_selection() {
+        let mut app = make_app();
+        let mut pr1 = make_pr(1);
+        pr1.repo = "repo-a".into();
+        let mut pr2 = make_pr(2);
+        pr2.repo = "repo-b".into();
+        setup_source_prs(&mut app, vec![pr1, pr2]);
+        let selected = app.pr_id_of(&app.source_ctx.source_prs[0]);
+        app.selected_prs.insert(selected);
+
+        app.force_load_source_prs();
+
+        assert!(
+            app.selected_prs.is_empty(),
+            "hard refresh must clear the source-level PR selection"
+        );
+    }
+
+    #[tokio::test]
+    async fn soft_refresh_source_prs_keeps_selection() {
+        let mut app = make_app();
+        let mut pr1 = make_pr(1);
+        pr1.repo = "repo-a".into();
+        setup_source_prs(&mut app, vec![pr1]);
+        // Fresh cache: trigger_load_source_prs applies the cached list without fetching.
+        app.source_prs_cache.insert(
+            "octocat".into(),
+            (std::time::Instant::now(), app.source_ctx.source_prs.clone()),
+        );
+        let selected = app.pr_id_of(&app.source_ctx.source_prs[0]);
+        app.selected_prs.insert(selected);
+
+        app.trigger_load_source_prs();
+
+        assert!(
+            app.pr_selection_active(),
+            "a non-forced refresh must keep the selection"
+        );
     }
 }
