@@ -74,6 +74,9 @@ impl App {
 
     pub(crate) fn trigger_load_repos(&mut self) {
         let Some(source) = self.selected_source().cloned() else {
+            // Nothing to fetch (e.g. a filter hid every source): drop the key so an
+            // in-flight spinner from a previous selection doesn't stick.
+            self.clear_loading(&LoadKey::Repos);
             return;
         };
         let owner = source.owner().to_string();
@@ -85,14 +88,18 @@ impl App {
             .cloned()
         {
             if fetched_at.elapsed() < self.config.cache_ttl() {
+                // The repos pane is done as soon as its data lands - whether from this
+                // fetch or the cache. Clearing only in the no-selection branch leaked the
+                // key when a source switch raced an in-flight fetch for another source:
+                // the stale message is discarded by its owner guard, and nothing else
+                // ever cleared the key, so "loading repos…" stuck forever.
+                self.clear_loading(&LoadKey::Repos);
                 self.source_ctx
                     .repos_pagination
                     .reset(cached.len() == per_page as usize);
                 self.apply_repos(cached);
                 if self.source_ctx.repo_state.selected().is_some() {
                     self.trigger_load_prs();
-                } else {
-                    self.clear_loading(&LoadKey::Repos);
                 }
                 return;
             }
@@ -1171,5 +1178,87 @@ mod tests {
             app.pr_selection_active(),
             "a non-forced refresh must keep the selection"
         );
+    }
+
+    /// Regression: startup loads source 1's repos (cached), the user moves down to
+    /// source 2 (its uncached fetch starts, setting `LoadKey::Repos`), then quickly back
+    /// up to source 1. Source 1's cache hit must clear the stale key - otherwise the
+    /// in-flight message for source 2 is discarded by its owner guard and nothing ever
+    /// clears `LoadKey::Repos`, so "loading repos…" sticks forever.
+    #[tokio::test]
+    async fn cached_source_switch_clears_stale_repos_loading_key() {
+        let mut app = make_app();
+        // Startup state: two sources, source 1's repos already loaded and cached.
+        app.sources = vec![Source::User("alice".into()), Source::User("bob".into())];
+        app.source_state.select(Some(0));
+        app.repo_cache.insert(
+            ("alice".into(), app.repo_sort_key),
+            (
+                std::time::Instant::now(),
+                vec![Repo {
+                    name: "repo".into(),
+                    has_pull_requests: true,
+                    ..Repo::default()
+                }],
+            ),
+        );
+
+        // Move down to bob: not cached -> Repos key set + fetch spawned.
+        app.source_state.select(Some(1));
+        app.on_source_changed();
+        assert!(app.loading_keys.contains(&LoadKey::Repos));
+
+        // Move back up to alice: cache hit -> the stale key must go away.
+        app.source_state.select(Some(0));
+        app.on_source_changed();
+        assert!(
+            !app.loading_keys.contains(&LoadKey::Repos),
+            "a cache hit must clear the stale Repos loading key"
+        );
+
+        // Bob's in-flight fetch finally lands and is discarded by its owner guard;
+        // nothing may resurrect the spinner.
+        app.handle_data(DataMsg::Repos {
+            owner: "bob".into(),
+            repos: vec![],
+            has_more: false,
+        });
+        assert!(
+            !app.loading_keys.contains(&LoadKey::Repos),
+            "a discarded stale message must not leave the Repos key set"
+        );
+    }
+
+    /// A cache hit with an empty repo list leaves no selection (the old else-branch);
+    /// the key must still be cleared.
+    #[tokio::test]
+    async fn cached_empty_repos_clear_loading_key() {
+        let mut app = make_app();
+        app.sources = vec![Source::User("alice".into())];
+        app.source_state.select(Some(0));
+        app.repo_cache.insert(
+            ("alice".into(), app.repo_sort_key),
+            (std::time::Instant::now(), vec![]),
+        );
+        app.set_loading(LoadKey::Repos);
+
+        app.trigger_load_repos();
+
+        assert!(!app.loading_keys.contains(&LoadKey::Repos));
+    }
+
+    /// A filter that hides every source leaves nothing to fetch; an in-flight Repos
+    /// key must not stick around.
+    #[tokio::test]
+    async fn trigger_load_repos_without_selected_source_clears_stale_key() {
+        let mut app = make_app();
+        app.sources = vec![Source::User("alice".into())];
+        app.source_state.select(Some(0));
+        app.set_loading(LoadKey::Repos);
+        app.source_filter = "zzz".into();
+
+        app.trigger_load_repos();
+
+        assert!(!app.loading_keys.contains(&LoadKey::Repos));
     }
 }
