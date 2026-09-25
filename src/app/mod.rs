@@ -660,6 +660,13 @@ impl App {
             .retain(|k| !matches!(k, LoadKey::Action(_)));
     }
 
+    /// Stop showing only the named action (e.g. "diff"). Used when a navigation makes a
+    /// specific in-flight fetch stale without cancelling other actions (a merge batch, for
+    /// example, must keep spinning if the user switches PR while a diff loads).
+    pub(crate) fn clear_action_named(&mut self, name: &str) {
+        self.loading_keys.remove(&LoadKey::Action(name.to_string()));
+    }
+
     /// Whether any pane is currently loading.
     pub(crate) fn is_loading(&self) -> bool {
         !self.loading_keys.is_empty()
