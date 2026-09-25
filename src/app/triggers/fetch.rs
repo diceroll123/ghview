@@ -324,6 +324,9 @@ impl App {
         self.repo_ctx.pr_body_scroll = 0;
         self.repo_ctx.detail_section = DetailSection::default();
         self.repo_ctx.diff_view = None;
+        // A diff for the previous PR (if any) is now stale: its in-flight message will be
+        // discarded by the DiffContent guard, so drop its spinner here or it sticks.
+        self.clear_action_named("diff");
         self.repo_ctx.pr_activity = None;
         self.repo_ctx.pr_activity_scroll = 0;
         self.repo_ctx.pr_commits = None;
@@ -1277,7 +1280,7 @@ mod tests {
         assert!(!app.loading_keys.contains(&LoadKey::Repos));
     }
 
-    /// Regression: source A's uncached PR fetch is in flight (SourcePrs key set). The user
+/// Regression: source A's uncached PR fetch is in flight (SourcePrs key set). The user
     /// switches to the repo list, then moves to source B - in RepoList view no source-PR
     /// trigger runs, so only `invalidate_source` can drop A's stale key. Without that,
     /// A's in-flight message is discarded by its owner guard and the spinner sticks.
@@ -1520,6 +1523,39 @@ mod tests {
         assert!(
             !app.loading_keys.contains(&LoadKey::RepoIssues),
             "a discarded stale message must not leave the RepoIssues key set"
+        );
+    }
+
+    /// Regression: a diff for PR #1 is in flight (Action("diff") spinner up). Moving the
+    /// cursor to PR #2 starts a new body load, which must drop the stale diff spinner -
+    /// otherwise the in-flight DiffContent is discarded by its guard and "diff…" sticks.
+    #[tokio::test]
+    async fn switching_pr_clears_stale_diff_spinner() {
+        let mut app = make_app();
+        setup_repo_prs(&mut app, vec![make_pr(1), make_pr(2)]);
+
+        // Open the diff for PR #1: spinner up.
+        app.trigger_load_diff();
+        assert!(app.loading_keys.contains(&LoadKey::Action("diff".into())));
+
+        // Move to PR #2: a new body load starts and the stale diff spinner goes away.
+        app.repo_ctx.pr_state.select(Some(1));
+        app.trigger_load_pr_body();
+        assert!(
+            !app.loading_keys.contains(&LoadKey::Action("diff".into())),
+            "loading a new PR body must clear the stale diff spinner"
+        );
+
+        // The in-flight diff for #1 finally lands; its guard discards it (a different PR is
+        // selected) and nothing may resurrect the spinner.
+        app.handle_data(DataMsg::DiffContent {
+            pr: RepoId::new("owner", "repo").pr(1),
+            title: String::new(),
+            content: String::new(),
+        });
+        assert!(
+            !app.loading_keys.contains(&LoadKey::Action("diff".into())),
+            "a discarded stale diff must not leave its spinner set"
         );
     }
 }

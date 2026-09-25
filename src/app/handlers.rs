@@ -148,9 +148,15 @@ impl App {
             }
             DataMsg::DiffContent { pr, title, content } => {
                 if self.current_repo_key() != Some(pr.repo.key()) {
+                    // Stale: the repo changed while this diff was in flight. Drop its
+                    // spinner (a navigation may not have gone through a PR body load).
+                    self.clear_action_named("diff");
                     return;
                 }
                 if self.selected_pr().is_none_or(|p| p.number != pr.number) {
+                    // Stale: a different PR is selected now. `trigger_load_pr_body` usually
+                    // already cleared the spinner; clear it here for paths that skipped it.
+                    self.clear_action_named("diff");
                     return;
                 }
                 self.repo_ctx.diff_view = Some(DiffView {
