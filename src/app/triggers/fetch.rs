@@ -190,7 +190,7 @@ impl App {
             return;
         }
 
-        self.set_loading(LoadKey::SourcePrs);
+        self.set_loading_for(LoadKey::SourcePrs, owner.clone());
         let owner_msg = owner.clone();
         self.spawn_page_fetch(
             per_page,
@@ -214,7 +214,7 @@ impl App {
         let is_org = matches!(source, Source::Org(_));
         let per_page = self.per_page();
         let page = self.source_ctx.source_prs_pagination.begin_fetch();
-        self.set_loading(LoadKey::SourcePrs);
+        self.set_loading_for(LoadKey::SourcePrs, owner.clone());
         let owner_msg = owner.clone();
         self.spawn_page_fetch(
             per_page,
@@ -249,7 +249,7 @@ impl App {
             return;
         }
 
-        self.set_loading(LoadKey::SourceIssues);
+        self.set_loading_for(LoadKey::SourceIssues, owner.clone());
         let owner_msg = owner.clone();
         self.spawn_page_fetch(
             per_page,
@@ -273,7 +273,7 @@ impl App {
         let is_org = matches!(source, Source::Org(_));
         let per_page = self.per_page();
         let page = self.source_ctx.source_issues_pagination.begin_fetch();
-        self.set_loading(LoadKey::SourceIssues);
+        self.set_loading_for(LoadKey::SourceIssues, owner.clone());
         let owner_msg = owner.clone();
         self.spawn_page_fetch(
             per_page,
@@ -441,7 +441,7 @@ impl App {
         }
 
         if self.repo_view == crate::types::RepoView::Prs {
-            self.set_loading(LoadKey::RepoPrs);
+            self.set_loading_for(LoadKey::RepoPrs, rid.key());
         }
         self.repo_ctx.prs_pagination.fetching_more = false;
         let per_page = self.per_page();
@@ -469,7 +469,7 @@ impl App {
         };
         let per_page = self.per_page();
         let page = self.repo_ctx.prs_pagination.begin_fetch();
-        self.set_loading(LoadKey::RepoPrs);
+        self.set_loading_for(LoadKey::RepoPrs, rid.key());
         let rid_msg = rid.clone();
         self.spawn_page_fetch(
             per_page,
@@ -694,7 +694,7 @@ impl App {
 
         self.repo_ctx.repo_frontpage = None;
         self.repo_ctx.repo_frontpage_scroll = 0;
-        self.set_loading(LoadKey::Frontpage);
+        self.set_loading_for(LoadKey::Frontpage, rid.key());
         let tx = self.tx.clone();
         tokio::spawn(async move {
             if let Ok((description, readme)) = fetch_repo_frontpage(&rid).await {
@@ -718,7 +718,7 @@ impl App {
         self.repo_ctx.issue_state = ListState::default();
         self.repo_ctx.issue_body = None;
         self.repo_ctx.issue_body_scroll = 0;
-        self.set_loading(LoadKey::RepoIssues);
+        self.set_loading_for(LoadKey::RepoIssues, rid.key());
         self.repo_ctx.issues_pagination.fetching_more = false;
         let per_page = self.per_page();
         let tx = self.tx.clone();
@@ -747,7 +747,7 @@ impl App {
         };
         let per_page = self.per_page();
         let page = self.repo_ctx.issues_pagination.begin_fetch();
-        self.set_loading(LoadKey::RepoIssues);
+        self.set_loading_for(LoadKey::RepoIssues, rid.key());
         let tx = self.tx.clone();
         tokio::spawn(async move {
             match fetch_issues(&rid, per_page, page).await {
@@ -1556,6 +1556,104 @@ mod tests {
         assert!(
             !app.loading_keys.contains(&LoadKey::Action("diff".into())),
             "a discarded stale diff must not leave its spinner set"
+        );
+    }
+
+    /// Regression: a source-level fetch is in flight (SourcePrs key set for alice). The
+    /// Sources message lands and re-selects a *different* source (the clamp moves the
+    /// selection) — but that path never runs `on_source_changed()`, so no invalidation
+    /// clear fires. The only thing that can drop the stale spinner is the owner guard
+    /// discarding alice's in-flight message, which must clear it via identity match.
+    #[tokio::test]
+    async fn sources_reselect_clears_stale_source_prs_key() {
+        let mut app = make_app();
+        // Two sources so the clamp can move selection away from alice.
+        app.sources = vec![Source::User("alice".into()), Source::User("bob".into())];
+        app.source_state.select(Some(0));
+        app.repos_view = ReposView::PrList;
+        app.focus = Column::Repos;
+
+        // Alice's source-level PR fetch starts (no cache) -> key set for alice.
+        app.trigger_load_source_prs();
+        assert!(app.loading_keys.contains(&LoadKey::SourcePrs));
+
+        // The Sources message lands with only bob: the clamp moves selection to bob. This
+        // path does NOT call on_source_changed(), so PR 1's invalidation clears never run.
+        app.handle_data(DataMsg::Sources {
+            sources: vec![Source::User("bob".into())],
+            current_user: String::new(),
+        });
+
+        // Alice's in-flight fetch finally lands; the owner guard discards it and must
+        // clear the stale SourcePrs key (identity: alice). Without this, the spinner sticks.
+        app.handle_data(DataMsg::SourcePrs {
+            owner: "alice".into(),
+            prs: vec![],
+            has_more: false,
+        });
+        assert!(
+            !app.loading_keys.contains(&LoadKey::SourcePrs),
+            "a discarded stale message after a Sources reselect must clear the SourcePrs key"
+        );
+    }
+
+    /// Invariant: `clear_stale_loading` must never clear a key owned by a *different*
+    /// identity. A stale message for repo A must not wipe the spinner of a newer, still-
+    /// relevant fetch for repo B. This is what lets the discard guards clear unconditionally
+    /// on stale messages without risking a false clear.
+    #[tokio::test]
+    async fn stale_message_does_not_clear_newer_repo_spinner() {
+        let mut app = make_app();
+        // alice has two repos; both have PRs enabled.
+        app.sources = vec![Source::User("alice".into())];
+        app.source_state.select(Some(0));
+        app.repos_view = ReposView::RepoList;
+        app.repo_view = RepoView::Prs;
+        app.focus = Column::Repo;
+        app.source_ctx.repos = vec![
+            Repo {
+                name: "repo-a".into(),
+                has_pull_requests: true,
+                ..Repo::default()
+            },
+            Repo {
+                name: "repo-b".into(),
+                has_pull_requests: true,
+                ..Repo::default()
+            },
+        ];
+        app.source_ctx.repo_state.select(Some(0));
+
+        // Repo A's PR fetch starts (no cache) -> key set for repo-a.
+        app.on_repo_changed();
+        assert!(app.loading_keys.contains(&LoadKey::RepoPrs));
+
+        // Switch to repo B: its fetch starts, so the RepoPrs key now belongs to repo-b.
+        app.source_ctx.repo_state.select(Some(1));
+        app.on_repo_changed();
+        assert!(app.loading_keys.contains(&LoadKey::RepoPrs));
+
+        // Repo A's stale in-flight fetch finally lands; the repo guard discards it. It must
+        // NOT clear the RepoPrs key, which now belongs to repo-b's in-flight fetch.
+        app.handle_data(DataMsg::Prs {
+            repo: RepoId::new("alice", "repo-a"),
+            prs: vec![],
+            has_more: false,
+        });
+        assert!(
+            app.loading_keys.contains(&LoadKey::RepoPrs),
+            "a stale message for repo A must not clear the spinner of repo B's in-flight fetch"
+        );
+
+        // Repo B's own message lands and clears the key as usual.
+        app.handle_data(DataMsg::Prs {
+            repo: RepoId::new("alice", "repo-b"),
+            prs: vec![],
+            has_more: false,
+        });
+        assert!(
+            !app.loading_keys.contains(&LoadKey::RepoPrs),
+            "the current repo's own message must clear the RepoPrs key"
         );
     }
 }

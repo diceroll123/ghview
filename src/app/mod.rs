@@ -144,6 +144,12 @@ pub struct App {
     /// Which panes are actively loading. Empty when idle; several can be in flight at once
     /// (e.g. a background PR refresh while the frontpage is still loading). See `LoadKey`.
     pub loading_keys: HashSet<LoadKey>,
+    /// Which identity (source owner or repo key) each loading key was set for, so a stale
+    /// in-flight message can clear only the spinner it itself started - never one a newer
+    /// fetch set for a different identity. Only identity-scoped keys have entries (Sources
+    /// and Actions don't). Entries are dropped as soon as the key is cleared, so this stays
+    /// bounded by the number of in-flight panes.
+    pub loading_identities: HashMap<LoadKey, String>,
     pub config: Config,
     pub status_msg: Option<(String, bool)>,
     pub(crate) status_msg_at: Option<Instant>,
@@ -230,6 +236,7 @@ impl App {
             rate_limit: None,
             rate_limit_updated_at: None,
             loading_keys: HashSet::new(),
+            loading_identities: HashMap::new(),
             config,
             status_msg: None,
             status_msg_at: None,
@@ -264,6 +271,7 @@ impl App {
     pub fn resume(mut self, tx: UnboundedSender<DataMsg>) -> Self {
         self.tx = tx;
         self.loading_keys.clear();
+        self.loading_identities.clear();
         self.status_msg = None;
         self.show_help = false;
         self.help_scroll = 0;
@@ -651,6 +659,9 @@ impl App {
     /// Stop showing a pane as loading.
     pub(crate) fn clear_loading(&mut self, key: &LoadKey) {
         self.loading_keys.remove(key);
+        // Drop the recorded identity too, so a later stale message for the same key can't
+        // match it and clear a spinner that belongs to a newer fetch.
+        self.loading_identities.remove(key);
     }
 
     /// Stop showing the in-flight action. At most one `Action` key is ever set (batch
@@ -658,6 +669,34 @@ impl App {
     pub(crate) fn clear_action(&mut self) {
         self.loading_keys
             .retain(|k| !matches!(k, LoadKey::Action(_)));
+        self.loading_identities
+            .retain(|k, _| !matches!(k, LoadKey::Action(_)));
+    }
+
+    /// Mark a pane as loading, recording which identity (source owner or repo key) the
+    /// fetch was started for. Lets a stale in-flight message clear only the spinner it
+    /// itself began - see `clear_stale_loading`.
+    pub(crate) fn set_loading_for(&mut self, key: LoadKey, identity: impl Into<String>) {
+        let id = identity.into();
+        self.loading_keys.insert(key.clone());
+        self.loading_identities.insert(key, id);
+    }
+
+    /// Clear `key` only if it is still loading for exactly `identity`. The owner/repo
+    /// guards call this when they discard a stale in-flight message: it drops the spinner
+    /// that message started, but never one a newer fetch set for a different identity.
+    pub(crate) fn clear_stale_loading(&mut self, key: &LoadKey, identity: &str) -> bool {
+        if !self.loading_keys.contains(key) {
+            return false;
+        }
+        match self.loading_identities.get(key) {
+            Some(id) if id == identity => {
+                self.loading_keys.remove(key);
+                self.loading_identities.remove(key);
+                true
+            }
+            _ => false,
+        }
     }
 
     /// Stop showing only the named action (e.g. "diff"). Used when a navigation makes a
