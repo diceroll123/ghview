@@ -1280,7 +1280,7 @@ mod tests {
         assert!(!app.loading_keys.contains(&LoadKey::Repos));
     }
 
-/// Regression: source A's uncached PR fetch is in flight (SourcePrs key set). The user
+    /// Regression: source A's uncached PR fetch is in flight (SourcePrs key set). The user
     /// switches to the repo list, then moves to source B - in RepoList view no source-PR
     /// trigger runs, so only `invalidate_source` can drop A's stale key. Without that,
     /// A's in-flight message is discarded by its owner guard and the spinner sticks.
