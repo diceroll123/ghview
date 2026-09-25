@@ -170,6 +170,9 @@ impl App {
 
     pub(crate) fn trigger_load_source_prs(&mut self) {
         let Some(source) = self.selected_source().cloned() else {
+            // No source is selectable (e.g. a filter hid every entry while a fetch was in
+            // flight): nothing will ever clear the key, so drop it here.
+            self.clear_loading(&LoadKey::SourcePrs);
             return;
         };
         let owner = source.owner().to_string();
@@ -226,6 +229,9 @@ impl App {
 
     pub(crate) fn trigger_load_source_issues(&mut self) {
         let Some(source) = self.selected_source().cloned() else {
+            // No source is selectable (e.g. a filter hid every entry while a fetch was in
+            // flight): nothing will ever clear the key, so drop it here.
+            self.clear_loading(&LoadKey::SourceIssues);
             return;
         };
         let owner = source.owner().to_string();
@@ -373,6 +379,9 @@ impl App {
 
     pub(crate) fn trigger_load_prs(&mut self) {
         let Some(rid) = self.selected_owner_repo() else {
+            // No repo is selectable (e.g. the user moved to a source with no repos while a
+            // PR fetch was in flight): nothing will ever clear the key, so drop it here.
+            self.clear_loading(&LoadKey::RepoPrs);
             return;
         };
         if !self.selected_repo_has_prs() {
@@ -651,6 +660,9 @@ impl App {
 
     pub(crate) fn trigger_load_frontpage(&mut self) {
         let Some(rid) = self.selected_owner_repo() else {
+            // No repo is selectable (e.g. the user moved to a source with no repos while a
+            // frontpage fetch was in flight): nothing will ever clear the key, so drop it.
+            self.clear_loading(&LoadKey::Frontpage);
             return;
         };
         let key = rid.key();
@@ -694,6 +706,9 @@ impl App {
 
     pub(crate) fn trigger_load_issues(&mut self) {
         let Some(rid) = self.selected_owner_repo() else {
+            // No repo is selectable (e.g. a filter hid every entry while an issues fetch was
+            // in flight): nothing will ever clear the key, so drop it here.
+            self.clear_loading(&LoadKey::RepoIssues);
             return;
         };
         self.repo_ctx.issues = vec![];
@@ -1260,5 +1275,251 @@ mod tests {
         app.trigger_load_repos();
 
         assert!(!app.loading_keys.contains(&LoadKey::Repos));
+    }
+
+    /// Regression: source A's uncached PR fetch is in flight (SourcePrs key set). The user
+    /// switches to the repo list, then moves to source B - in RepoList view no source-PR
+    /// trigger runs, so only `invalidate_source` can drop A's stale key. Without that,
+    /// A's in-flight message is discarded by its owner guard and the spinner sticks.
+    #[tokio::test]
+    async fn source_switch_clears_stale_source_prs_key() {
+        let mut app = make_app();
+        app.sources = vec![Source::User("alice".into()), Source::User("bob".into())];
+        app.source_state.select(Some(0));
+        app.repos_view = ReposView::PrList;
+        app.focus = Column::Repos;
+
+        // Alice's source-level PR fetch starts (no cache) -> key set.
+        app.trigger_load_source_prs();
+        assert!(app.loading_keys.contains(&LoadKey::SourcePrs));
+
+        // Switch to the repo list, then move to bob. No source-PR trigger runs in this
+        // view, so the key can only be cleared by the source invalidation.
+        app.repos_view = ReposView::RepoList;
+        app.source_state.select(Some(1));
+        app.on_source_changed();
+        assert!(
+            !app.loading_keys.contains(&LoadKey::SourcePrs),
+            "a source switch must clear the stale SourcePrs loading key"
+        );
+
+        // Alice's in-flight fetch finally lands and is discarded by its owner guard;
+        // nothing may resurrect the spinner.
+        app.handle_data(DataMsg::SourcePrs {
+            owner: "alice".into(),
+            prs: vec![],
+            has_more: false,
+        });
+        assert!(
+            !app.loading_keys.contains(&LoadKey::SourcePrs),
+            "a discarded stale message must not leave the SourcePrs key set"
+        );
+    }
+
+    /// Mirror of `source_switch_clears_stale_source_prs_key` for the source issue list.
+    #[tokio::test]
+    async fn source_switch_clears_stale_source_issues_key() {
+        let mut app = make_app();
+        app.sources = vec![Source::User("alice".into()), Source::User("bob".into())];
+        app.source_state.select(Some(0));
+        app.repos_view = ReposView::IssueList;
+        app.focus = Column::Repos;
+
+        // Alice's source-level issue fetch starts (no cache) -> key set.
+        app.trigger_load_source_issues();
+        assert!(app.loading_keys.contains(&LoadKey::SourceIssues));
+
+        // Switch to the repo list, then move to bob. No source-issue trigger runs in this
+        // view, so the key can only be cleared by the source invalidation.
+        app.repos_view = ReposView::RepoList;
+        app.source_state.select(Some(1));
+        app.on_source_changed();
+        assert!(
+            !app.loading_keys.contains(&LoadKey::SourceIssues),
+            "a source switch must clear the stale SourceIssues loading key"
+        );
+
+        // Alice's in-flight fetch finally lands and is discarded by its owner guard.
+        app.handle_data(DataMsg::SourceIssues {
+            owner: "alice".into(),
+            issues: vec![],
+            has_more: false,
+        });
+        assert!(
+            !app.loading_keys.contains(&LoadKey::SourceIssues),
+            "a discarded stale message must not leave the SourceIssues key set"
+        );
+    }
+
+    /// Regression: repo A's PR fetch is in flight (RepoPrs key set). Moving to a source
+    /// with no repos leaves `trigger_load_prs` without a selection; the key must be
+    /// cleared by the repo/source invalidation, not left to a message that will never
+    /// match.
+    #[tokio::test]
+    async fn source_switch_clears_stale_repo_prs_key() {
+        let mut app = make_app();
+        // alice has a repo with PRs enabled; bob has no repos at all.
+        app.sources = vec![Source::User("alice".into()), Source::User("bob".into())];
+        app.source_state.select(Some(0));
+        app.repos_view = ReposView::RepoList;
+        app.repo_view = RepoView::Prs;
+        app.focus = Column::Repo;
+        app.source_ctx.repos = vec![Repo {
+            name: "repo".into(),
+            has_pull_requests: true,
+            ..Repo::default()
+        }];
+        app.source_ctx.repo_state.select(Some(0));
+
+        // Repo A's PR fetch starts (no cache) -> key set.
+        app.on_repo_changed();
+        assert!(app.loading_keys.contains(&LoadKey::RepoPrs));
+
+        // Move to bob: no repos, so no repo is selectable.
+        app.source_state.select(Some(1));
+        app.on_source_changed();
+        assert!(
+            !app.loading_keys.contains(&LoadKey::RepoPrs),
+            "switching to a source with no repos must clear the stale RepoPrs key"
+        );
+
+        // Alice's in-flight fetch finally lands; the repo guard discards it.
+        app.handle_data(DataMsg::Prs {
+            repo: RepoId::new("alice", "repo"),
+            prs: vec![],
+            has_more: false,
+        });
+        assert!(
+            !app.loading_keys.contains(&LoadKey::RepoPrs),
+            "a discarded stale message must not leave the RepoPrs key set"
+        );
+    }
+
+    /// Mirror of `source_switch_clears_stale_repo_prs_key` for the frontpage.
+    #[tokio::test]
+    async fn source_switch_clears_stale_frontpage_key() {
+        let mut app = make_app();
+        app.sources = vec![Source::User("alice".into()), Source::User("bob".into())];
+        app.source_state.select(Some(0));
+        app.repos_view = ReposView::RepoList;
+        app.repo_view = RepoView::Frontpage;
+        app.focus = Column::Repo;
+        app.source_ctx.repos = vec![Repo {
+            name: "repo".into(),
+            has_pull_requests: true,
+            ..Repo::default()
+        }];
+        app.source_ctx.repo_state.select(Some(0));
+
+        // Frontpage fetch starts (no cache) -> key set.
+        app.on_repo_changed();
+        assert!(app.loading_keys.contains(&LoadKey::Frontpage));
+
+        // Move to bob: no repos, so no repo is selectable.
+        app.source_state.select(Some(1));
+        app.on_source_changed();
+        assert!(
+            !app.loading_keys.contains(&LoadKey::Frontpage),
+            "switching to a source with no repos must clear the stale Frontpage key"
+        );
+
+        // Alice's in-flight fetch finally lands; the repo guard discards it.
+        app.handle_data(DataMsg::RepoFrontpage {
+            repo: RepoId::new("alice", "repo"),
+            description: String::new(),
+            readme: String::new(),
+        });
+        assert!(
+            !app.loading_keys.contains(&LoadKey::Frontpage),
+            "a discarded stale message must not leave the Frontpage key set"
+        );
+    }
+
+    /// Mirror of `source_switch_clears_stale_frontpage_key` for the issues view. A source
+    /// change never re-triggers the issues load (only `on_repo_changed` does), so a
+    /// source switch is the only thing that can clear an in-flight RepoIssues key.
+    #[tokio::test]
+    async fn source_switch_clears_stale_repo_issues_key() {
+        let mut app = make_app();
+        app.sources = vec![Source::User("alice".into()), Source::User("bob".into())];
+        app.source_state.select(Some(0));
+        app.repos_view = ReposView::RepoList;
+        app.repo_view = RepoView::Issues;
+        app.focus = Column::Repo;
+        app.source_ctx.repos = vec![Repo {
+            name: "repo".into(),
+            has_issues: true,
+            ..Repo::default()
+        }];
+        app.source_ctx.repo_state.select(Some(0));
+
+        // Issues fetch starts (no cache) -> key set.
+        app.on_repo_changed();
+        assert!(app.loading_keys.contains(&LoadKey::RepoIssues));
+
+        // Move to bob: no repos, so no repo is selectable.
+        app.source_state.select(Some(1));
+        app.on_source_changed();
+        assert!(
+            !app.loading_keys.contains(&LoadKey::RepoIssues),
+            "switching to a source with no repos must clear the stale RepoIssues key"
+        );
+
+        // Alice's in-flight fetch finally lands; the repo guard discards it.
+        app.handle_data(DataMsg::Issues {
+            repo: RepoId::new("alice", "repo"),
+            issues: vec![],
+            has_more: false,
+        });
+        assert!(
+            !app.loading_keys.contains(&LoadKey::RepoIssues),
+            "a discarded stale message must not leave the RepoIssues key set"
+        );
+    }
+
+    /// Regression: a repo's issues fetch is in flight (RepoIssues key set). The user
+    /// focuses the Repos column and types a filter that hides every repo; no repo is
+    /// selectable, `trigger_load_issues` returns early and must clear the key (the Issues
+    /// message will be discarded by its repo guard).
+    #[tokio::test]
+    async fn filter_hiding_all_repos_clears_stale_issues_key() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let mut app = make_app();
+        app.sources = vec![Source::User("owner".into())];
+        app.source_state.select(Some(0));
+        app.repos_view = ReposView::RepoList;
+        app.repo_view = RepoView::Issues;
+        // Focus the Repos column so filter input targets the repo filter.
+        app.focus = Column::Repos;
+        app.source_ctx.repos = vec![Repo {
+            name: "repo".into(),
+            has_issues: true,
+            ..Repo::default()
+        }];
+        app.source_ctx.repo_state.select(Some(0));
+
+        // The issues fetch starts (no cache) -> key set.
+        app.on_repo_changed();
+        assert!(app.loading_keys.contains(&LoadKey::RepoIssues));
+
+        // Type a filter that hides the only repo: no repo is selectable anymore.
+        app.handle_filter_input(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE));
+
+        assert!(
+            !app.loading_keys.contains(&LoadKey::RepoIssues),
+            "hiding every repo with a filter must clear the stale RepoIssues key"
+        );
+
+        // The in-flight fetch finally lands; the repo guard discards it.
+        app.handle_data(DataMsg::Issues {
+            repo: RepoId::new("owner", "repo"),
+            issues: vec![],
+            has_more: false,
+        });
+        assert!(
+            !app.loading_keys.contains(&LoadKey::RepoIssues),
+            "a discarded stale message must not leave the RepoIssues key set"
+        );
     }
 }

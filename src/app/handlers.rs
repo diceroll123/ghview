@@ -492,12 +492,25 @@ impl App {
         self.repo_ctx = RepoCtx::default();
         // The PR list changes wholesale, so any multi-selection is stale.
         self.selected_prs.clear();
+        // Repo-scoped fetches are now stale: their in-flight messages will be discarded by
+        // the repo guard, so clear the keys here or they stick (e.g. switching away from a
+        // repo whose frontpage was still loading). RepoIssues is included because a source
+        // change never re-triggers the issues load (only on_repo_changed does).
+        self.clear_loading(&LoadKey::RepoPrs);
+        self.clear_loading(&LoadKey::Frontpage);
+        self.clear_loading(&LoadKey::RepoIssues);
     }
 
     /// Clear all state scoped to a single source. Calls `invalidate_repo()`, then clears
     /// source-level lists. Add new per-source caches here.
     pub(crate) fn invalidate_source(&mut self) {
-        self.repo_ctx = RepoCtx::default();
+        // Repo-scoped state goes first (also clears the RepoPrs/Frontpage keys).
+        self.invalidate_repo();
+        // Source-level fetches are now stale: their in-flight messages will be discarded by
+        // the source-owner guard, so clear the keys here or they stick (e.g. switching to a
+        // source with a fresh cache while the old one's fetch is still in flight).
+        self.clear_loading(&LoadKey::SourcePrs);
+        self.clear_loading(&LoadKey::SourceIssues);
         self.source_ctx = SourceCtx::default();
         self.selected_prs.clear();
     }
