@@ -32,6 +32,8 @@ impl App {
                 has_more,
             } => {
                 if self.selected_source_owner().as_deref() != Some(&owner) {
+                    // Stale in-flight fetch for a source we've already left: drop the spinner it started.
+                    self.clear_stale_loading(&LoadKey::Repos, &owner);
                     return;
                 }
                 self.repo_cache.insert(
@@ -53,6 +55,8 @@ impl App {
                 has_more,
             } => {
                 if self.selected_source_owner().as_deref() != Some(&owner) {
+                    // Stale in-flight fetch for a source we've already left: drop the spinner it started.
+                    self.clear_stale_loading(&LoadKey::Repos, &owner);
                     return;
                 }
                 self.source_ctx.repos_pagination.finish(has_more);
@@ -83,6 +87,8 @@ impl App {
                     self.clear_loading(&LoadKey::RepoPrs);
                 } else {
                     self.pr_cache.insert(key, (std::time::Instant::now(), prs));
+                    // Stale in-flight fetch for a repo we've already left: drop the spinner it started.
+                    self.clear_stale_loading(&LoadKey::RepoPrs, repo.key().as_str());
                 }
             }
             DataMsg::MorePrs {
@@ -91,6 +97,8 @@ impl App {
                 has_more,
             } => {
                 if self.current_repo_key().as_deref() != Some(repo.key().as_str()) {
+                    // Stale in-flight fetch for a repo we've already left: drop the spinner it started.
+                    self.clear_stale_loading(&LoadKey::RepoPrs, repo.key().as_str());
                     return;
                 }
                 self.repo_ctx.prs_pagination.finish(has_more);
@@ -239,6 +247,9 @@ impl App {
                 if self.current_repo_key().as_deref() == Some(repo.key().as_str()) {
                     self.repo_ctx.repo_frontpage = Some((description, readme));
                     self.clear_loading(&LoadKey::Frontpage);
+                } else {
+                    // Stale in-flight fetch for a repo we've already left: drop the spinner it started.
+                    self.clear_stale_loading(&LoadKey::Frontpage, repo.key().as_str());
                 }
             }
             DataMsg::Issues {
@@ -256,6 +267,9 @@ impl App {
                         self.trigger_load_issue_body();
                     }
                     self.clear_loading(&LoadKey::RepoIssues);
+                } else {
+                    // Stale in-flight fetch for a repo we've already left: drop the spinner it started.
+                    self.clear_stale_loading(&LoadKey::RepoIssues, repo.key().as_str());
                 }
             }
             DataMsg::MoreIssues {
@@ -264,6 +278,8 @@ impl App {
                 has_more,
             } => {
                 if self.current_repo_key().as_deref() != Some(repo.key().as_str()) {
+                    // Stale in-flight fetch for a repo we've already left: drop the spinner it started.
+                    self.clear_stale_loading(&LoadKey::RepoIssues, repo.key().as_str());
                     return;
                 }
                 self.repo_ctx.issues_pagination.finish(has_more);
@@ -284,6 +300,8 @@ impl App {
                 has_more,
             } => {
                 if self.selected_source_owner().as_deref() != Some(&owner) {
+                    // Stale in-flight fetch for a source we've already left: drop the spinner it started.
+                    self.clear_stale_loading(&LoadKey::SourceIssues, &owner);
                     return;
                 }
                 self.source_ctx.source_issues_pagination.reset(has_more);
@@ -299,6 +317,8 @@ impl App {
                 has_more,
             } => {
                 if self.selected_source_owner().as_deref() != Some(&owner) {
+                    // Stale in-flight fetch for a source we've already left: drop the spinner it started.
+                    self.clear_stale_loading(&LoadKey::SourceIssues, &owner);
                     return;
                 }
                 self.source_ctx.source_issues_pagination.finish(has_more);
@@ -331,6 +351,8 @@ impl App {
                 has_more,
             } => {
                 if self.selected_source_owner().as_deref() != Some(&owner) {
+                    // Stale in-flight fetch for a source we've already left: drop the spinner it started.
+                    self.clear_stale_loading(&LoadKey::SourcePrs, &owner);
                     return;
                 }
                 self.source_ctx.source_prs_pagination.reset(has_more);
@@ -348,6 +370,8 @@ impl App {
                 has_more,
             } => {
                 if self.selected_source_owner().as_deref() != Some(&owner) {
+                    // Stale in-flight fetch for a source we've already left: drop the spinner it started.
+                    self.clear_stale_loading(&LoadKey::SourcePrs, &owner);
                     return;
                 }
                 self.source_ctx.source_prs_pagination.finish(has_more);
@@ -406,6 +430,7 @@ impl App {
                 // The error doesn't carry a load key, so clear everything in flight - the
                 // faithful generalization of the legacy single-flag `loading = None`.
                 self.loading_keys.clear();
+                self.loading_identities.clear();
             }
         }
     }
