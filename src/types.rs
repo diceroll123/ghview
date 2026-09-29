@@ -512,8 +512,19 @@ impl PrAction {
         }
     }
 
-    /// Completion summary for a batch of `n` PRs that all succeeded.
-    pub fn batch_success_msg(self, n: u32) -> String {
+    /// Completion summary for a batch of `n` PRs that all succeeded. For merges,
+    /// `auto_count` is the number of targets that were set to auto-merge rather than
+    /// merged immediately, so the status bar distinguishes "merged" from "set to auto
+    /// merge". Non-merge actions ignore `auto_count`.
+    pub fn batch_success_msg(self, n: u32, auto_count: u32) -> String {
+        if self == Self::Merge && auto_count > 0 {
+            let immediate = n - auto_count;
+            return if immediate == 0 {
+                format!("✓ Auto-merge enabled {n} PR(s)")
+            } else {
+                format!("✓ Merged {immediate}, auto-merge enabled {auto_count}")
+            };
+        }
         let verb = match self {
             Self::Approve => "Approved",
             Self::Merge => "Merged",
@@ -647,6 +658,28 @@ mod tests {
     fn pr_action_success_msg_contains_pr_number() {
         assert!(PrAction::Merge.success_msg(42).contains("42"));
         assert!(PrAction::Approve.success_msg(99).contains("99"));
+    }
+
+    #[test]
+    fn pr_action_batch_success_msg_distinguishes_merge_and_auto() {
+        assert_eq!(PrAction::Merge.batch_success_msg(3, 0), "✓ Merged 3 PR(s)");
+        assert_eq!(
+            PrAction::Merge.batch_success_msg(3, 3),
+            "✓ Auto-merge enabled 3 PR(s)"
+        );
+        assert_eq!(
+            PrAction::Merge.batch_success_msg(4, 2),
+            "✓ Merged 2, auto-merge enabled 2"
+        );
+    }
+
+    #[test]
+    fn pr_action_batch_success_msg_ignores_auto_count_for_other_actions() {
+        assert_eq!(
+            PrAction::Approve.batch_success_msg(3, 0),
+            "✓ Approved 3 PR(s)"
+        );
+        assert_eq!(PrAction::Close.batch_success_msg(2, 0), "✓ Closed 2 PR(s)");
     }
 
     // RepoId
