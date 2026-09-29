@@ -954,7 +954,19 @@ impl App {
         if is_batch {
             self.batch_total = n;
             self.batch_failed = 0;
-            self.batch_summary_ok = Some(action.batch_success_msg(n));
+            // Merges can be split: some targets merge immediately, others (repos where
+            // auto-merge is allowed and the global toggle is on) only get set to
+            // auto-merge. Count them so the summary says "merged" vs "auto-merge
+            // enabled". Only possible in source-level lists where per-repo flags differ.
+            let auto_count = if action == PrAction::Merge {
+                actionable
+                    .iter()
+                    .filter(|(_, pr)| self.merge_uses_auto_for(pr))
+                    .count() as u32
+            } else {
+                0
+            };
+            self.batch_summary_ok = Some(action.batch_success_msg(n, auto_count));
         } else {
             self.batch_total = 0;
             self.batch_failed = 0;
