@@ -295,7 +295,7 @@ pub(crate) fn draw_repo_frontpage(f: &mut Frame, app: &mut App, area: Rect) {
     let frontpage = app.repo_ctx.repo_frontpage.clone();
     match frontpage {
         None => {
-            f.render_widget(loading_placeholder(), inner);
+            f.render_widget(loading_placeholder(app), inner);
         }
         Some((description, readme)) if description.is_empty() && readme.is_empty() => {
             f.render_widget(dim_italic("(no readme)"), inner);
@@ -498,6 +498,7 @@ pub(crate) fn draw_issue_detail(f: &mut Frame, app: &mut App, area: Rect) {
 
     draw_scrollable_body(
         f,
+        app,
         app.repo_ctx.issue_body.as_ref(),
         "(no description)",
         app.repo_ctx.issue_body_scroll,

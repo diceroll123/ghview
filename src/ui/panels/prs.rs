@@ -584,7 +584,7 @@ pub(crate) fn draw_source_prs(f: &mut Frame, app: &mut App, area: Rect) {
 
     if visible_prs.is_empty() {
         if app.is_loading() {
-            f.render_widget(loading_placeholder(), body_area);
+            f.render_widget(loading_placeholder(app), body_area);
         } else if !app.source_ctx.source_pr_filter.is_empty() {
             f.render_widget(dim_italic("no results"), body_area);
         } else {
@@ -669,7 +669,7 @@ pub(crate) fn draw_source_issues(f: &mut Frame, app: &mut App, area: Rect) {
 
     if visible_issues.is_empty() {
         if app.is_loading() {
-            f.render_widget(loading_placeholder(), body_area);
+            f.render_widget(loading_placeholder(app), body_area);
         } else if !app.source_ctx.source_issue_filter.is_empty() {
             f.render_widget(dim_italic("no results"), body_area);
         } else {
