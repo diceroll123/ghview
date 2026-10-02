@@ -23,7 +23,7 @@ impl MergeMethod {
 }
 
 pub const DEFAULT_TICK_MS: u64 = 100;
-pub const DEFAULT_SELECT_SETTLE_MS: u64 = 250;
+pub const DEFAULT_SELECT_SETTLE_MS: u64 = 400;
 pub const DEFAULT_CACHE_SECS: u64 = 600;
 pub const DEFAULT_RATE_LIMIT_REFRESH_SECS: u64 = 60;
 pub const MIN_RATE_LIMIT_REFRESH_SECS: u64 = 10;

@@ -6,7 +6,7 @@ duration_secs = 600
 # UI tick rate in milliseconds.
 tick_ms = 100
 # Milliseconds the cursor must rest on a PR/repo before its details load. 0 = load immediately.
-# select_settle_ms = 250
+# select_settle_ms = 400
 # Default repo sort order: "updated" (most recently pushed), "alpha", or "created".
 repo_sort = "updated"
 # Items per page when fetching lists. 0 = dynamic (~1.5x terminal height, clamped 10-50). Max 100.
