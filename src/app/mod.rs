@@ -510,7 +510,9 @@ impl App {
         let can_push = self.repo_ctx.viewer_can_push.unwrap_or(true);
         match action {
             Action::Approve => !is_author,
-            Action::Merge | Action::CheckRerun | Action::DependabotMenu => can_push,
+            Action::Merge | Action::Rebase | Action::CheckRerun | Action::DependabotMenu => {
+                can_push
+            }
             Action::ClosePr | Action::ReopenPr | Action::MarkReady => can_push || is_author,
             _ => true,
         }
@@ -950,6 +952,7 @@ impl App {
             Action::ClosePr => self.do_pr_action_batch(PrAction::Close),
             Action::ReopenPr => self.do_pr_action_batch(PrAction::Reopen),
             Action::MarkReady => self.do_pr_action_batch(PrAction::MarkReady),
+            Action::Rebase => self.do_pr_action_batch(PrAction::Rebase),
             Action::DependabotMenu => {
                 let targets = self.dependabot_targets();
                 match targets.len() {

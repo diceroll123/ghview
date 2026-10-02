@@ -41,4 +41,4 @@ expression: terminal.backend()
 "│  ││                                                                │││                                              ││"
 "│  ││                                                                ││└──────────────────────────────────────────────┘│"
 "└──┘└ r·repos  p·prs (10)  i·issues ─────────────────────────────────┘└────────────────────────────────────────────────┘"
-" space select  ^a select all  v approve  m merge  C checkout  c comment  d diff  o open  y copy URL  / filter  ? help   "
+" space select  ^a select all  v approve  m merge  u rebase  C checkout  c comment  d diff  o open  y copy URL  ? help   "

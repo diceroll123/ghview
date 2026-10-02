@@ -9,8 +9,8 @@ use crate::{
         fetch_source_prs, fetch_sources, fetch_viewer_permission, rerun_check,
     },
     types::{
-        Column, DataMsg, DetailSection, LoadKey, PR, PrAction, PrId, PrState, RepoId, RepoView,
-        ReposView, Source,
+        Column, DataMsg, DetailSection, LoadKey, MergeableState, PR, PrAction, PrId, PrState,
+        RepoId, RepoView, ReposView, Source,
     },
 };
 use ratatui::widgets::ListState;
@@ -921,7 +921,7 @@ impl App {
         // Per-PR fast-path: skip targets where the action is already a no-op.
         let actionable: Vec<(PrId, PR)> = targets
             .iter()
-            .filter(|t| !self.pr_action_already_done(action, &t.1))
+            .filter(|t| !self.pr_action_already_done(action, &t.0, &t.1))
             .cloned()
             .collect();
 
@@ -995,6 +995,7 @@ impl App {
                     PrAction::Close => actions::close_pr(&pr_id).await,
                     PrAction::Reopen => actions::reopen_pr(&pr_id).await,
                     PrAction::MarkReady => actions::mark_ready(&pr_id).await,
+                    PrAction::Rebase => actions::rebase(&pr_id).await,
                 };
                 match result {
                     Ok(()) => {
@@ -1029,13 +1030,25 @@ impl App {
     }
 
     /// True when `action` is already a no-op for this PR (list state is authoritative).
-    fn pr_action_already_done(&self, action: PrAction, pr: &PR) -> bool {
+    ///
+    /// For `Rebase` this also covers "cannot be done": a PR known to be up to date
+    /// (`Clean`) or to conflict with its base (`Dirty`) is skipped. Anything else
+    /// (including not-yet-fetched state) is attempted; GitHub rejects conflicting
+    /// rebases atomically, so a wrong guess never damages the PR.
+    fn pr_action_already_done(&self, action: PrAction, id: &PrId, pr: &PR) -> bool {
         match action {
             PrAction::Close => pr.state == PrState::Closed,
             PrAction::Reopen => pr.state != PrState::Closed,
             PrAction::MarkReady => !pr.draft,
             PrAction::Merge => self.merge_uses_auto_for(pr) && pr.auto_merge,
             PrAction::Approve => pr.viewer_approved,
+            PrAction::Rebase => {
+                pr.state == PrState::Closed
+                    || matches!(
+                        self.repo_ctx.mergeable_states.get(id),
+                        Some(MergeableState::Clean | MergeableState::Dirty)
+                    )
+            }
         }
     }
 
@@ -1046,6 +1059,12 @@ impl App {
             PrAction::MarkReady => format!("Already ready for review #{}", id.number),
             PrAction::Merge => format!("Auto-merge already enabled #{}", id.number),
             PrAction::Approve => format!("Already approved #{}", id.number),
+            PrAction::Rebase => match self.repo_ctx.mergeable_states.get(id) {
+                Some(MergeableState::Dirty) => {
+                    format!("Has conflicts, cannot rebase #{}", id.number)
+                }
+                _ => format!("Already up to date #{}", id.number),
+            },
         }
     }
 

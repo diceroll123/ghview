@@ -81,6 +81,7 @@ Available when focused on the PRs column:
 | `d` | View diff inline |
 | `x` / `X` | Close / reopen |
 | `W` | Mark ready (remove draft) |
+| `u` | Rebase onto the base branch (only if it applies cleanly; conflicting PRs are left untouched) |
 | `b` | Dependabot commands (if PR is from dependabot) |
 
 ### Multi-PR selection
@@ -91,7 +92,7 @@ Available when focused on the PRs column:
 | `^a` | Select all visible PRs (press again to clear) |
 | `Esc` | Clear the selection (when not in filter mode) |
 
-Selected PRs are marked with a highlighted row background (plus a cyan number) and a count is shown in the status bar. While a selection is active, `v`, `m`, `x`/`X`, and `W` apply to every selected PR (already-done PRs are skipped), `b` opens the Dependabot menu to send a command to all selected dependabot PRs, and `o` / `y` fan out to every selected PR (open all in the browser, or copy all URLs as a newline-separated list). Single-serving actions `C` (checkout), `c` (comment), and `d` (diff) are blocked while a selection is active - clear the selection with `Esc` to use them on the cursor PR.
+Selected PRs are marked with a highlighted row background (plus a cyan number) and a count is shown in the status bar. While a selection is active, `v`, `m`, `u`, `x`/`X`, and `W` apply to every selected PR (already-done PRs are skipped), `b` opens the Dependabot menu to send a command to all selected dependabot PRs, and `o` / `y` fan out to every selected PR (open all in the browser, or copy all URLs as a newline-separated list). Single-serving actions `C` (checkout), `c` (comment), and `d` (diff) are blocked while a selection is active - clear the selection with `Esc` to use them on the cursor PR.
 
 ## Detail Panel
 

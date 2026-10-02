@@ -39,6 +39,6 @@ expression: terminal.backend()
 "│  ││  ││  #2447 by │                                                                              ║                  ││"
 "│  ││  ││      feat│        PRs                                                                  ║                  ││"
 "│  ││  ││  #2436 by │space select                                                                  ║                  ││"
-"│  ││  ││      fix:│j/k scroll  (34/55)                                                           ║──────────────────┘│"
+"│  ││  ││      fix:│j/k scroll  (34/56)                                                           ║──────────────────┘│"
 "└──┘└──┘└ f·page  p·└──────────────────────────────────────────────────────────────────────────────▼───────────────────┘"
-" space select  ^a select all  v approve  m merge  C checkout  c comment  d diff  o open  y copy URL  / filter  ? help   "
+" space select  ^a select all  v approve  m merge  u rebase  C checkout  c comment  d diff  o open  y copy URL  ? help   "

@@ -400,6 +400,10 @@ impl App {
                     PrAction::Merge if use_auto => {
                         self.update_pr_by_id(&pr, |p| p.auto_merge = true);
                     }
+                    PrAction::Rebase => {
+                        // Head moved: drop the cached state so it is re-fetched.
+                        self.repo_ctx.mergeable_states.remove(&pr);
+                    }
                     _ => {}
                 }
                 // Per-PR status for single actions; batches leave this None and show a
