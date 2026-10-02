@@ -4,7 +4,7 @@ use super::{
     ICON_FILE_MODIFIED, ICON_FILE_REMOVED, ICON_FILE_RENAMED, ICON_PR_HEADER, StatusLike,
     active_style, detail_tab_line, diff_stat_spans, dim_italic, draw_scrollable_body,
     inactive_style, label_pill_spans, label_pill_w, list_highlight_style, loading_placeholder,
-    mergeable_state_span, pad_to_width, relative_time, truncate,
+    loading_text, mergeable_state_span, pad_to_width, relative_time, truncate,
 };
 use crate::{
     app::App,
@@ -264,7 +264,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
 
             let mut lines: Vec<Line> = vec![heading("Summary"), Line::raw("")];
             match &app.repo_ctx.pr_body {
-                None => lines.push(Line::styled("Loading…", dim())),
+                None => lines.push(Line::styled(loading_text(app), dim())),
                 Some(b) if b.is_empty() => {
                     lines.push(Line::styled("(no description)", dim_italic_style()));
                 }
@@ -275,7 +275,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
             lines.push(heading("Changes"));
             lines.push(Line::raw(""));
             match (&app.repo_ctx.pr_files, &app.repo_ctx.pr_commits) {
-                (None, _) | (_, None) => lines.push(Line::styled("Loading…", dim())),
+                (None, _) | (_, None) => lines.push(Line::styled(loading_text(app), dim())),
                 (Some(files), Some(commits)) => {
                     let mut spans = vec![Span::raw(format!(
                         "{} file{} changed  ",
@@ -306,7 +306,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
             lines.push(heading("Checks"));
             lines.push(Line::raw(""));
             match &app.repo_ctx.check_runs {
-                None => lines.push(Line::styled("Loading…", dim())),
+                None => lines.push(Line::styled(loading_text(app), dim())),
                 Some(runs) if runs.is_empty() => {
                     lines.push(Line::styled("(no checks)", dim_italic_style()));
                 }
@@ -391,6 +391,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
 
             draw_scrollable_body(
                 f,
+                app,
                 formatted.as_ref(),
                 "(no comments)",
                 app.repo_ctx.pr_activity_scroll,
@@ -409,7 +410,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
             f.render_widget(block, content_area);
 
             match &app.repo_ctx.pr_commits {
-                None => f.render_widget(loading_placeholder(), commits_inner),
+                None => f.render_widget(loading_placeholder(app), commits_inner),
                 Some(commits) if commits.is_empty() => {
                     f.render_widget(dim_italic("(no commits)"), commits_inner);
                 }
@@ -499,7 +500,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
 
             match &app.repo_ctx.check_runs {
                 None => {
-                    f.render_widget(loading_placeholder(), list_area);
+                    f.render_widget(loading_placeholder(app), list_area);
                 }
                 Some(runs) if runs.is_empty() => {
                     f.render_widget(dim_italic("(no checks)"), list_area);
@@ -565,7 +566,7 @@ pub(crate) fn draw_pr_detail(f: &mut Frame, app: &mut App, area: Rect) {
             f.render_widget(block, content_area);
 
             match &app.repo_ctx.pr_files {
-                None => f.render_widget(loading_placeholder(), files_inner),
+                None => f.render_widget(loading_placeholder(app), files_inner),
                 Some(files) if files.is_empty() => {
                     f.render_widget(dim_italic("(no file changes)"), files_inner);
                 }

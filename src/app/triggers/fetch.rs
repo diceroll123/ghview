@@ -1,4 +1,4 @@
-use super::super::App;
+use super::super::{App, PendingKind};
 use crate::{
     actions,
     config::SourcesConfig,
@@ -312,12 +312,8 @@ impl App {
         });
     }
 
-    pub(crate) fn trigger_load_pr_body(&mut self) {
-        let Some((rid, pr)) = self.selected_pr_context() else {
-            return;
-        };
-        let pr_number = pr.number;
-        let known_sha = pr.head_sha.clone();
+    /// Clear every PR-detail field so nothing from the previous PR lingers.
+    pub(crate) fn reset_pr_detail(&mut self) {
         self.repo_ctx.pr_body = None;
         self.repo_ctx.check_runs = None;
         self.repo_ctx.check_runs_state = ListState::default();
@@ -333,6 +329,21 @@ impl App {
         self.repo_ctx.pr_commits_state = ListState::default();
         self.repo_ctx.pr_files = None;
         self.repo_ctx.pr_files_state = ListState::default();
+    }
+
+    pub(crate) fn trigger_load_pr_body(&mut self) {
+        if self
+            .pending_load
+            .is_some_and(|p| p.kind == PendingKind::PrDetail)
+        {
+            self.pending_load = None;
+        }
+        let Some((rid, pr)) = self.selected_pr_context() else {
+            return;
+        };
+        let pr_number = pr.number;
+        let known_sha = pr.head_sha.clone();
+        self.reset_pr_detail();
         let pr_id = rid.clone().pr(pr_number);
         let tx = self.tx.clone();
         tokio::spawn(async move {
@@ -1686,5 +1697,63 @@ mod tests {
             !app.loading_keys.contains(&LoadKey::RepoPrs),
             "the current repo's own message must clear the RepoPrs key"
         );
+    }
+
+    #[tokio::test]
+    async fn rapid_moves_defer_load_and_reset_deadline() {
+        let mut app = make_app();
+        app.config.ui.select_settle_ms = 60;
+        setup_repo_prs(&mut app, vec![make_pr(1), make_pr(2), make_pr(3)]);
+        app.repo_ctx.pr_state.select(Some(0));
+        app.repo_ctx.pr_body = Some("old".into());
+
+        app.move_down();
+        assert_eq!(
+            app.repo_ctx.pr_body, None,
+            "stale detail cleared immediately"
+        );
+        let first = app.pending_deadline().expect("load is pending");
+
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        app.flush_pending_if_due();
+        assert!(app.pending_load.is_some(), "not due yet");
+
+        app.move_down();
+        let second = app.pending_deadline().unwrap();
+        assert!(second > first, "each move pushes the deadline out");
+
+        tokio::time::sleep(app.config.select_settle() + std::time::Duration::from_millis(30)).await;
+        app.flush_pending_if_due();
+        assert!(app.pending_load.is_none(), "settled load ran");
+    }
+
+    #[tokio::test]
+    async fn zero_settle_loads_immediately() {
+        let mut app = make_app();
+        app.config.ui.select_settle_ms = 0;
+        setup_repo_prs(&mut app, vec![make_pr(1), make_pr(2)]);
+        app.repo_ctx.pr_state.select(Some(0));
+        app.move_down();
+        assert!(app.pending_load.is_none());
+    }
+
+    #[tokio::test]
+    async fn finer_pending_kind_does_not_downgrade_coarser() {
+        let mut app = make_app();
+        setup_repo_prs(&mut app, vec![make_pr(1), make_pr(2)]);
+        app.schedule_load(PendingKind::Repo);
+        app.schedule_load(PendingKind::PrDetail);
+        assert_eq!(app.pending_load.unwrap().kind, PendingKind::Repo);
+    }
+
+    #[tokio::test]
+    async fn non_movement_action_flushes_pending_load() {
+        let mut app = make_app();
+        setup_repo_prs(&mut app, vec![make_pr(1), make_pr(2)]);
+        app.repo_ctx.pr_state.select(Some(0));
+        app.move_down();
+        assert!(app.pending_load.is_some());
+        app.handle_action(crate::keys::Action::Right);
+        assert!(app.pending_load.is_none());
     }
 }

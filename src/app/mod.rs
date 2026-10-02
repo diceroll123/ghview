@@ -113,6 +113,33 @@ pub struct SourceCtx {
     pub source_issues_pagination: PaginationState,
 }
 
+/// What a settled cursor move will load once the settle delay elapses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PendingKind {
+    Source,
+    Repo,
+    PrDetail,
+    IssueDetail,
+    SourceIssueDetail,
+}
+
+impl PendingKind {
+    /// Coarser loads supersede finer ones.
+    pub(crate) const fn rank(self) -> u8 {
+        match self {
+            Self::Source => 2,
+            Self::Repo => 1,
+            _ => 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PendingLoad {
+    pub(crate) kind: PendingKind,
+    pub(crate) deadline: tokio::time::Instant,
+}
+
 pub struct App {
     pub focus: Column,
     pub direct_repo: bool,
@@ -170,6 +197,8 @@ pub struct App {
     /// Multi-selection of PRs in the active PR list (per-repo or source-level).
     /// Keyed by `PrId` so it stays stable across re-sort/filter/refresh.
     pub selected_prs: HashSet<PrId>,
+    /// Load waiting for the cursor to settle (see `ui.select_settle_ms`). Latest move wins.
+    pub(crate) pending_load: Option<PendingLoad>,
     /// Batch PR actions currently in flight. While > 0 the loading indicator is held
     /// and new batch actions are ignored so completion counting stays accurate.
     pub pending_pr_actions: u32,
@@ -240,6 +269,7 @@ impl App {
             config,
             status_msg: None,
             status_msg_at: None,
+            pending_load: None,
             show_help: false,
             help_scroll: 0,
             show_dependabot_menu: false,
@@ -845,6 +875,13 @@ impl App {
     }
 
     pub fn handle_action(&mut self, action: Action) {
+        // Anything but plain cursor movement signals intent: load what is waiting now.
+        if !matches!(
+            action,
+            Action::Up | Action::Down | Action::Top | Action::Bottom
+        ) {
+            self.flush_pending_load();
+        }
         if self.repo_ctx.diff_view.is_some() {
             match action {
                 Action::Quit | Action::Left => self.repo_ctx.diff_view = None,

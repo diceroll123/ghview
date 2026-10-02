@@ -57,6 +57,12 @@ pub(super) fn draw_status<'a>(f: &mut Frame, app: &'a App, area: ratatui::layout
                 Color::Yellow,
                 Alignment::Left,
             )
+        } else if app.pending_load.is_some() {
+            (
+                Cow::Borrowed("waiting for selection to settle..."),
+                Color::DarkGray,
+                Alignment::Left,
+            )
         } else if let Some((msg, is_err)) = &app.status_msg {
             let color = if *is_err { Color::Red } else { Color::Green };
             (Cow::Borrowed(msg.as_str()), color, Alignment::Left)
