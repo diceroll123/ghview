@@ -67,6 +67,21 @@ pub async fn merge(pr: &PrId, method: crate::config::MergeMethod, auto: bool) ->
     }
 }
 
+/// Rebases a PR's branch onto its base branch server-side. GitHub applies the rebase
+/// atomically and rejects it (leaving the PR untouched) when it would conflict, so this
+/// can only ever succeed cleanly.
+pub async fn rebase(pr: &PrId) -> Result<()> {
+    run_silent(&[
+        "pr",
+        "update-branch",
+        &pr.number.to_string(),
+        "-R",
+        &pr.repo.to_string(),
+        "--rebase",
+    ])
+    .await
+}
+
 pub async fn close_pr(pr: &PrId) -> Result<()> {
     run_silent(&[
         "pr",

@@ -489,6 +489,7 @@ pub enum PrAction {
     Close,
     Reopen,
     MarkReady,
+    Rebase,
 }
 
 impl PrAction {
@@ -499,6 +500,7 @@ impl PrAction {
             Self::Close => "close",
             Self::Reopen => "reopen",
             Self::MarkReady => "ready",
+            Self::Rebase => "rebase",
         }
     }
 
@@ -509,6 +511,7 @@ impl PrAction {
             Self::Close => format!("✓ Closed #{pr_number}"),
             Self::Reopen => format!("✓ Reopened #{pr_number}"),
             Self::MarkReady => format!("✓ Marked ready #{pr_number}"),
+            Self::Rebase => format!("✓ Rebased #{pr_number}"),
         }
     }
 
@@ -531,6 +534,7 @@ impl PrAction {
             Self::Close => "Closed",
             Self::Reopen => "Reopened",
             Self::MarkReady => "Marked ready",
+            Self::Rebase => "Rebased",
         };
         format!("✓ {verb} {n} PR(s)")
     }
@@ -652,6 +656,7 @@ mod tests {
         assert_eq!(PrAction::Close.label(), "close");
         assert_eq!(PrAction::Reopen.label(), "reopen");
         assert_eq!(PrAction::MarkReady.label(), "ready");
+        assert_eq!(PrAction::Rebase.label(), "rebase");
     }
 
     #[test]
