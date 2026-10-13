@@ -295,7 +295,7 @@ pub(crate) fn draw_repo_frontpage(f: &mut Frame, app: &mut App, area: Rect) {
     let frontpage = app.repo_ctx.repo_frontpage.clone();
     match frontpage {
         None => {
-            f.render_widget(loading_placeholder(), inner);
+            f.render_widget(loading_placeholder(app), inner);
         }
         Some((description, readme)) if description.is_empty() && readme.is_empty() => {
             f.render_widget(dim_italic("(no readme)"), inner);
@@ -410,7 +410,12 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
         Some(app.selected_repo().unwrap_or("")),
     );
 
-    if items.is_empty() && !app.loading(&LoadKey::RepoIssues) {
+    // While a load is pending (the cursor still settling) the list was just invalidated and
+    // nothing has been fetched yet, so don't claim there are no issues.
+    if items.is_empty()
+        && !app.loading(&LoadKey::RepoIssues)
+        && !app.pending_list_load(&LoadKey::RepoIssues)
+    {
         let msg = if owner_repo.is_some() {
             "No open issues"
         } else {
@@ -498,6 +503,7 @@ pub(crate) fn draw_issue_detail(f: &mut Frame, app: &mut App, area: Rect) {
 
     draw_scrollable_body(
         f,
+        app,
         app.repo_ctx.issue_body.as_ref(),
         "(no description)",
         app.repo_ctx.issue_body_scroll,

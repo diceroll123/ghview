@@ -23,6 +23,7 @@ impl MergeMethod {
 }
 
 pub const DEFAULT_TICK_MS: u64 = 100;
+pub const DEFAULT_SELECT_SETTLE_MS: u64 = 400;
 pub const DEFAULT_CACHE_SECS: u64 = 600;
 pub const DEFAULT_RATE_LIMIT_REFRESH_SECS: u64 = 60;
 pub const MIN_RATE_LIMIT_REFRESH_SECS: u64 = 10;
@@ -75,6 +76,9 @@ pub struct UiConfig {
     pub prefetch_pr_details: bool,
     /// How often to refresh the rate-limit display, in seconds. Minimum 10.
     pub rate_limit_refresh_secs: u64,
+    /// Milliseconds the cursor must rest on a PR/repo/source before its details load.
+    /// Set to 0 to load immediately on every selection change.
+    pub select_settle_ms: u64,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -262,6 +266,7 @@ impl Default for UiConfig {
             merge_auto: true,
             prefetch_pr_details: true,
             rate_limit_refresh_secs: DEFAULT_RATE_LIMIT_REFRESH_SECS,
+            select_settle_ms: DEFAULT_SELECT_SETTLE_MS,
         }
     }
 }
@@ -295,6 +300,10 @@ impl Config {
 
     pub const fn tick_interval(&self) -> Duration {
         Duration::from_millis(self.ui.tick_ms)
+    }
+
+    pub const fn select_settle(&self) -> Duration {
+        Duration::from_millis(self.ui.select_settle_ms)
     }
 
     pub fn rate_limit_refresh_interval(&self) -> Duration {

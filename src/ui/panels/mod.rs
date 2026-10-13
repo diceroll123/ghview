@@ -22,6 +22,7 @@ pub(crate) use super::{
     relative_time, render_list_scrollbar, review_icon, truncate,
 };
 
+use crate::app::App;
 use crate::types::{Label, MergeableState, PR, RepoView, ReposView};
 use ratatui::{
     Frame,
@@ -68,12 +69,23 @@ pub(crate) fn dim_italic(text: &'static str) -> Paragraph<'static> {
     )
 }
 
-pub(crate) fn loading_placeholder() -> Paragraph<'static> {
-    Paragraph::new("Loading…").style(Style::new().fg(Color::DarkGray))
+/// Placeholder text for data that has not arrived: "waiting" while the cursor is still
+/// settling (nothing fetched yet), "Loading" once the fetch is under way.
+pub(crate) const fn loading_text(app: &App) -> &'static str {
+    if app.pending_load.is_some() {
+        "Waiting to load..."
+    } else {
+        "Loading…"
+    }
+}
+
+pub(crate) fn loading_placeholder(app: &App) -> Paragraph<'static> {
+    Paragraph::new(loading_text(app)).style(Style::new().fg(Color::DarkGray))
 }
 
 pub(crate) fn draw_scrollable_body(
     f: &mut Frame,
+    app: &App,
     body: Option<&String>,
     empty_msg: &'static str,
     scroll: u16,
@@ -81,7 +93,7 @@ pub(crate) fn draw_scrollable_body(
     sb_area: Rect,
 ) {
     match body {
-        None => f.render_widget(loading_placeholder(), content_area),
+        None => f.render_widget(loading_placeholder(app), content_area),
         Some(b) if b.is_empty() => f.render_widget(dim_italic(empty_msg), content_area),
         Some(b) => {
             let md = super::markdown::render(b);

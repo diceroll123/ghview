@@ -380,7 +380,19 @@ pub async fn run_event_loop(
                 }
             }
 
-            _ = tick.tick() => { app.clear_status_if_expired(); }
+            _ = tick.tick() => {
+                app.clear_status_if_expired();
+                app.flush_pending_if_due();
+            }
+
+            () = async {
+                match app.pending_deadline() {
+                    Some(d) => tokio::time::sleep_until(d).await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                app.flush_pending_if_due();
+            }
 
             _ = rate_limit_tick.tick() => {
                 app.trigger_fetch_rate_limit();

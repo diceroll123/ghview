@@ -1,4 +1,4 @@
-use super::App;
+use super::{App, PendingKind, PendingLoad};
 use crate::types::{Column, DetailSection, RepoView, ReposView};
 use ratatui::widgets::ListState;
 
@@ -81,6 +81,16 @@ impl App {
 
     pub(crate) fn on_source_changed(&mut self) {
         self.invalidate_source();
+        self.load_for_source();
+    }
+
+    pub(crate) fn on_repo_changed(&mut self) {
+        self.pr_filter.clear();
+        self.invalidate_repo();
+        self.load_for_repo();
+    }
+
+    fn load_for_source(&mut self) {
         self.trigger_load_repos();
         match self.repos_view {
             ReposView::PrList => self.trigger_load_source_prs(),
@@ -89,10 +99,7 @@ impl App {
         }
     }
 
-    pub(crate) fn on_repo_changed(&mut self) {
-        self.pr_filter.clear();
-        self.invalidate_repo();
-
+    fn load_for_repo(&mut self) {
         self.trigger_load_prs(); // keep PRs loaded for PR tab count
 
         match self.repo_view {
@@ -100,6 +107,69 @@ impl App {
             RepoView::Issues => self.trigger_load_issues(),
             RepoView::Prs => {}
         }
+    }
+
+    /// React to a cursor move. Stale state is cleared right away so old data is never shown
+    /// against the new row, but the fetches wait until the cursor has rested for
+    /// `ui.select_settle_ms`, so scrolling past many rows loads only the one it stops on.
+    pub(crate) fn schedule_load(&mut self, kind: PendingKind) {
+        match kind {
+            PendingKind::Source => self.invalidate_source(),
+            PendingKind::Repo => {
+                self.pr_filter.clear();
+                self.invalidate_repo();
+            }
+            PendingKind::PrDetail => self.reset_pr_detail(),
+            PendingKind::IssueDetail | PendingKind::SourceIssueDetail => {
+                self.repo_ctx.issue_body = None;
+                self.repo_ctx.issue_body_scroll = 0;
+            }
+        }
+        let settle = self.config.select_settle();
+        if settle.is_zero() {
+            self.pending_load = None;
+            self.run_load(kind);
+            return;
+        }
+        // A pending coarser load (e.g. repo) must not be downgraded by a finer one.
+        let kind = match self.pending_load {
+            Some(p) if p.kind.rank() > kind.rank() => p.kind,
+            _ => kind,
+        };
+        self.pending_load = Some(PendingLoad {
+            kind,
+            deadline: tokio::time::Instant::now() + settle,
+        });
+    }
+
+    fn run_load(&mut self, kind: PendingKind) {
+        match kind {
+            PendingKind::Source => self.load_for_source(),
+            PendingKind::Repo => self.load_for_repo(),
+            PendingKind::PrDetail => self.trigger_load_pr_body(),
+            PendingKind::IssueDetail => self.trigger_load_issue_body(),
+            PendingKind::SourceIssueDetail => self.trigger_load_source_issue_body(),
+        }
+    }
+
+    /// Run the pending load now (the user signaled intent, e.g. opened the item).
+    pub(crate) fn flush_pending_load(&mut self) {
+        if let Some(p) = self.pending_load.take() {
+            self.run_load(p.kind);
+        }
+    }
+
+    pub(crate) fn flush_pending_if_due(&mut self) {
+        if self
+            .pending_load
+            .is_some_and(|p| p.deadline <= tokio::time::Instant::now())
+        {
+            self.flush_pending_load();
+        }
+    }
+
+    pub(crate) fn pending_deadline(&self) -> Option<tokio::time::Instant> {
+        self.pending_load.map(|p| p.deadline)
     }
 
     /// Scroll the Detail pane's active tab by `step` lines in `dir`. Overview and Activity
@@ -156,26 +226,26 @@ impl App {
             Column::Sources => {
                 let len = self.visible_sources().len();
                 if self.source_state.nav_prev(len) {
-                    self.on_source_changed();
+                    self.schedule_load(PendingKind::Source);
                 }
             }
             Column::Repos => match self.repos_view {
                 ReposView::RepoList => {
                     let len = self.visible_repos().len();
                     if self.source_ctx.repo_state.nav_prev(len) {
-                        self.on_repo_changed();
+                        self.schedule_load(PendingKind::Repo);
                     }
                 }
                 ReposView::PrList => {
                     let len = self.visible_source_prs().len();
                     if self.source_ctx.source_pr_state.nav_prev(len) {
-                        self.trigger_load_pr_body();
+                        self.schedule_load(PendingKind::PrDetail);
                     }
                 }
                 ReposView::IssueList => {
                     let len = self.visible_source_issues().len();
                     if self.source_ctx.source_issue_state.nav_prev(len) {
-                        self.trigger_load_source_issue_body();
+                        self.schedule_load(PendingKind::SourceIssueDetail);
                     }
                 }
             },
@@ -186,7 +256,7 @@ impl App {
                 }
                 RepoView::Prs => {
                     if self.repo_ctx.pr_state.nav_prev(self.repo_ctx.prs.len()) {
-                        self.trigger_load_pr_body();
+                        self.schedule_load(PendingKind::PrDetail);
                     }
                 }
                 RepoView::Issues => {
@@ -195,7 +265,7 @@ impl App {
                         .issue_state
                         .nav_prev(self.repo_ctx.issues.len())
                     {
-                        self.trigger_load_issue_body();
+                        self.schedule_load(PendingKind::IssueDetail);
                     }
                 }
             },
@@ -214,7 +284,7 @@ impl App {
             Column::Sources => {
                 let len = self.visible_sources().len();
                 if self.source_state.nav_next(len) {
-                    self.on_source_changed();
+                    self.schedule_load(PendingKind::Source);
                 }
             }
             Column::Repos => match self.repos_view {
@@ -222,7 +292,7 @@ impl App {
                     let len = self.visible_repos().len();
                     let at_last = len > 0 && self.source_ctx.repo_state.selected() == Some(len - 1);
                     if self.source_ctx.repo_state.nav_next(len) {
-                        self.on_repo_changed();
+                        self.schedule_load(PendingKind::Repo);
                     }
                     if at_last && self.source_ctx.repo_filter.is_empty() {
                         self.trigger_load_more_repos();
@@ -234,7 +304,7 @@ impl App {
                         && self.source_ctx.source_pr_state.selected() == Some(len - 1)
                         && self.source_ctx.source_pr_filter.is_empty();
                     if self.source_ctx.source_pr_state.nav_next(len) {
-                        self.trigger_load_pr_body();
+                        self.schedule_load(PendingKind::PrDetail);
                     }
                     if at_last {
                         self.trigger_load_more_source_prs();
@@ -246,7 +316,7 @@ impl App {
                         && self.source_ctx.source_issue_state.selected() == Some(len - 1)
                         && self.source_ctx.source_issue_filter.is_empty();
                     if self.source_ctx.source_issue_state.nav_next(len) {
-                        self.trigger_load_source_issue_body();
+                        self.schedule_load(PendingKind::SourceIssueDetail);
                     }
                     if at_last {
                         self.trigger_load_more_source_issues();
@@ -262,7 +332,7 @@ impl App {
                     let len = self.repo_ctx.prs.len();
                     let at_last = len > 0 && self.repo_ctx.pr_state.selected() == Some(len - 1);
                     if self.repo_ctx.pr_state.nav_next(len) {
-                        self.trigger_load_pr_body();
+                        self.schedule_load(PendingKind::PrDetail);
                     }
                     if at_last && self.pr_filter.is_empty() {
                         self.trigger_load_more_prs();
@@ -272,7 +342,7 @@ impl App {
                     let len = self.repo_ctx.issues.len();
                     let at_last = len > 0 && self.repo_ctx.issue_state.selected() == Some(len - 1);
                     if self.repo_ctx.issue_state.nav_next(len) {
-                        self.trigger_load_issue_body();
+                        self.schedule_load(PendingKind::IssueDetail);
                     }
                     if at_last {
                         self.trigger_load_more_issues();
@@ -414,7 +484,7 @@ impl App {
         match self.focus {
             Column::Sources => {
                 if !self.visible_sources().is_empty() && self.source_state.select_changed(Some(0)) {
-                    self.on_source_changed();
+                    self.schedule_load(PendingKind::Source);
                 }
             }
             Column::Repos => match self.repos_view {
@@ -422,14 +492,18 @@ impl App {
                     if !self.visible_repos().is_empty()
                         && self.source_ctx.repo_state.select_changed(Some(0))
                     {
-                        self.on_repo_changed();
+                        self.schedule_load(PendingKind::Repo);
                     }
                 }
                 ReposView::PrList => {
-                    self.source_ctx.source_pr_state.select(Some(0));
+                    if self.source_ctx.source_pr_state.select_changed(Some(0)) {
+                        self.schedule_load(PendingKind::PrDetail);
+                    }
                 }
                 ReposView::IssueList => {
-                    self.source_ctx.source_issue_state.select(Some(0));
+                    if self.source_ctx.source_issue_state.select_changed(Some(0)) {
+                        self.schedule_load(PendingKind::SourceIssueDetail);
+                    }
                 }
             },
             Column::Repo => match self.repo_view {
@@ -439,13 +513,13 @@ impl App {
                 RepoView::Prs => {
                     if !self.repo_ctx.prs.is_empty() {
                         self.repo_ctx.pr_state.select(Some(0));
-                        self.trigger_load_pr_body();
+                        self.schedule_load(PendingKind::PrDetail);
                     }
                 }
                 RepoView::Issues => {
                     if !self.repo_ctx.issues.is_empty() {
                         self.repo_ctx.issue_state.select(Some(0));
-                        self.trigger_load_issue_body();
+                        self.schedule_load(PendingKind::IssueDetail);
                     }
                 }
             },
@@ -479,26 +553,36 @@ impl App {
             Column::Sources => {
                 let len = self.visible_sources().len();
                 if len > 0 && self.source_state.select_changed(Some(len - 1)) {
-                    self.on_source_changed();
+                    self.schedule_load(PendingKind::Source);
                 }
             }
             Column::Repos => match self.repos_view {
                 ReposView::RepoList => {
                     let len = self.visible_repos().len();
                     if len > 0 && self.source_ctx.repo_state.select_changed(Some(len - 1)) {
-                        self.on_repo_changed();
+                        self.schedule_load(PendingKind::Repo);
                     }
                 }
                 ReposView::PrList => {
                     let len = self.source_ctx.source_prs.len();
-                    if len > 0 {
-                        self.source_ctx.source_pr_state.select(Some(len - 1));
+                    if len > 0
+                        && self
+                            .source_ctx
+                            .source_pr_state
+                            .select_changed(Some(len - 1))
+                    {
+                        self.schedule_load(PendingKind::PrDetail);
                     }
                 }
                 ReposView::IssueList => {
                     let len = self.source_ctx.source_issues.len();
-                    if len > 0 {
-                        self.source_ctx.source_issue_state.select(Some(len - 1));
+                    if len > 0
+                        && self
+                            .source_ctx
+                            .source_issue_state
+                            .select_changed(Some(len - 1))
+                    {
+                        self.schedule_load(PendingKind::SourceIssueDetail);
                     }
                 }
             },
@@ -511,7 +595,7 @@ impl App {
                         self.repo_ctx
                             .pr_state
                             .select(Some(self.repo_ctx.prs.len() - 1));
-                        self.trigger_load_pr_body();
+                        self.schedule_load(PendingKind::PrDetail);
                     }
                 }
                 RepoView::Issues => {
@@ -519,7 +603,7 @@ impl App {
                         self.repo_ctx
                             .issue_state
                             .select(Some(self.repo_ctx.issues.len() - 1));
-                        self.trigger_load_issue_body();
+                        self.schedule_load(PendingKind::IssueDetail);
                     }
                 }
             },

@@ -485,6 +485,17 @@ pub(crate) fn draw_prs(f: &mut Frame, app: &mut App, area: Rect) {
         header_area,
     );
 
+    // While a load is pending (the cursor still settling) the list was just invalidated and
+    // nothing has been fetched yet, so don't claim there are no PRs. A filter message is still
+    // accurate: the list data itself hasn't changed.
+    if items.is_empty()
+        && !app.is_loading()
+        && app.pending_list_load(&LoadKey::RepoPrs)
+        && app.pr_filter.is_empty()
+    {
+        return;
+    }
+
     if items.is_empty() && !app.is_loading() {
         let msg = if !app.pr_filter.is_empty() {
             format!("no results for \"{}\"", app.pr_filter)
@@ -583,8 +594,11 @@ pub(crate) fn draw_source_prs(f: &mut Frame, app: &mut App, area: Rect) {
     );
 
     if visible_prs.is_empty() {
-        if app.is_loading() {
-            f.render_widget(loading_placeholder(), body_area);
+        // A pending load means the list was just invalidated and nothing has been fetched
+        // yet, so don't claim there are no PRs. A filter message is still accurate: the
+        // list data itself hasn't changed, so it only shows once loading has settled.
+        if app.is_loading() || app.pending_list_load(&LoadKey::SourcePrs) {
+            f.render_widget(loading_placeholder(app), body_area);
         } else if !app.source_ctx.source_pr_filter.is_empty() {
             f.render_widget(dim_italic("no results"), body_area);
         } else {
@@ -668,8 +682,11 @@ pub(crate) fn draw_source_issues(f: &mut Frame, app: &mut App, area: Rect) {
     let visible_issues = app.visible_source_issues();
 
     if visible_issues.is_empty() {
-        if app.is_loading() {
-            f.render_widget(loading_placeholder(), body_area);
+        // A pending load means the list was just invalidated and nothing has been fetched
+        // yet, so don't claim there are no issues. A filter message is still accurate: the
+        // list data itself hasn't changed, so it only shows once loading has settled.
+        if app.is_loading() || app.pending_list_load(&LoadKey::SourceIssues) {
+            f.render_widget(loading_placeholder(app), body_area);
         } else if !app.source_ctx.source_issue_filter.is_empty() {
             f.render_widget(dim_italic("no results"), body_area);
         } else {
