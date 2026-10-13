@@ -410,7 +410,12 @@ pub(crate) fn draw_issues(f: &mut Frame, app: &mut App, area: Rect) {
         Some(app.selected_repo().unwrap_or("")),
     );
 
-    if items.is_empty() && !app.loading(&LoadKey::RepoIssues) {
+    // While a load is pending (the cursor still settling) the list was just invalidated and
+    // nothing has been fetched yet, so don't claim there are no issues.
+    if items.is_empty()
+        && !app.loading(&LoadKey::RepoIssues)
+        && !app.pending_list_load(&LoadKey::RepoIssues)
+    {
         let msg = if owner_repo.is_some() {
             "No open issues"
         } else {

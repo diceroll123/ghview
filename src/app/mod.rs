@@ -743,6 +743,33 @@ impl App {
         !self.loading_keys.is_empty()
     }
 
+    /// Whether a list is empty because its load is still waiting for the cursor to settle
+    /// (see `ui.select_settle_ms`). While true, empty-state placeholders such as "No open
+    /// pull requests" must not be shown: the list was just invalidated and nothing has been
+    /// fetched yet, so `is_loading()` is false.
+    pub(crate) fn pending_list_load(&self, key: &LoadKey) -> bool {
+        self.pending_load.is_some_and(|p| match (p.kind, key) {
+            // A source load re-fetches the repo list, the current repo's PR/issue lists, and
+            // the source-level PR/issue lists.
+            (
+                PendingKind::Source,
+                LoadKey::Sources
+                | LoadKey::Repos
+                | LoadKey::RepoPrs
+                | LoadKey::RepoIssues
+                | LoadKey::SourcePrs
+                | LoadKey::SourceIssues,
+            ) => true,
+            (PendingKind::Repo, LoadKey::Frontpage | LoadKey::RepoPrs | LoadKey::RepoIssues) => {
+                true
+            }
+            // A pending PR detail means the repo's `has_pull_requests` flag may not be known
+            // yet, so an empty PR list is "not loaded" rather than "no pull requests".
+            (PendingKind::PrDetail, LoadKey::RepoPrs) => true,
+            _ => false,
+        })
+    }
+
     /// Whether the given pane is currently loading.
     pub(crate) fn loading(&self, key: &LoadKey) -> bool {
         self.loading_keys.contains(key)
